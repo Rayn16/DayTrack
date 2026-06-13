@@ -1,10 +1,19 @@
 const { getStore } = require('@netlify/blobs');
 
 exports.handler = async () => {
-  const { ONESIGNAL_APP_ID, ONESIGNAL_API_KEY } = process.env;
-  if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) return { statusCode: 200 };
+  const { ONESIGNAL_APP_ID, ONESIGNAL_API_KEY, NETLIFY_SITE_ID, NETLIFY_AUTH_TOKEN } = process.env;
+  if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY || !NETLIFY_SITE_ID || !NETLIFY_AUTH_TOKEN) {
+    console.log('Missing env vars:', { ONESIGNAL_APP_ID: !!ONESIGNAL_APP_ID, ONESIGNAL_API_KEY: !!ONESIGNAL_API_KEY, NETLIFY_SITE_ID: !!NETLIFY_SITE_ID, NETLIFY_AUTH_TOKEN: !!NETLIFY_AUTH_TOKEN });
+    return { statusCode: 200 };
+  }
 
-  const store = getStore({ name: 'daytrack', consistency: 'strong' });
+  const store = getStore({
+    name: 'daytrack',
+    consistency: 'strong',
+    siteID: NETLIFY_SITE_ID,
+    token: NETLIFY_AUTH_TOKEN,
+  });
+
   const { blobs } = await store.list();
 
   const now = new Date();
