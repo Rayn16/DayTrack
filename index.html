@@ -433,15 +433,19 @@ OneSignalDeferred.push(async function(OneSignal) {
 
 async function activateNotifs() {
   const btn = document.getElementById('notif-btn');
+  if (!window.OneSignal) { showToast('❌ OneSignal not loaded'); return; }
   if (btn) { btn.textContent = 'Activating…'; btn.style.opacity = '0.7'; }
   try {
     await OneSignal.Notifications.requestPermission();
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 3000));
+    const pid = OneSignal.User.PushSubscription.id;
+    showToast(pid ? '✅ Got ID: ' + pid.slice(0,8) + '…' : '❌ No player ID yet');
+    if (!pid) { if (btn) { btn.textContent = '🔔 Activate Notifications'; btn.style.opacity = '1'; } return; }
     await syncReminders();
     showToast('🔔 Notifications activated!');
     if (btn) { btn.textContent = '✅ Notifications Active'; btn.style.background = '#6C63FF'; btn.onclick = null; }
   } catch(e) {
-    showToast('❌ Could not activate: ' + e.message);
+    showToast('❌ ' + e.message);
     if (btn) { btn.textContent = '🔔 Activate Notifications'; btn.style.opacity = '1'; }
   }
 }
