@@ -93,6 +93,7 @@
   <div id="main">
 
     <div id="tab-tasks" class="tab on">
+      <button id="notif-btn" onclick="activateNotifs()" style="width:100%;background:#22C55E;color:white;border:none;border-radius:14px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:10px;">🔔 Activate Notifications</button>
       <button class="add-btn" onclick="openAddTask()">+ New Task</button>
       <div class="card"><div class="cl">Today's Tasks</div><div id="task-list"></div></div>
     </div>
@@ -420,11 +421,30 @@ function fDurShort(ms){const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.f
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2600);}
 
-// OneSignal init — App ID filled in after OneSignal setup
 window.OneSignalDeferred = window.OneSignalDeferred || [];
 OneSignalDeferred.push(async function(OneSignal) {
   await OneSignal.init({ appId: '876e55c1-d5d0-4ef5-8f40-3c839e44e7a9' });
+  OneSignal.User.PushSubscription.addEventListener('change', () => syncReminders());
+  if (OneSignal.User.PushSubscription.optedIn) {
+    const btn = document.getElementById('notif-btn');
+    if (btn) { btn.textContent = '✅ Notifications Active'; btn.style.background = '#6C63FF'; btn.onclick = null; btn.style.opacity = '0.7'; }
+  }
 });
+
+async function activateNotifs() {
+  const btn = document.getElementById('notif-btn');
+  if (btn) { btn.textContent = 'Activating…'; btn.style.opacity = '0.7'; }
+  try {
+    await OneSignal.Notifications.requestPermission();
+    await new Promise(r => setTimeout(r, 2000));
+    await syncReminders();
+    showToast('🔔 Notifications activated!');
+    if (btn) { btn.textContent = '✅ Notifications Active'; btn.style.background = '#6C63FF'; btn.onclick = null; }
+  } catch(e) {
+    showToast('❌ Could not activate: ' + e.message);
+    if (btn) { btn.textContent = '🔔 Activate Notifications'; btn.style.opacity = '1'; }
+  }
+}
 
 boot();
 </script>
