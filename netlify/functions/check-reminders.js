@@ -18,11 +18,14 @@ exports.handler = async () => {
   const nowMs = Date.now();
   const todStr = now.toISOString().split('T')[0];
 
+  console.log(`Found ${blobs.length} subscription(s) in store`);
+
   for (const { key } of blobs) {
     const data = await store.get(key, { type: 'json' });
-    if (!data || !data.tasks?.length) continue;
+    if (!data || !data.tasks?.length) { console.log(`Key ${key}: no data or no tasks`); continue; }
 
     const { subscription, tasks } = data;
+    console.log(`Key ${key}: ${tasks.length} task(s), endpoint: ${subscription?.endpoint?.slice(0,40)}...`);
     let changed = false;
 
     for (const t of tasks) {
@@ -39,6 +42,7 @@ exports.handler = async () => {
         }
       } else if (r.type === 'interval') {
         const ms = (r.h * 60 + r.m) * 60000;
+        console.log(`Task "${t.name}": interval ${r.h}h${r.m}m, ms=${ms}, since last=${nowMs-(t.lastFiredMs||0)}`);
         if (ms > 0 && nowMs - (t.lastFiredMs || 0) >= ms) {
           await notify(webpush, subscription, `Reminder: ${t.name}`);
           t.lastFiredMs = nowMs;
@@ -55,8 +59,10 @@ exports.handler = async () => {
 
 async function notify(webpush, subscription, body) {
   try {
-    await webpush.sendNotification(subscription, JSON.stringify({ title: '⏰ DayTrack', body }));
+    console.log('Sending push:', body);
+    const result = await webpush.sendNotification(subscription, JSON.stringify({ title: '⏰ DayTrack', body }));
+    console.log('Push sent, status:', result.statusCode);
   } catch (e) {
-    console.error('Notify error:', e.message);
+    console.error('Notify error:', e.statusCode, e.message, e.body);
   }
 }
