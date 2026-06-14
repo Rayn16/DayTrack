@@ -30,15 +30,13 @@
     #app{display:flex;flex-direction:column;height:100dvh;height:100vh;}
     #hdr{background:var(--hdr);padding:calc(env(safe-area-inset-top,0px) + 10px) 15px 10px;border-bottom:1px solid var(--brd);flex-shrink:0;transition:background .25s,border-color .25s;}
     #main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);transition:background .25s;}
-    #nav{background:var(--nav);border-top:1px solid var(--brd);display:grid;grid-template-columns:repeat(4,1fr);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:background .25s,border-color .25s;}
-    /* Desktop: show as centered phone */
+    #nav{background:var(--nav);border-top:1px solid var(--brd);display:grid;grid-template-columns:repeat(5,1fr);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:background .25s,border-color .25s;}
     @media(min-width:600px){
       body{background:#0D0D1A;display:flex;justify-content:center;align-items:center;min-height:100vh;overflow:auto;padding:24px 0;}
       #app{width:390px;height:844px;max-height:95vh;border-radius:44px;overflow:hidden;box-shadow:0 0 0 8px #2A2A42,0 0 0 11px #111128,0 40px 100px rgba(0,0,0,.7);flex-shrink:0;}
       .ov{border-radius:44px;}
       .toast{bottom:80px;}
     }
-
     .tab{display:none;padding:12px 12px 28px;}.tab.on{display:block;}
     .nb{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--sub);font-size:10px;font-weight:500;padding:10px 0;font-family:inherit;transition:color .2s;width:100%;}.nb.on{color:var(--pri);}
     .card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px;transition:background .25s;}
@@ -74,10 +72,7 @@
   <div id="hdr">
     <div style="display:flex;align-items:center;justify-content:space-between;">
       <span style="font-size:18px;font-weight:700;color:var(--pri);">☀️ DayTrack</span>
-      <div style="display:flex;align-items:center;gap:9px;">
-        <button id="dk-btn" onclick="toggleDark()" style="background:var(--inp);border:1.5px solid var(--brd);border-radius:22px;padding:4px 12px;font-size:16px;cursor:pointer;line-height:1;transition:background .25s;">🌙</button>
-        <span id="dt-date" style="background:var(--pril);color:var(--pri);font-size:12px;font-weight:600;padding:4px 11px;border-radius:22px;transition:background .25s,color .25s;"></span>
-      </div>
+      <span id="dt-date" style="background:var(--pril);color:var(--pri);font-size:12px;font-weight:600;padding:4px 11px;border-radius:22px;transition:background .25s,color .25s;"></span>
     </div>
   </div>
 
@@ -92,7 +87,16 @@
   <div id="main">
 
     <div id="tab-tasks" class="tab on">
-      <button id="notif-btn" onclick="activateNotifs()" style="width:100%;background:#22C55E;color:white;border:none;border-radius:14px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:10px;">🔔 Activate Notifications</button>
+      <div class="card" style="margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:13px;font-weight:600;color:var(--txt);">Today's Progress</span>
+          <span id="streak-badge" style="font-size:13px;font-weight:700;color:#F97316;display:none;">🔥 <span id="streak-num">0</span> day streak</span>
+        </div>
+        <div style="background:var(--brd);border-radius:8px;height:10px;overflow:hidden;">
+          <div id="prog-bar" style="height:100%;background:var(--pri);border-radius:8px;width:0%;transition:width .4s ease;"></div>
+        </div>
+        <div id="prog-label" style="font-size:12px;color:var(--sub);margin-top:6px;text-align:right;">0 / 0 tasks</div>
+      </div>
       <button class="add-btn" onclick="openAddTask()">+ New Task</button>
       <div class="card"><div class="cl">Today's Tasks</div><div id="task-list"></div></div>
     </div>
@@ -135,6 +139,39 @@
       <div class="card"><div class="cl">Recent Sessions</div><div id="sum-sess"></div></div>
     </div>
 
+    <div id="tab-settings" class="tab">
+      <div class="card">
+        <div class="cl">Notifications</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;">
+          <div>
+            <div style="font-size:15px;font-weight:600;color:var(--txt);">Push Notifications</div>
+            <div style="font-size:12px;color:var(--sub);margin-top:2px;">Get reminders even when app is closed</div>
+          </div>
+          <button id="notif-btn" onclick="activateNotifs()" style="background:#22C55E;color:white;border:none;border-radius:11px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">🔔 Activate</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="cl">Appearance</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;">
+          <div>
+            <div style="font-size:15px;font-weight:600;color:var(--txt);">Dark Mode</div>
+            <div style="font-size:12px;color:var(--sub);margin-top:2px;">Switch to dark theme</div>
+          </div>
+          <button id="dark-tog" class="tog" onclick="toggleDark()"></button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="cl">About</div>
+        <div style="display:flex;align-items:center;gap:12px;padding:6px 0;">
+          <div style="width:40px;height:40px;border-radius:12px;background:var(--pril);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">☀️</div>
+          <div>
+            <div style="font-size:15px;font-weight:600;color:var(--txt);">DayTrack</div>
+            <div style="font-size:12px;color:var(--sub);margin-top:2px;">Your personal day organizer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <div id="nav">
@@ -142,6 +179,7 @@
     <button class="nb" data-t="timer" onclick="switchTab('timer')"><span style="font-size:22px;">⏱️</span>Timer</button>
     <button class="nb" data-t="cal" onclick="switchTab('cal')"><span style="font-size:22px;">📅</span>Calendar</button>
     <button class="nb" data-t="summary" onclick="switchTab('summary')"><span style="font-size:22px;">📊</span>Summary</button>
+    <button class="nb" data-t="settings" onclick="switchTab('settings')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>
   </div>
 
 </div>
@@ -188,7 +226,9 @@
       </div>
       <div style="font-size:12px;color:var(--sub);margin-top:8px;text-align:center;background:var(--badge);padding:7px 11px;border-radius:10px;">💡 Fires even when the app is closed!</div>
     </div>
-    <div style="display:flex;gap:9px;margin-top:16px;">
+    <div class="sl">Notes (optional)</div>
+    <textarea class="inp" id="new-notes" placeholder="Add any details…" style="min-height:64px;margin-bottom:4px;"></textarea>
+    <div style="display:flex;gap:9px;margin-top:12px;">
       <button onclick="closeOv('add-task-ov')" style="flex:1;background:var(--inp);color:var(--sub);border:none;border-radius:13px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>
       <button onclick="saveTask()" style="flex:2;background:var(--pri);color:white;border:none;border-radius:13px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Add Task</button>
     </div>
@@ -203,19 +243,42 @@ const EMOS=['📝','💼','🏃','🍽️','☕','😴','📚','🎮','🏋️',
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DNAMES=['Su','Mo','Tu','We','Th','Fr','Sa'];
 
-let tasks=[],savedSessions=[],calNotes={};
+let tasks=[],savedSessions=[],calNotes={},completedDays=[];
 let calView=new Date(),selDay=null;
 let dIcon='📝',dIconType='emoji',dRec=false,dDays=[],dRemType='none';
 let sesItems=[];
 let isDark=false,toastTimer;
 
-function save(){try{localStorage.setItem('dt_tasks',JSON.stringify(tasks));localStorage.setItem('dt_sessions',JSON.stringify(savedSessions));localStorage.setItem('dt_notes',JSON.stringify(calNotes));localStorage.setItem('dt_dark',isDark?'1':'0');}catch(e){}syncReminders();}
+function save(){try{localStorage.setItem('dt_tasks',JSON.stringify(tasks));localStorage.setItem('dt_sessions',JSON.stringify(savedSessions));localStorage.setItem('dt_notes',JSON.stringify(calNotes));localStorage.setItem('dt_dark',isDark?'1':'0');localStorage.setItem('dt_completed',JSON.stringify(completedDays));}catch(e){}syncReminders();}
 async function syncReminders(){try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(!sub)return;await fetch('/.netlify/functions/save-reminder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub,tasks:tasks.filter(t=>t.reminder)})});}catch(e){}}
-function load(){try{tasks=JSON.parse(localStorage.getItem('dt_tasks')||'[]');savedSessions=JSON.parse(localStorage.getItem('dt_sessions')||'[]');calNotes=JSON.parse(localStorage.getItem('dt_notes')||'{}');isDark=localStorage.getItem('dt_dark')==='1';}catch(e){tasks=[];savedSessions=[];calNotes={};}}
+function load(){try{tasks=JSON.parse(localStorage.getItem('dt_tasks')||'[]');savedSessions=JSON.parse(localStorage.getItem('dt_sessions')||'[]');calNotes=JSON.parse(localStorage.getItem('dt_notes')||'{}');isDark=localStorage.getItem('dt_dark')==='1';completedDays=JSON.parse(localStorage.getItem('dt_completed')||'[]');}catch(e){tasks=[];savedSessions=[];calNotes={};completedDays=[];}}
+
+function calculateStreak(){
+  const set=new Set(completedDays);
+  let streak=0,d=new Date();
+  if(!set.has(toDateStr(d))){d.setDate(d.getDate()-1);}
+  while(set.has(toDateStr(d))){streak++;d.setDate(d.getDate()-1);}
+  return streak;
+}
+
+function updateStreakAfterCheck(){
+  const tod=toDateStr(new Date()),dow=new Date().getDay();
+  const todayTasks=tasks.filter(t=>!t.recurring||(t.days.length===0||t.days.includes(dow)));
+  const allDone=todayTasks.length>0&&todayTasks.every(t=>t.done.includes(tod));
+  if(allDone){if(!completedDays.includes(tod))completedDays.push(tod);}
+  else{completedDays=completedDays.filter(d=>d!==tod);}
+}
+
+function moveTask(id,dir){
+  const i=tasks.findIndex(t=>t.id===id);if(i<0)return;
+  const j=i+dir;if(j<0||j>=tasks.length)return;
+  [tasks[i],tasks[j]]=[tasks[j],tasks[i]];
+  save();renderTaskList();
+}
 
 function boot(){
   load();
-  if(isDark){document.body.classList.add('dark');document.getElementById('dk-btn').textContent='☀️';}
+  if(isDark){document.body.classList.add('dark');}
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   buildEmoGrid();renderTaskList();renderTimerTab();renderCal();
   setInterval(()=>{sesItems.forEach(it=>{if(!it.running)return;const el=document.getElementById('td-'+it.id);if(el)el.textContent=fDur(it.accum+(Date.now()-it.startedAt),true);});},500);
@@ -223,7 +286,7 @@ function boot(){
   if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});setTimeout(checkPushStatus,1500);}
 }
 
-function toggleDark(){isDark=!isDark;document.body.classList.toggle('dark',isDark);document.getElementById('dk-btn').textContent=isDark?'☀️':'🌙';save();}
+function toggleDark(){isDark=!isDark;document.body.classList.toggle('dark',isDark);const tog=document.getElementById('dark-tog');if(tog)tog.classList.toggle('on',isDark);save();}
 
 function switchTab(t){
   document.querySelectorAll('.tab').forEach(e=>e.classList.remove('on'));
@@ -253,7 +316,6 @@ function checkNotifs(){
     if(!t.reminder)return;
     const r=t.reminder;
     if(r.type==='time'||(typeof r==='string')){
-      // "at a time" reminder (also handles legacy string format)
       const timeStr=typeof r==='string'?r:r.time;
       if((t.reminded||[]).includes(tod))return;
       if(t.recurring&&t.days.length>0&&!t.days.includes(dow))return;
@@ -273,7 +335,7 @@ function emoTyped(v){const em=[...v].find(c=>c.codePointAt(0)>127);if(em){dIcon=
 function fileLoad(inp){if(!inp.files[0])return;const r=new FileReader();r.onload=e=>{dIcon=e.target.result;dIconType='image';refreshIconPrev();};r.readAsDataURL(inp.files[0]);}
 function refreshIconPrev(){const el=document.getElementById('icon-prev');el.innerHTML=dIconType==='image'?`<img src="${dIcon}" style="width:44px;height:44px;border-radius:11px;object-fit:cover;">`:`<span style="font-size:28px;">${dIcon}</span>`;}
 
-function openAddTask(){dIcon='📝';dIconType='emoji';dRec=false;dDays=[];dRemType='none';document.getElementById('new-name').value='';document.getElementById('emo-in').value='';document.getElementById('icon-prev').innerHTML='<span style="font-size:28px;">📝</span>';document.querySelectorAll('.eb').forEach((b,i)=>b.classList.toggle('on',i===0));document.getElementById('rb-one').classList.add('on');document.getElementById('rb-rec').classList.remove('on');document.getElementById('days-wrap').style.display='none';document.querySelectorAll('.db').forEach(b=>b.classList.remove('on'));setRemType('none');document.getElementById('rem-h').value='1';document.getElementById('rem-m').value='30';document.getElementById('add-task-ov').classList.add('on');setTimeout(()=>document.getElementById('new-name').focus(),300);}
+function openAddTask(){dIcon='📝';dIconType='emoji';dRec=false;dDays=[];dRemType='none';document.getElementById('new-name').value='';document.getElementById('new-notes').value='';document.getElementById('emo-in').value='';document.getElementById('icon-prev').innerHTML='<span style="font-size:28px;">📝</span>';document.querySelectorAll('.eb').forEach((b,i)=>b.classList.toggle('on',i===0));document.getElementById('rb-one').classList.add('on');document.getElementById('rb-rec').classList.remove('on');document.getElementById('days-wrap').style.display='none';document.querySelectorAll('.db').forEach(b=>b.classList.remove('on'));setRemType('none');document.getElementById('rem-h').value='1';document.getElementById('rem-m').value='30';document.getElementById('add-task-ov').classList.add('on');setTimeout(()=>document.getElementById('new-name').focus(),300);}
 function setRec(v){dRec=v;document.getElementById('rb-one').classList.toggle('on',!v);document.getElementById('rb-rec').classList.toggle('on',v);document.getElementById('days-wrap').style.display=v?'block':'none';}
 function togDay(btn,d){if(dDays.includes(d)){dDays=dDays.filter(x=>x!==d);btn.classList.remove('on');}else{dDays.push(d);btn.classList.add('on');}}
 function remLabel(r){if(!r)return'';if(typeof r==='string')return`⏰ ${fmt12(r)}`;if(r.type==='time')return`⏰ ${fmt12(r.time)}`;if(r.type==='interval'){const{h,m}=r;return`🔁 Every ${h>0&&m>0?`${h}h ${m}m`:h>0?`${h}h`:`${m}m`}`;}return'';}
@@ -282,16 +344,25 @@ function saveTask(){
   let reminder=null;
   if(dRemType==='time'){const time=document.getElementById('rem-time').value;if(time)reminder={type:'time',time};}
   else if(dRemType==='interval'){const h=parseInt(document.getElementById('rem-h').value)||0,m=parseInt(document.getElementById('rem-m').value)||0;if(h>0||m>0)reminder={type:'interval',h,m};}
-  tasks.push({id:uid(),name,icon:dIcon,iconType:dIconType,recurring:dRec,days:[...dDays],done:[],reminder,reminderLastFired:null,reminded:[]});
+  const notes=document.getElementById('new-notes').value.trim();
+  tasks.push({id:uid(),name,notes,icon:dIcon,iconType:dIconType,recurring:dRec,days:[...dDays],done:[],reminder,reminderLastFired:null,reminded:[]});
   save();closeOv('add-task-ov');renderTaskList();
   const rl=remLabel(reminder);showToast(rl?`✅ Added · ${rl}`:'✅ Task added!');
 }
 
 function renderTaskList(){
   const el=document.getElementById('task-list');
-  if(!tasks.length){el.innerHTML=`<div style="text-align:center;padding:36px 10px;color:var(--sub);font-size:14px;"><div style="font-size:48px;margin-bottom:12px;">📋</div>No tasks yet.<br>Tap "+ New Task" to start!</div>`;return;}
   const tod=toDateStr(new Date()),dow=new Date().getDay();
-  el.innerHTML=tasks.map(t=>{
+  const todayTasks=tasks.filter(t=>!t.recurring||(t.days.length===0||t.days.includes(dow)));
+  const doneCount=todayTasks.filter(t=>t.done.includes(tod)).length;
+  const pct=todayTasks.length?Math.round(doneCount/todayTasks.length*100):0;
+  const pb=document.getElementById('prog-bar');if(pb)pb.style.width=pct+'%';
+  const pl=document.getElementById('prog-label');if(pl)pl.textContent=`${doneCount} / ${todayTasks.length} tasks`;
+  const streak=calculateStreak();
+  const sb=document.getElementById('streak-badge');const sn=document.getElementById('streak-num');
+  if(sb){sb.style.display=streak>0?'inline':'none';}if(sn)sn.textContent=streak;
+  if(!tasks.length){el.innerHTML=`<div style="text-align:center;padding:36px 10px;color:var(--sub);font-size:14px;"><div style="font-size:48px;margin-bottom:12px;">📋</div>No tasks yet.<br>Tap "+ New Task" to start!</div>`;return;}
+  el.innerHTML=tasks.map((t,idx)=>{
     const done=t.done.includes(tod);
     const activeToday=!t.recurring||(t.days.length===0||t.days.includes(dow));
     const ic=t.iconType==='image'?`<img src="${t.icon}" style="width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0;">`:`<div style="width:36px;height:36px;border-radius:10px;background:var(--pril);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${t.icon}</div>`;
@@ -299,17 +370,23 @@ function renderTaskList(){
     const rl=remLabel(t.reminder);const remBadge=rl?`<span style="font-size:11px;background:var(--grnl);color:var(--grntxt);padding:2px 8px;border-radius:11px;">${rl}</span>`:'';
     const notTodayBadge=!activeToday?`<span style="font-size:11px;background:var(--badge);color:var(--sub);padding:2px 8px;border-radius:11px;">Not today</span>`:'';
     const badges=[recBadge,remBadge,notTodayBadge].filter(Boolean).join('');
+    const notesHtml=t.notes?`<div style="font-size:12px;color:var(--sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.notes)}</div>`:'';
     return `<div class="row${!activeToday?' dimmed':''}" onclick="${activeToday?`checkTask('${t.id}')`:''}" style="cursor:${activeToday?'pointer':'default'};">
       <div class="chk${done?' on':''}">${done?'✓':''}</div>${ic}
       <div style="flex:1;min-width:0;">
         <div style="font-size:15px;font-weight:600;color:${done?'var(--sub)':'var(--txt)'};text-decoration:${done?'line-through':'none'};">${esc(t.name)}</div>
+        ${notesHtml}
         ${badges?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">${badges}</div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0;">
+        <button onclick="event.stopPropagation();moveTask('${t.id}',-1)" style="background:none;border:none;color:${idx===0?'var(--brd)':'var(--sub)'};font-size:12px;padding:2px 5px;cursor:pointer;line-height:1;" ${idx===0?'disabled':''}>▲</button>
+        <button onclick="event.stopPropagation();moveTask('${t.id}',1)" style="background:none;border:none;color:${idx===tasks.length-1?'var(--brd)':'var(--sub)'};font-size:12px;padding:2px 5px;cursor:pointer;line-height:1;" ${idx===tasks.length-1?'disabled':''}>▼</button>
       </div>
       <button onclick="event.stopPropagation();deleteTask('${t.id}')" style="background:none;border:none;color:var(--brd);font-size:15px;padding:4px;cursor:pointer;">✕</button>
     </div>`;
   }).join('');
 }
-function checkTask(id){const t=tasks.find(x=>x.id===id);if(!t)return;const tod=toDateStr(new Date());t.done.includes(tod)?t.done=t.done.filter(d=>d!==tod):t.done.push(tod);save();renderTaskList();}
+function checkTask(id){const t=tasks.find(x=>x.id===id);if(!t)return;const tod=toDateStr(new Date());t.done.includes(tod)?t.done=t.done.filter(d=>d!==tod):t.done.push(tod);updateStreakAfterCheck();save();renderTaskList();}
 function deleteTask(id){tasks=tasks.filter(t=>t.id!==id);save();renderTaskList();showToast('Removed');}
 
 function addTimerItem(){const id=uid();sesItems.push({id,name:'',accum:0,startedAt:null,running:false,locked:false});renderTimerTab();setTimeout(()=>{const el=document.getElementById('tn-'+id);if(el)el.focus();},80);}
@@ -394,11 +471,12 @@ function renderSummary(){
   const todayTasks=tasks.filter(t=>!t.recurring||t.days.length===0||t.days.includes(dow));
   const done=todayTasks.filter(t=>t.done.includes(tod)).length;
   const totalTracked=savedSessions.reduce((s,ses)=>s+ses.total,0);
+  const streak=calculateStreak();
   document.getElementById('sum-stats').innerHTML=`
     <div style="background:var(--card);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:26px;font-weight:700;color:var(--pri);">${done}/${todayTasks.length}</div><div style="font-size:12px;color:var(--sub);margin-top:2px;">Done Today</div></div>
+    <div style="background:var(--card);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:26px;font-weight:700;color:#F97316;">🔥 ${streak}</div><div style="font-size:12px;color:var(--sub);margin-top:2px;">Day Streak</div></div>
     <div style="background:var(--card);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:26px;font-weight:700;color:var(--pri);">${fDurShort(totalTracked)}</div><div style="font-size:12px;color:var(--sub);margin-top:2px;">Time Tracked</div></div>
-    <div style="background:var(--card);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:26px;font-weight:700;color:var(--pri);">${savedSessions.length}</div><div style="font-size:12px;color:var(--sub);margin-top:2px;">Sessions</div></div>
-    <div style="background:var(--card);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:26px;font-weight:700;color:var(--pri);">${tasks.filter(t=>t.recurring).length}</div><div style="font-size:12px;color:var(--sub);margin-top:2px;">Recurring</div></div>`;
+    <div style="background:var(--card);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:26px;font-weight:700;color:var(--pri);">${savedSessions.length}</div><div style="font-size:12px;color:var(--sub);margin-top:2px;">Sessions</div></div>`;
   const se=document.getElementById('sum-sess');
   if(!savedSessions.length){se.innerHTML=`<div style="text-align:center;padding:18px;color:var(--sub);font-size:14px;">No sessions saved yet</div>`;return;}
   se.innerHTML=savedSessions.slice(0,6).map(s=>`
@@ -424,11 +502,14 @@ function showToast(msg){const el=document.getElementById('toast');el.textContent
 const VAPID_PUBLIC_KEY = 'BDEHFhgEYeKsdZEHpRTorzNXQ20QimeN3vO0_vkCXyL7gw88OtrJAP0gcT7O84CtsYVDCRupuiYz2-Zq7nx7iLk';
 function urlBase64ToUint8Array(b64){const pad='='.repeat((4-b64.length%4)%4);const base64=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base64);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));}
 
+function setNotifBtnActive(){const btn=document.getElementById('notif-btn');if(btn){btn.textContent='✅ Active';btn.style.background='#6C63FF';btn.onclick=null;btn.style.opacity='0.8';}}
+
 async function checkPushStatus(){
   try{
     const reg=await navigator.serviceWorker.ready;
     const sub=await reg.pushManager.getSubscription();
-    if(sub){const btn=document.getElementById('notif-btn');if(btn){btn.textContent='✅ Notifications Active';btn.style.background='#6C63FF';btn.onclick=null;btn.style.opacity='0.7';}}
+    if(sub) setNotifBtnActive();
+    const tog=document.getElementById('dark-tog');if(tog)tog.classList.toggle('on',isDark);
   }catch(e){}
 }
 
@@ -440,10 +521,10 @@ async function activateNotifs() {
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
     await syncReminders();
     showToast('🔔 Notifications activated!');
-    if (btn) { btn.textContent = '✅ Notifications Active'; btn.style.background = '#6C63FF'; btn.onclick = null; }
+    setNotifBtnActive();
   } catch(e) {
     showToast('❌ ' + e.message);
-    if (btn) { btn.textContent = '🔔 Activate Notifications'; btn.style.opacity = '1'; }
+    if (btn) { btn.textContent = '🔔 Activate'; btn.style.opacity = '1'; }
   }
 }
 
