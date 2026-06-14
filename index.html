@@ -131,7 +131,7 @@
         </div>
         <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;"></div>
       </div>
-      <div class="card"><div class="cl" id="note-lbl">Tap a day to add notes</div><div id="note-body"></div></div>
+      <div class="card"><div class="cl" id="note-lbl">Tap a day to view details</div><div id="note-body"></div></div>
     </div>
 
     <div id="tab-summary" class="tab">
@@ -442,6 +442,16 @@ function renderPastSessions(){
     </div>`).join('');
 }
 
+function getDayTasks(ds){
+  const date=new Date(ds+'T12:00:00'),dow=date.getDay();
+  return tasks.filter(t=>!t.recurring||(t.days.length===0||t.days.includes(dow)));
+}
+function getDayProgress(ds){
+  const dayTasks=getDayTasks(ds);
+  const done=dayTasks.filter(t=>t.done.includes(ds)).length;
+  return{total:dayTasks.length,done,pct:dayTasks.length?Math.round(done/dayTasks.length*100):0};
+}
+
 function renderCal(){
   const yr=calView.getFullYear(),mo=calView.getMonth(),tod=toDateStr(new Date());
   document.getElementById('cal-title').textContent=MONTHS[mo]+' '+yr;
@@ -449,20 +459,59 @@ function renderCal(){
   let cells=[];for(let i=0;i<fd;i++)cells.push(null);for(let d=1;d<=dim;d++)cells.push(d);while(cells.length%7!==0)cells.push(null);
   document.getElementById('cal-grid').innerHTML=cells.map(d=>{
     if(!d)return`<div></div>`;
-    const ds=`${yr}-${pad(mo+1)}-${pad(d)}`,iT=ds===tod,iS=ds===selDay,hN=!!calNotes[ds];
+    const ds=`${yr}-${pad(mo+1)}-${pad(d)}`,iT=ds===tod,iS=ds===selDay;
+    const{total,done,pct}=getDayProgress(ds);
+    const hasTasks=total>0;
+    const allDone=hasTasks&&done===total;
+    const partial=hasTasks&&done>0&&done<total;
+    const dotColor=iS?'rgba(255,255,255,.85)':allDone?'var(--grn)':partial?'#F97316':'var(--pri)';
+    const showDot=hasTasks||!!calNotes[ds];
     return `<div class="cal-day" onclick="selectDay('${ds}')" style="background:${iS?'var(--pri)':iT?'var(--pril)':'transparent'};color:${iS?'white':iT?'var(--pri)':'var(--txt)'};font-weight:${iT?'700':'400'};">
-      ${d}<div style="width:5px;height:5px;border-radius:50%;margin:2px auto 0;background:${hN?(iS?'rgba(255,255,255,.7)':'var(--pri)'):'transparent'};"></div>
+      ${d}<div style="width:5px;height:5px;border-radius:50%;margin:2px auto 0;background:${showDot?dotColor:'transparent'};"></div>
     </div>`;
   }).join('');
   renderNotePanel();
 }
 function calNav(dir){calView=new Date(calView.getFullYear(),calView.getMonth()+dir,1);renderCal();}
 function selectDay(ds){selDay=selDay===ds?null:ds;renderCal();}
+
 function renderNotePanel(){
   const lbl=document.getElementById('note-lbl'),body=document.getElementById('note-body');
-  if(!selDay){lbl.textContent='Tap a day to add notes';body.innerHTML='';return;}
+  if(!selDay){lbl.textContent='Tap a day to view details';body.innerHTML='';return;}
   lbl.textContent=new Date(selDay+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-  body.innerHTML=`<textarea class="inp" id="note-ta" placeholder="Add notes for this day…" style="min-height:90px;margin-bottom:9px;">${esc(calNotes[selDay]||'')}</textarea><button onclick="saveNote()" style="width:100%;background:var(--pri);color:white;border:none;border-radius:13px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Save Note</button>`;
+  const{total,done,pct}=getDayProgress(selDay);
+  const dayTasks=getDayTasks(selDay);
+  const taskRows=dayTasks.length?dayTasks.map(t=>{
+    const isDone=t.done.includes(selDay);
+    const ic=t.iconType==='image'?`<img src="${t.icon}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;flex-shrink:0;">`:`<div style="width:28px;height:28px;border-radius:8px;background:var(--pril);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">${t.icon}</div>`;
+    return `<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--brd);">
+      <div style="width:20px;height:20px;border-radius:50%;border:2px solid ${isDone?'var(--grn)':'var(--chk)'};background:${isDone?'var(--grn)':'transparent'};display:flex;align-items:center;justify-content:center;font-size:10px;color:white;flex-shrink:0;">${isDone?'✓':''}</div>
+      ${ic}
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:600;color:${isDone?'var(--sub)':'var(--txt)'};text-decoration:${isDone?'line-through':'none'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.name)}</div>
+        ${t.notes?`<div style="font-size:11px;color:var(--sub);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.notes)}</div>`:''}
+      </div>
+      <span style="font-size:11px;font-weight:700;color:${isDone?'var(--grntxt)':'var(--sub)'};white-space:nowrap;">${isDone?'✅ Done':'○ Not done'}</span>
+    </div>`;
+  }).join(''):`<div style="text-align:center;padding:16px 0;color:var(--sub);font-size:13px;">No tasks for this day</div>`;
+
+  const progressHtml=total>0?`
+    <div style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:13px;font-weight:600;color:var(--txt);">Progress</span>
+        <span style="font-size:13px;font-weight:700;color:${pct===100?'var(--grn)':'var(--pri)'};">${done}/${total} · ${pct}%</span>
+      </div>
+      <div style="background:var(--brd);border-radius:6px;height:8px;overflow:hidden;">
+        <div style="height:100%;background:${pct===100?'var(--grn)':'var(--pri)'};border-radius:6px;width:${pct}%;transition:width .4s ease;"></div>
+      </div>
+    </div>
+    <div style="font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Tasks</div>
+    <div style="margin-bottom:14px;">${taskRows}</div>`:'';
+
+  body.innerHTML=`${progressHtml}
+    <div style="font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Notes</div>
+    <textarea class="inp" id="note-ta" placeholder="Add notes for this day…" style="min-height:72px;margin-bottom:9px;">${esc(calNotes[selDay]||'')}</textarea>
+    <button onclick="saveNote()" style="width:100%;background:var(--pri);color:white;border:none;border-radius:13px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Save Note</button>`;
 }
 function saveNote(){const t=document.getElementById('note-ta').value.trim();if(t)calNotes[selDay]=t;else delete calNotes[selDay];save();renderCal();showToast('📅 Note saved!');}
 
