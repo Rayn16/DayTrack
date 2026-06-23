@@ -38,7 +38,7 @@ exports.handler = async () => {
         const timeStr = typeof r === 'string' ? r : r.time;
         const [rh, rm] = timeStr.split(':').map(Number);
         if (Math.abs(nowMin - (rh * 60 + rm)) <= 1 && t.lastFiredDate !== todStr) {
-          await notify(webpush, subscription, `Time for: ${t.name}`);
+          await notify(webpush, subscription, `Time for: ${t.name}`, t.notifStyle);
           t.lastFiredDate = todStr;
           changed = true;
         }
@@ -46,7 +46,7 @@ exports.handler = async () => {
         const ms = (r.h * 60 + r.m) * 60000;
         console.log(`Task "${t.name}": interval ${r.h}h${r.m}m, ms=${ms}, since last=${nowMs-(t.lastFiredMs||0)}`);
         if (ms > 0 && nowMs - (t.lastFiredMs || 0) >= ms) {
-          await notify(webpush, subscription, `Reminder: ${t.name}`);
+          await notify(webpush, subscription, `Reminder: ${t.name}`, t.notifStyle);
           t.lastFiredMs = nowMs;
           changed = true;
         }
@@ -79,10 +79,11 @@ exports.handler = async () => {
   return { statusCode: 200 };
 };
 
-async function notify(webpush, subscription, body) {
+async function notify(webpush, subscription, body, notifStyle = 'default') {
   try {
-    console.log('Sending push:', body);
-    const result = await webpush.sendNotification(subscription, JSON.stringify({ title: '⏰ DayTrack', body }));
+    console.log('Sending push:', body, 'style:', notifStyle);
+    const payload = JSON.stringify({ title: '⏰ DayTrack', body, notifStyle });
+    const result = await webpush.sendNotification(subscription, payload);
     console.log('Push sent, status:', result.statusCode);
   } catch (e) {
     console.error('Notify error:', e.statusCode, e.message, e.body);
