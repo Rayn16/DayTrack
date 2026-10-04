@@ -9,6 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="DayTrack">
   <link rel="manifest" href="manifest.json">
   <title>DayTrack</title>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/","@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.5.5/lib/three-vrm.module.min.js"}}</script>
   <style>
     :root{
       --bg:#F5F4FF;--card:#FFFFFF;--hdr:#FFFFFF;--nav:#FFFFFF;
@@ -175,15 +176,21 @@
 
     <!-- GWEN TAB -->
     <div id="tab-gwen" class="tab">
+      <div id="gwen-stage" style="display:none;position:sticky;top:0;z-index:2;height:42vh;margin:-12px -12px 10px;background:linear-gradient(var(--pril),var(--bg));">
+        <canvas id="gwen-canvas" style="width:100%;height:100%;display:block;"></canvas>
+        <div id="gwen-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;">💜 Gwen is on her way…</div>
+      </div>
       <div class="card" style="padding:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <div class="cl" style="margin:0;">💜 Gwen</div>
-          <button onclick="clearGwen()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">Clear chat</button>
+          <div><button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
+          <button onclick="clearGwen()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">Clear chat</button></div>
         </div>
         <div id="gwen-msgs"></div>
       </div>
       <div style="display:flex;gap:8px;">
         <input class="inp" id="gwen-in" placeholder="Message Gwen…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();sendGwen();}">
+        <button id="gwen-mic" onclick="gwenMic()" style="background:var(--pril);color:var(--pri);border:none;border-radius:12px;padding:0 14px;font-size:16px;cursor:pointer;flex-shrink:0;">🎤</button>
         <button id="gwen-send" onclick="sendGwen()" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:16px;cursor:pointer;flex-shrink:0;">➤</button>
       </div>
     </div>
@@ -226,7 +233,7 @@
       </div>
       <div class="card">
         <div class="cl">Gwen</div>
-        <div style="font-size:12px;color:var(--sub);margin-bottom:8px;">She answers from your PC when it's on, and from the cloud when it isn't. Turn on Cloud Sync too so she can add tasks from your PC.</div>
+        <div style="font-size:12px;color:var(--sub);margin-bottom:8px;">She answers from your PC when it's on, and from the cloud when it isn't. With the PC address set, she also appears in 3D and talks in her own voice (her model is kept on this phone only, for when the PC is off). Turn on Cloud Sync too so she can add tasks from your PC.</div>
         <div class="sl" style="margin-top:0;">Gwen key</div>
         <input class="inp" id="gwen-key" type="password" placeholder="Same as GWEN_KEY in Netlify" onchange="saveGwenCfg()">
         <div class="sl">PC address (optional)</div>
@@ -438,7 +445,7 @@
     <!-- Gwen -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">💜 Gwen</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Chat with Gwen about your day. She sees today's tasks, what's coming up, your streak and your mood. Ask her to add a task or remind you and it shows up in your list. She answers from your PC when it's on (💻) and from the cloud when it isn't (☁️). Set her up in Settings.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Chat with Gwen about your day. She sees today's tasks, what's coming up, your streak and your mood. Ask her to add a task or remind you and it shows up in your list. Tap 🎤 to talk to her out loud; she answers in her voice (🔊 in the chat turns it off). She answers from your PC when it's on (💻) and from the cloud when it isn't (☁️). Set her up in Settings.</div>
     </div>
 
     <!-- Settings -->
@@ -811,7 +818,7 @@ function boot(){
   applyPendingDone();
   document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;renderGwen();
   if(syncCode)pullSync();
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();gwen3d();});
   if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='dt-actions')applyPendingDone();});
   setInterval(()=>{sesItems.forEach(it=>{if(!it.running)return;const el=document.getElementById('td-'+it.id);if(el)el.textContent=fDur(it.accum+(Date.now()-it.startedAt),true);});},500);
   setInterval(checkNotifs,30000);
@@ -835,7 +842,7 @@ function switchTab(t,dir){
   if(t==='cal')renderCal();
   if(t==='summary')renderSummary();
   if(t==='timer')renderTimerTab();
-  if(t==='gwen')renderGwen();
+  if(t==='gwen'){renderGwen();gwen3d();}
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────
@@ -1283,12 +1290,13 @@ async function sendGwen(){
   const inp=document.getElementById('gwen-in'),text=inp.value.trim();
   if(!text||gwenBusy)return;
   if(!gwenCfg.key){showToast('Add your Gwen key in Settings first');return;}
+  gwenAudioCtx();stopGwenVoice();
   inp.value='';gwenChat.push({role:'user',content:text});gwenBusy=true;renderGwen();
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
   try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':'Could not reach Gwen'};}
   gwenBusy=false;
-  if(res.text){const{clean,added}=applyGwenActions(res.text);gwenChat.push({role:'assistant',content:clean||'👍',brain:res.brain,added});}
+  if(res.text){const{clean,added}=applyGwenActions(res.text);gwenChat.push({role:'assistant',content:clean||'👍',brain:res.brain,added});if(clean)gwenSpeak(clean,res.brain==='pc');}
   else gwenChat.push({role:'assistant',content:res.error||'No answer',error:true});
   gwenChat=gwenChat.slice(-60);
   try{localStorage.setItem('dt_gwen_chat',JSON.stringify(gwenChat));}catch(e){}
@@ -1307,6 +1315,7 @@ function renderGwen(){
   el.innerHTML=(gwenChat.length?gwenChat.map(bubble).join(''):`<div style="text-align:center;padding:30px 10px;color:var(--sub);font-size:14px;"><div style="font-size:42px;margin-bottom:10px;">💜</div>${gwenCfg.key?'Say hi to Gwen. She can see your day and add tasks for you.':'Add your Gwen key in Settings to start chatting.'}</div>`)
     +(gwenBusy?`<div style="color:var(--sub);font-size:13px;padding:2px 4px;">Gwen is typing…</div>`:'');
   document.getElementById('gwen-send').disabled=gwenBusy;
+  document.getElementById('gwen-voice').textContent=gwenMute?'🔇 Voice off':'🔊 Voice on';
   const main=document.getElementById('main');if(document.getElementById('tab-gwen').classList.contains('on'))main.scrollTop=main.scrollHeight;
 }
 function clearGwen(){if(!gwenChat.length||!confirm('Clear the chat with Gwen?'))return;gwenChat=[];try{localStorage.removeItem('dt_gwen_chat');}catch(e){}renderGwen();}
@@ -1322,6 +1331,131 @@ async function testGwen(){
   try{const r=await fetchT('/.netlify/functions/gwen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:gwenCfg.key,messages:[]})},10000),j=await r.json().catch(()=>({}));
     cloud=r.status===400?'☁️ Cloud: ready':`☁️ Cloud: ${j.error||'error '+r.status}`;}catch(e){cloud='☁️ Cloud: not reachable';}
   out.textContent=pc+'  ·  '+cloud;
+}
+
+// ── Gwen's 3D self, voice and mic ─────────────────────────────────────────────
+// Her model only ever comes from the PC (behind the Gwen key) and is kept in this phone's
+// cache for when the PC is off. It is never part of the site or the repo.
+const g3={vrm:null,loading:null,raf:0,frame:null,happyUntil:0,analyser:null,src:null};
+let gwenMute=false,_actx=null,gwenRec=null;
+try{gwenMute=localStorage.getItem('dt_gwen_mute')==='1';}catch(e){}
+const gwenTabOn=()=>document.getElementById('tab-gwen').classList.contains('on');
+async function gwenModel(){
+  const cache=await caches.open('gwen-model'),have=await cache.match('/__gwen-model');
+  let ver=null;
+  if(gwenCfg.pc.trim()&&gwenCfg.key){try{const r=await fetchT(pcUrl()+'/daytrack/ping',{},3000);if(r.ok)ver=(await r.json()).model||null;}catch(e){}}
+  if(have&&(!ver||have.headers.get('x-ver')===String(ver)))return have.arrayBuffer();
+  if(!ver)return null;
+  document.getElementById('gwen-stage').style.display='block';
+  try{
+    const r=await fetchT(pcUrl()+'/daytrack/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:gwenCfg.key})},120000);
+    if(!r.ok)throw new Error(r.status);
+    const buf=await r.arrayBuffer();
+    await cache.put('/__gwen-model',new Response(buf,{headers:{'x-ver':String(ver)}})).catch(()=>{});
+    return buf;
+  }catch(e){return have?have.arrayBuffer():null;}
+}
+async function gwenLoad(){
+  const buf=await gwenModel(),stage=document.getElementById('gwen-stage');
+  if(!buf){stage.style.display='none';return null;}
+  stage.style.display='block';
+  const[THREE,{GLTFLoader},{VRMLoaderPlugin,VRMUtils}]=await Promise.all([import('three'),import('three/addons/loaders/GLTFLoader.js'),import('@pixiv/three-vrm')]);
+  const canvas=document.getElementById('gwen-canvas'),renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(30,1,0.1,20),light=new THREE.DirectionalLight(0xffffff,Math.PI);
+  light.position.set(1,1,1).normalize();scene.add(light,new THREE.AmbientLight(0xffffff,0.6));
+  const loader=new GLTFLoader();loader.register(p=>new VRMLoaderPlugin(p));
+  const vrm=(await loader.parseAsync(buf,'')).userData.vrm;
+  VRMUtils.removeUnnecessaryVertices(vrm.scene);VRMUtils.combineSkeletons(vrm.scene);VRMUtils.rotateVRM0(vrm);
+  vrm.scene.traverse(o=>o.frustumCulled=false);scene.add(vrm.scene);
+  const bone=n=>vrm.humanoid.getNormalizedBoneNode(n)||new THREE.Object3D();
+  const spine=bone('spine'),head=bone('head'),armL=bone('leftUpperArm'),armR=bone('rightUpperArm');
+  vrm.scene.updateMatrixWorld(true);
+  const hy=head.getWorldPosition(new THREE.Vector3()).y;
+  camera.position.set(0,hy,1.5);camera.lookAt(0,hy-0.1,0);
+  if(vrm.lookAt)vrm.lookAt.target=camera;
+  const wave=new Uint8Array(1024),t0=performance.now()/1000;let blinkAt=2,mouth=0,last=t0;
+  g3.frame=()=>{
+    if(!gwenTabOn()||document.hidden){g3.raf=0;return;}
+    g3.raf=requestAnimationFrame(g3.frame);
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    if(w&&h&&(canvas.width!==Math.round(w*renderer.getPixelRatio())||canvas.height!==Math.round(h*renderer.getPixelRatio()))){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+    const now=performance.now()/1000,dt=Math.min(now-last,0.1),t=now-t0,em=vrm.expressionManager;last=now;
+    // Breathing and a little sway, arms down from the T-pose
+    spine.rotation.x=Math.sin(t*1.6)*0.02;head.rotation.z=Math.sin(t*0.5)*0.04;
+    armL.rotation.z=-1.2+Math.sin(t*1.6)*0.02;armR.rotation.z=1.2-Math.sin(t*1.6)*0.02;
+    if(t>blinkAt+0.15)blinkAt=t+2+Math.random()*4;
+    // Mouth follows the loudness of her voice; the phone voice gets a simple flap
+    let target=0;
+    if(g3.analyser){g3.analyser.getByteTimeDomainData(wave);let sum=0;for(const v of wave)sum+=(v-128)**2;target=Math.min(1,Math.sqrt(sum/wave.length)/128*5);}
+    else if(window.speechSynthesis&&speechSynthesis.speaking)target=0.25+0.25*Math.sin(t*16);
+    mouth+=(target-mouth)*Math.min(1,dt*18);
+    if(em){em.setValue('blink',t>blinkAt?1:0);em.setValue('aa',mouth);em.setValue('happy',performance.now()<g3.happyUntil?0.8:0);}
+    vrm.update(dt);renderer.render(scene,camera);
+  };
+  document.getElementById('gwen-loading').style.display='none';
+  g3.vrm=vrm;return vrm;
+}
+// Called when the Gwen tab opens or the app comes back: load her once, then keep the loop running only while she's on screen
+function gwen3d(){
+  if(!gwenTabOn()||document.hidden)return;
+  if(!g3.loading)g3.loading=gwenLoad().catch(e=>{console.warn('Gwen 3D:',e);document.getElementById('gwen-stage').style.display='none';return null;}).then(v=>{if(!v)g3.loading=null;else gwen3d();return v;});
+  else if(g3.vrm&&!g3.raf)g3.raf=requestAnimationFrame(g3.frame);
+}
+function gwenAudioCtx(){
+  if(!_actx&&window.AudioContext)_actx=new AudioContext();
+  if(_actx&&_actx.state==='suspended')_actx.resume().catch(()=>{});
+  return _actx;
+}
+function stopGwenVoice(){
+  try{g3.src&&g3.src.stop();}catch(e){}
+  g3.src=g3.analyser=null;
+  if(window.speechSynthesis)speechSynthesis.cancel();
+}
+// Her own voice from the PC when it answered, the phone's voice otherwise
+async function gwenSpeak(text,fromPc){
+  if(gwenMute)return;
+  if(/\bha(ha)+|\bhehe|\*\s*(laugh|giggl|grin|smil)|😂|😆|😄|😊/i.test(text))g3.happyUntil=performance.now()+4000;
+  if(fromPc&&_actx){
+    try{
+      const r=await fetchT(pcUrl()+'/daytrack/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:gwenCfg.key,text})},30000);
+      if(r.ok){
+        const buf=await _actx.decodeAudioData(await r.arrayBuffer());
+        if(gwenMute)return;
+        stopGwenVoice();
+        const src=_actx.createBufferSource(),an=_actx.createAnalyser();
+        an.fftSize=1024;src.buffer=buf;src.connect(an);an.connect(_actx.destination);
+        src.onended=()=>{if(g3.src===src)g3.src=g3.analyser=null;};
+        g3.src=src;g3.analyser=an;src.start();return;
+      }
+    }catch(e){}
+  }
+  if(!window.speechSynthesis)return;
+  const say=text.replace(/\*[^*]*\*/g,' ').replace(/\s+/g,' ').trim();if(!say)return;
+  const u=new SpeechSynthesisUtterance(say),vs=speechSynthesis.getVoices().filter(v=>v.lang.startsWith('en'));
+  u.voice=vs.find(v=>/female|samantha|zira|aria|jenny/i.test(v.name))||vs[0]||null;u.pitch=1.1;
+  speechSynthesis.speak(u);
+}
+function toggleGwenVoice(){
+  gwenMute=!gwenMute;if(gwenMute)stopGwenVoice();
+  try{localStorage.setItem('dt_gwen_mute',gwenMute?'1':'0');}catch(e){}
+  renderGwen();
+}
+// Tap 🎤, talk, and it sends when you stop. Tap again to cancel.
+function gwenMic(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition,btn=document.getElementById('gwen-mic');
+  if(!SR){showToast('Talking isn\'t supported in this browser');return;}
+  if(gwenRec){gwenRec.cancelled=true;gwenRec.abort();return;}
+  if(!gwenCfg.key){showToast('Add your Gwen key in Settings first');return;}
+  gwenAudioCtx();stopGwenVoice();
+  const rec=gwenRec=new SR(),inp=document.getElementById('gwen-in');let heard='';
+  rec.interimResults=true;
+  rec.onresult=e=>{const tx=[...e.results].map(x=>x[0].transcript).join('');inp.value=tx;if(e.results[e.results.length-1].isFinal)heard=tx;};
+  rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed')showToast('Allow the microphone to talk to Gwen');};
+  rec.onend=()=>{gwenRec=null;btn.style.background='var(--pril)';btn.style.color='var(--pri)';
+    if(!rec.cancelled&&heard.trim()){inp.value=heard;sendGwen();}else if(rec.cancelled)inp.value='';};
+  btn.style.background='#EF4444';btn.style.color='white';
+  try{rec.start();}catch(e){rec.onend();}
 }
 
 // ── Mood ──────────────────────────────────────────────────────────────────────
