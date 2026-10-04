@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -32,6 +33,17 @@ jobs:
         run: |
           PW=$(openssl rand -hex 16)
           keytool -genkeypair -keystore android/release.keystore -storetype PKCS12 -alias daytrack -keyalg RSA -keysize 2048 -validity 1 -storepass "$PW" -keypass "$PW" -dname "CN=Test"
+          echo "KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+
+      # main gets the real key: the encrypted keystore is in android/, and its password comes from
+      # the site (netlify/functions/android-key.mjs) after this run proves it is Rayn16/DayTrack's main
+      - name: Signing key
+        if: github.event_name != 'pull_request'
+        run: |
+          TOKEN=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=yasuomain" | jq -r .value)
+          PW=$(curl -sSf -X POST -H "Authorization: Bearer $TOKEN" https://yasuomain.netlify.app/.netlify/functions/android-key)
+          echo "::add-mask::$PW"
+          openssl enc -d -aes-256-cbc -pbkdf2 -in android/release.keystore.enc -out android/release.keystore -pass "pass:$PW"
           echo "KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
 
       - name: Build
