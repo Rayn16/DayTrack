@@ -188,6 +188,7 @@
           <div><button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
           <button onclick="clearGwen()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">Clear chat</button></div>
         </div>
+        <div id="gwen-days" style="display:none;font-size:12px;color:var(--sub);margin:-2px 0 8px;"></div>
         <div id="gwen-msgs"></div>
       </div>
       <div style="display:flex;gap:8px;">
@@ -243,6 +244,11 @@
         <div class="sl">PC address (optional)</div>
         <input class="inp" id="gwen-pc" type="url" placeholder="https://your-pc.your-tailnet.ts.net" onchange="saveGwenCfg()">
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--txt);"><input type="checkbox" id="gwen-first" checked onchange="saveGwenCfg()">She can message me first (needs notifications on)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div><div class="sl">Wake me up at</div><input class="inp" id="gwen-wake" type="time" onchange="saveGwenCfg()"></div>
+          <div><div class="sl">Bedtime</div><input class="inp" id="gwen-bed" type="time" onchange="saveGwenCfg()"></div>
+        </div>
+        <div style="font-size:11px;color:var(--sub);margin-top:5px;">Optional. She texts you at your wake-up time, and says goodnight half an hour before bed. These two go off even in quiet hours.</div>
         <button onclick="testGwen()" style="margin-top:10px;width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Check connection</button>
         <div id="gwen-test" style="font-size:12px;color:var(--sub);margin-top:8px;text-align:center;"></div>
       </div>
@@ -600,7 +606,7 @@ async function syncReminders(renewed){
       method:'POST',headers:{'Content-Type':'application/json'},
       // All tasks so Gwen knows what's left (recent days only for repeating ones), plus a week of moods
       body:JSON.stringify({subscription:sub,tasks:tasks.map(t=>t.recurring?{...t,done:t.done.filter(d=>d>=weekAgo)}:t),completedDays,quiet,
-        tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo))})
+        tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,gwenWake:gwenCfg.wake||null,gwenBed:gwenCfg.bed||null,gwenCheered:gwenCfg.cheered||null,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo))})
     });
     if(!renewed&&(await r.json().catch(()=>({}))).gone){await renewPush(reg,sub);return syncReminders(true);}
   }catch(e){}
@@ -757,7 +763,7 @@ function updateStreakAfterCheck(){
   const tod=toDateStr(new Date()),dow=new Date().getDay();
   const todayTasks=tasks.filter(t=>isTodayTask(t,tod,dow));
   const allDone=todayTasks.length>0&&todayTasks.every(t=>t.done.includes(tod));
-  if(allDone){if(!completedDays.includes(tod))completedDays.push(tod);}
+  if(allDone){if(!completedDays.includes(tod)){completedDays.push(tod);gwenCheer();}}
   else{completedDays=completedDays.filter(d=>d!==tod);}
 }
 function calcTaskStreak(t){
@@ -826,7 +832,7 @@ function boot(){
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   buildEmoGrid();renderTaskList();renderMood();renderTimerTab();renderCal();renderSyncUI();renderQuiet();
   applyPendingDone();
-  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;renderGwen();
+  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;document.getElementById('gwen-wake').value=gwenCfg.wake||'';document.getElementById('gwen-bed').value=gwenCfg.bed||'';renderGwen();
   pullGwenInbox();if(new URLSearchParams(location.search).get('tab')==='gwen')switchTab('gwen');
   if(syncCode)pullSync();
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();gwen3d();pullGwenInbox();});
@@ -1265,10 +1271,11 @@ function gwenContext(){
     `Right now it is ${now.toLocaleString('en-US',{weekday:'long',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'})}. Rayan is texting you from DayTrack, his day planner app on his phone. Keep replies short, like texts.`,
     `His tasks today (${today.filter(t=>t.done.includes(tod)).length} of ${today.length} done):\n${lines.join('\n')||'- nothing yet'}`,
     upcoming.length?`Coming up:\n${upcoming.join('\n')}`:'',
+    gwenSpecialDays(7).map(d=>`${d.what.replace(/^\S+ /,'').replace('Your birthday',"Rayan's birthday").replace('Gwen’s birthday','your own birthday')} ${d.in===0?'is today':d.in===1?'is tomorrow':`is in ${d.in} days`}.`).join(' '),
     `Streak: ${calculateStreak()} day(s) of finishing everything. Mood today: ${m?['very low','low','okay','good','great'][m-1]:'not picked yet'}.`,
     gwenMoodLine(),
     gwenOutfitLine(),
-    `If he asks you to add a task or remind him about something, put this on its own line (the app adds it and hides the line):\nADD_TASK: <short task name> | <YYYY-MM-DD, or empty for today> | <HH:MM 24-hour reminder time, or empty>\nOnly do this when he asks.`,
+    `If he asks you to add a task or remind him about something, put this on its own line (the app adds it and hides the line):\nADD_TASK: <short task name> | <YYYY-MM-DD, or empty for today> | <HH:MM 24-hour reminder time, or empty>\nOnly do this when he asks. For a plan at a set time (like "gym at 6"), use that time; you'll get to ask him how it went afterwards.`,
   ].filter(Boolean).join('\n\n');
 }
 function gwenMoodLine(){
@@ -1326,16 +1333,17 @@ async function sendGwen(){
 }
 function renderGwen(){
   const el=document.getElementById('gwen-msgs');if(!el)return;
-  const bubble=(m)=>{
-    const me=m.role==='user';
+  const bubble=(m,i)=>{
+    const me=m.role==='user',hear=!me&&!m.error;
     const bg=me?'var(--pri)':m.error?'#FEE2E2':'var(--inp)',fg=me?'white':m.error?'#991B1B':'var(--txt)';
-    const tag=me||m.error?'':`<div style="font-size:10px;color:var(--sub);margin-top:3px;">${m.first?'💌 she messaged you':m.brain==='pc'?'💻 from your PC':'☁️ from the cloud'}</div>`;
+    const tag=me||m.error?'':`<div style="font-size:10px;color:var(--sub);margin-top:3px;">${m.first?'💌 she messaged you':m.brain==='pc'?'💻 from your PC':'☁️ from the cloud'} · 🔊 tap to hear</div>`;
     const adds=(m.added||[]).map(a=>`<div style="font-size:12px;color:var(--grntxt);background:var(--grnl);border-radius:9px;padding:4px 9px;margin-top:5px;">📝 Added: ${esc(a)}</div>`).join('');
     return `<div style="display:flex;flex-direction:column;align-items:${me?'flex-end':'flex-start'};margin-bottom:9px;">
-      <div style="max-width:82%;background:${bg};color:${fg};padding:9px 12px;border-radius:16px;${me?'border-bottom-right-radius:5px':'border-bottom-left-radius:5px'};font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;">${esc(m.content)}</div>${adds}${tag}</div>`;
+      <div ${hear?`onclick="gwenSay(${i})" `:''}style="${hear?'cursor:pointer;':''}max-width:82%;background:${bg};color:${fg};padding:9px 12px;border-radius:16px;${me?'border-bottom-right-radius:5px':'border-bottom-left-radius:5px'};font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;">${esc(m.content)}</div>${adds}${tag}</div>`;
   };
   el.innerHTML=(gwenChat.length?gwenChat.map(bubble).join(''):`<div style="text-align:center;padding:30px 10px;color:var(--sub);font-size:14px;"><div style="font-size:42px;margin-bottom:10px;">💜</div>${gwenCfg.key?'Say hi to Gwen. She can see your day and add tasks for you.':'Add your Gwen key in Settings to start chatting.'}</div>`)
     +(gwenBusy?`<div style="color:var(--sub);font-size:13px;padding:2px 4px;">Gwen is typing…</div>`:'');
+  renderGwenDays();
   document.getElementById('gwen-send').disabled=gwenBusy;
   document.getElementById('gwen-voice').textContent=gwenMute?'🔇 Voice off':'🔊 Voice on';
   const main=document.getElementById('main');if(document.getElementById('tab-gwen').classList.contains('on'))main.scrollTop=main.scrollHeight;
@@ -1354,7 +1362,7 @@ async function pullGwenInbox(){
 }
 function clearGwen(){if(!gwenChat.length||!confirm('Clear the chat with Gwen?'))return;gwenChat=[];try{localStorage.removeItem('dt_gwen_chat');}catch(e){}renderGwen();}
 function saveGwenCfg(){
-  gwenCfg={...gwenCfg,key:document.getElementById('gwen-key').value.trim(),pc:document.getElementById('gwen-pc').value.trim(),first:document.getElementById('gwen-first').checked};
+  gwenCfg={...gwenCfg,key:document.getElementById('gwen-key').value.trim(),pc:document.getElementById('gwen-pc').value.trim(),first:document.getElementById('gwen-first').checked,wake:document.getElementById('gwen-wake').value,bed:document.getElementById('gwen-bed').value};
   try{localStorage.setItem('dt_gwen_cfg',JSON.stringify(gwenCfg));}catch(e){}
   syncReminders();
   renderGwen();
@@ -1565,14 +1573,14 @@ function stopGwenVoice(){
   if(window.speechSynthesis)speechSynthesis.cancel();
 }
 // Her own voice from the PC when it answered, the phone's voice otherwise
-async function gwenSpeak(text,fromPc){
-  if(gwenMute)return;
+async function gwenSpeak(text,fromPc,force){
+  if(gwenMute&&!force)return;
   if(fromPc&&_actx){
     try{
       const r=await fetchT(pcUrl()+'/daytrack/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:gwenCfg.key,text})},30000);
       if(r.ok){
         const buf=await _actx.decodeAudioData(await r.arrayBuffer());
-        if(gwenMute)return;
+        if(gwenMute&&!force)return;
         stopGwenVoice();
         const src=_actx.createBufferSource(),an=_actx.createAnalyser();
         an.fftSize=1024;src.buffer=buf;src.connect(an);an.connect(_actx.destination);
@@ -1586,6 +1594,37 @@ async function gwenSpeak(text,fromPc){
   const u=new SpeechSynthesisUtterance(say),vs=speechSynthesis.getVoices().filter(v=>v.lang.startsWith('en'));
   u.voice=vs.find(v=>/female|samantha|zira|aria|jenny/i.test(v.name))||vs[0]||null;u.pitch=1.1;
   speechSynthesis.speak(u);
+}
+// Tap one of her messages to hear it, even with her voice off
+function gwenSay(i){const m=gwenChat[i];if(!m)return;gwenAudioCtx();stopGwenVoice();gwenSpeak(m.content,!!g3.ping,true);}
+// Finishing everything today: she cheers right away (and skips her evening cheer)
+function gwenCheer(){
+  const tod=toDateStr(new Date());
+  if(!gwenCfg.key||gwenCfg.cheered===tod)return;
+  gwenCfg.cheered=tod;try{localStorage.setItem('dt_gwen_cfg',JSON.stringify(gwenCfg));}catch(e){}
+  const lines=['All done! Look at you go 💜','Everything checked off?! Proud of you 💜','That’s the whole list. You earned a break 😌','Done with everything! I knew you could 💜'];
+  const text=lines[Math.floor(Math.random()*lines.length)];
+  gwenChat.push({role:'assistant',content:text,brain:'cloud',first:true});gwenChat=gwenChat.slice(-60);
+  try{localStorage.setItem('dt_gwen_chat',JSON.stringify(gwenChat));}catch(e){}
+  renderGwen();showToast('💜 Gwen: '+text);gwenGesture('happy');
+}
+// Birthdays and holidays coming up (Hijri ones by the Umm al-Qura calendar)
+function gwenSpecialDays(days){
+  const fixed={'12-29':'🎂 Your birthday','09-30':'💜 Gwen’s birthday','09-23':'🇸🇦 National Day','02-22':'🇸🇦 Founding Day'},
+    hijri={'9-1':'🌙 Ramadan','10-1':'🎉 Eid al-Fitr','12-10':'🐑 Eid al-Adha','1-1':'🌙 Islamic New Year'},out=[];
+  let fmt;try{fmt=new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{month:'numeric',day:'numeric',timeZone:'UTC'});}catch(e){}
+  for(let n=0;n<=days;n++){
+    const d=new Date(toDateStr(new Date())+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);
+    const p=fmt?Object.fromEntries(fmt.formatToParts(d).map(x=>[x.type,x.value])):{};
+    for(const what of[fixed[d.toISOString().slice(5,10)],hijri[`${p.month}-${p.day}`]])if(what)out.push({in:n,what});
+  }
+  return out;
+}
+let _gwenDays={};
+function renderGwenDays(){
+  const el=document.getElementById('gwen-days'),tod=toDateStr(new Date());if(!el)return;
+  if(_gwenDays.date!==tod){const s=gwenSpecialDays(30)[0];_gwenDays={date:tod,text:s?`${s.what} ${s.in===0?'is today!':s.in===1?'is tomorrow':`in ${s.in} days`}`:''};}
+  el.textContent=_gwenDays.text;el.style.display=_gwenDays.text?'block':'none';
 }
 function toggleGwenVoice(){
   gwenMute=!gwenMute;if(gwenMute)stopGwenVoice();

@@ -1,13 +1,33 @@
 import { blobStore } from './fn.mjs';
 
-// Her PC uploads her real persona and recent memories every 6 h; until then a short default is used
+// Her PC uploads her real persona, recent memories and notes (dream, plans, special dates) hourly;
+// until then a short default is used
 const DEFAULT_PERSONA = `You are Gwen, Rayan's AI companion. You normally live on his PC; right now you're answering from the cloud because his PC is off or away.
 You're warm, playful and a little teasing, and you care about how his day is going. You text like a close friend: short, natural, no lists unless he asks.`;
 
-export async function gwenPersona() {
-  const saved = await blobStore('daytrack-gwen').get('persona', { type: 'json' }).catch(e => { console.error('Persona read failed:', e.message); return null; });
+export const gwenSaved = () =>
+  blobStore('daytrack-gwen').get('persona', { type: 'json' }).catch(e => { console.error('Persona read failed:', e.message); return null; });
+
+export async function gwenPersona(saved) {
+  if (saved === undefined) saved = await gwenSaved();
   return [
     (saved && saved.text) || DEFAULT_PERSONA,
     saved && saved.memory ? `Things you remember about Rayan:\n${saved.memory}` : '',
   ].filter(Boolean).join('\n\n');
+}
+
+// Birthdays and holidays from `tod` (YYYY-MM-DD) to `days` days later: [{in: days away, what}].
+// Hijri dates use the Umm al-Qura calendar, so Eid can be a day off from the moon sighting.
+const FIXED = { '12-29': "Rayan's birthday", '09-30': 'your own (Gwen\'s) birthday', '09-23': 'Saudi National Day', '02-22': 'Saudi Founding Day' };
+const HIJRI = { '9-1': 'the first day of Ramadan', '10-1': 'Eid al-Fitr', '12-10': 'Eid al-Adha', '1-1': 'the Islamic New Year' };
+export function specialDays(tod, days, extra = {}) {
+  const fixed = { ...FIXED }, out = [];
+  for (const [md, what] of Object.entries(extra || {})) if (/^\d\d-\d\d$/.test(md) && typeof what === 'string') fixed[md] = fixed[md] ? `${fixed[md]} and ${what}` : what;
+  const fmt = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { month: 'numeric', day: 'numeric', timeZone: 'UTC' });
+  for (let n = 0; n <= days; n++) {
+    const d = new Date(tod + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
+    const p = Object.fromEntries(fmt.formatToParts(d).map(x => [x.type, x.value]));
+    for (const what of [fixed[d.toISOString().slice(5, 10)], HIJRI[`${p.month}-${p.day}`]]) if (what) out.push({ in: n, what: what.slice(0, 120) });
+  }
+  return out;
 }
