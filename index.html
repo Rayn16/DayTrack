@@ -51,7 +51,7 @@
     .db{width:38px;height:38px;border-radius:50%;border:2px solid var(--brd);background:var(--inp);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--sub);cursor:pointer;font-family:inherit;flex-shrink:0;transition:all .15s;}.db.on{border-color:var(--pri);background:var(--pri);color:white;}
     .eb{background:var(--inp);border:2px solid transparent;border-radius:9px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;flex-shrink:0;transition:all .15s;}.eb.on{border-color:var(--pri);background:var(--pril);}
     .chk{width:24px;height:24px;border-radius:50%;border:2.5px solid var(--chk);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:12px;color:white;transition:all .15s;}.chk.on{border-color:var(--pri);background:var(--pri);}
-    .toast{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 72px);left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--tbg);color:var(--ttxt);padding:8px 18px;border-radius:22px;font-size:13px;font-weight:500;pointer-events:none;z-index:200;transition:transform .25s,opacity .25s,background .25s,color .25s;white-space:nowrap;}.toast.on{transform:translateX(-50%) translateY(0);opacity:1;}
+    .toast{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 72px);left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--tbg);color:var(--ttxt);padding:8px 18px;border-radius:22px;font-size:13px;font-weight:500;pointer-events:none;z-index:200;transition:transform .25s,opacity .25s,background .25s,color .25s;width:max-content;max-width:calc(100vw - 32px);text-align:center;}.toast.on{transform:translateX(-50%) translateY(0);opacity:1;}
     .add-btn{width:100%;background:var(--pri);color:white;border:none;border-radius:14px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:12px;}.add-btn:active{opacity:.85;}
     .tog{width:46px;height:28px;border-radius:14px;background:var(--brd);border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;}.tog::after{content:'';position:absolute;width:22px;height:22px;border-radius:50%;background:white;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.25);}.tog.on{background:var(--grn);}.tog.on::after{left:21px;}
     .dimmed{opacity:.45;}
@@ -202,12 +202,15 @@
           <div><button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
           <button onclick="clearGwen()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">Clear chat</button></div>
         </div>
+        <div id="gwen-study" style="display:none;align-items:center;gap:8px;background:var(--pril);color:var(--txt);border-radius:12px;padding:8px 10px;margin-bottom:10px;font-size:13px;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📚 <b id="gwen-study-what"></b> with Gwen · <span id="gwen-study-left" style="font-variant-numeric:tabular-nums;"></span> left</span><button onclick="gwenStudyStop(true)" style="background:var(--card);color:var(--pri);border:none;border-radius:9px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">End</button></div>
         <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;">
           <button class="gchip" onclick="gwenCall()">📞 Call</button>
           <button class="gchip" onclick="gwenSnap()">📸 Selfie</button>
           <button class="gchip" onclick="gwenDiary()">📖 Her diary</button>
           <button class="gchip" onclick="gwenAR()">🕶 In my room</button>
           <button class="gchip" onclick="gwenGames()">🎮 Games</button>
+          <button class="gchip" onclick="gwenStudyPick()">📚 Study</button>
+          <button class="gchip" onclick="gwenGifts()">🎁 Gift</button>
         </div>
         <div id="gwen-days" style="display:none;font-size:12px;color:var(--sub);margin:-2px 0 8px;"></div>
         <div id="gwen-msgs"></div>
@@ -272,6 +275,7 @@
           <div><div class="sl">Bedtime</div><input class="inp" id="gwen-bed" type="time" onchange="saveGwenCfg()"></div>
         </div>
         <div style="font-size:11px;color:var(--sub);margin-top:5px;">Optional. She texts you at your wake-up time, and says goodnight half an hour before bed. These two go off even in quiet hours.</div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--txt);"><input type="checkbox" id="gwen-wx" onchange="gwenWxToggle(this)">She knows the real weather where I am (uses this phone's location, rounded to about 10 km)</label>
         <button onclick="testGwen()" style="margin-top:10px;width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Check connection</button>
         <div id="gwen-test" style="font-size:12px;color:var(--sub);margin-top:8px;text-align:center;"></div>
       </div>
@@ -634,7 +638,7 @@ async function syncReminders(renewed){
       method:'POST',headers:{'Content-Type':'application/json'},
       // All tasks so Gwen knows what's left (recent days only for repeating ones), plus a week of moods
       body:JSON.stringify({subscription:sub,tasks:tasks.map(t=>t.recurring?{...t,done:t.done.filter(d=>d>=weekAgo)}:t),completedDays,quiet,
-        tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,gwenWake:gwenCfg.wake||null,gwenBed:gwenCfg.bed||null,gwenCheered:gwenCfg.cheered||null,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo))})
+        tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,gwenWake:gwenCfg.wake||null,gwenBed:gwenCfg.bed||null,gwenCheered:gwenCfg.cheered||null,gwenLoc:gwenCfg.loc||null,gwenStudy:gwenCfg.study||null,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo))})
     });
     if(!renewed&&(await r.json().catch(()=>({}))).gone){await renewPush(reg,sub);return syncReminders(true);}
   }catch(e){}
@@ -860,7 +864,7 @@ function boot(){
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   buildEmoGrid();renderTaskList();renderMood();renderTimerTab();renderCal();renderSyncUI();renderQuiet();
   applyPendingDone();
-  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;document.getElementById('gwen-wake').value=gwenCfg.wake||'';document.getElementById('gwen-bed').value=gwenCfg.bed||'';renderGwen();
+  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;document.getElementById('gwen-wake').value=gwenCfg.wake||'';document.getElementById('gwen-bed').value=gwenCfg.bed||'';document.getElementById('gwen-wx').checked=!!gwenCfg.loc;renderGwen();if(gwenCfg.study)gwenStudyRun();if(gwenCfg.loc)gwenWeather();
   pullGwenInbox();if(new URLSearchParams(location.search).get('tab')==='gwen')switchTab('gwen');
   if(syncCode)pullSync();
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();gwen3d();pullGwenInbox();});
@@ -1303,6 +1307,10 @@ function gwenContext(){
     `Streak: ${calculateStreak()} day(s) of finishing everything. Mood today: ${m?['very low','low','okay','good','great'][m-1]:'not picked yet'}.`,
     gwenMoodLine(),
     gwenOutfitLine(),
+    gwenWx?`Weather where he is: ${gwenWx.text}.`:'',
+    gwenCfg.study?`He is in a study session with you (${gwenCfg.study.what}), ${Math.max(1,Math.ceil((gwenCfg.study.end-Date.now())/60e3))} minutes left: keep replies very short and nudge him back to studying.`:'',
+    `Your bond level with him is ${gwenLevel(gwenBondPts())} (it grows when you two talk, play games and study together, and when he gives you gifts).`,
+    `If he wants music, or a song would fit his mood, put this on its own line (the app shows a play button and hides the line):\nMUSIC: <song and artist, or a search like "lofi study music">\nWhen you share a song, hum a little (*hums*).`,
     g3.vrm?'If he asks for a selfie or a picture of you, put SELFIE on its own line (the app snaps you in 3D and hides the line).':'',
     `If he asks you to add a task or remind him about something, put this on its own line (the app adds it and hides the line):\nADD_TASK: <short task name> | <YYYY-MM-DD, or empty for today> | <HH:MM 24-hour reminder time, or empty>\nOnly do this when he asks. For a plan at a set time (like "gym at 6"), use that time; you'll get to ask him how it went afterwards.`,
   ].filter(Boolean).join('\n\n');
@@ -1316,8 +1324,8 @@ function gwenOutfitLine(){
   return`In the app you can change clothes: your usual look, ${o.join(', ')}. You're wearing ${gwenCfg.outfit||'your usual look'}. If he asks you to change, put this on its own line (the app changes you and hides the line):\nOUTFIT: <usual|${o.join('|')}>`;
 }
 function applyGwenActions(text){
-  const added=[];let outfit=null,selfie=false;
-  const clean=text.replace(/^[ \t*-]*SELFIE\b.*$/gim,()=>{selfie=true;return'';}).replace(/^[ \t*-]*OUTFIT:\s*(\w+).*$/gim,(_,o)=>{outfit=o.toLowerCase();return'';}).replace(/^[ \t*-]*ADD_TASK:\s*(.+)$/gim,(_,spec)=>{
+  const added=[];let outfit=null,selfie=false,music=null;
+  const clean=text.replace(/^[ \t*-]*SELFIE\b.*$/gim,()=>{selfie=true;return'';}).replace(/^[ \t*-]*MUSIC:\s*(.+)$/gim,(_,q)=>{music=q.trim().replace(/^["“]|["”]$/g,'').slice(0,100)||null;return'';}).replace(/^[ \t*-]*OUTFIT:\s*(\w+).*$/gim,(_,o)=>{outfit=o.toLowerCase();return'';}).replace(/^[ \t*-]*ADD_TASK:\s*(.+)$/gim,(_,spec)=>{
     const[name,date,time]=spec.split('|').map(x=>(x||'').trim());
     if(!name)return'';
     const d=/^\d{4}-\d{2}-\d{2}$/.test(date)?date:null,tm=/^\d{1,2}:\d{2}$/.test(time)?time.padStart(5,'0'):null;
@@ -1327,7 +1335,7 @@ function applyGwenActions(text){
   }).replace(/\n{3,}/g,'\n\n').trim();
   if(added.length){save();renderTaskList();}
   if(outfit)gwenWear(outfit);
-  return{clean,added,selfie:selfie&&!!g3.vrm};
+  return{clean,added,selfie:selfie&&!!g3.vrm,music};
 }
 function fetchT(url,opts,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{...opts,signal:c.signal}).finally(()=>clearTimeout(t));}
 const pcUrl=()=>gwenCfg.pc.trim().replace(/\/+$/,'');
@@ -1357,16 +1365,18 @@ async function sendGwen(opts={}){
   gwenChat.push(msg);gwenBusy=true;renderGwen();
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
+  if(gwenCfg.loc)await gwenWeather();
   try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':'Could not reach Gwen'};}
   gwenBusy=false;
   let out=null;
   if(res.text){
-    const{clean,added,selfie}=applyGwenActions(res.text);
-    out={role:'assistant',content:clean||(selfie?'📸':'👍'),brain:res.brain,added};
+    const{clean,added,selfie,music}=applyGwenActions(res.text);
+    out={role:'assistant',content:clean||(selfie?'📸':music?'🎵':'👍'),brain:res.brain,added};
+    if(music)out.music=music;
     if(selfie)gwenSelfieShot().then(img=>{out.thumb=img;gwenSaveChat();renderGwen();});
     if(Array.isArray(res.did)&&res.did.length)out.did=res.did.slice(0,5).map(d=>String(d).slice(0,120));
     if(opts.voice)out.voice=true; // a voice note gets one back
-    gwenChat.push(out);
+    gwenChat.push(out);gwenBond(1);
     if(clean){gwenGesture(gwenPickGesture(clean));if(!g3.call)gwenSpeak(clean,res.brain==='pc',!!opts.voice);}
   }
   else gwenChat.push({role:'assistant',content:res.error||'No answer',error:true});
@@ -1387,8 +1397,9 @@ function renderGwen(){
         :m.thumb&&m.content==='📷 (photo)'?'':esc(m.content));
     const did=(m.did||[]).map(d=>`<div style="font-size:12px;color:var(--sub);margin-top:4px;">💻 ${esc(d)}</div>`).join('');
     const adds=(m.added||[]).map(a=>`<div style="font-size:12px;color:var(--grntxt);background:var(--grnl);border-radius:9px;padding:4px 9px;margin-top:5px;">📝 Added: ${esc(a)}</div>`).join('');
+    const music=m.music?`<a href="https://www.youtube.com/results?search_query=${encodeURIComponent(m.music)}" target="_blank" rel="noopener" style="font-size:13px;font-weight:600;color:var(--pri);background:var(--pril);border-radius:9px;padding:5px 10px;margin-top:5px;text-decoration:none;">🎵 Play ${esc(m.music)}</a>`:'';
     return `<div style="display:flex;flex-direction:column;align-items:${me?'flex-end':'flex-start'};margin-bottom:9px;">
-      <div ${hear?`onclick="gwenSay(${i})" `:''}style="${hear?'cursor:pointer;':''}max-width:82%;background:${bg};color:${fg};padding:9px 12px;border-radius:16px;${me?'border-bottom-right-radius:5px':'border-bottom-left-radius:5px'};font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;">${body}</div>${did}${adds}${tag}</div>`;
+      <div ${hear?`onclick="gwenSay(${i})" `:''}style="${hear?'cursor:pointer;':''}max-width:82%;background:${bg};color:${fg};padding:9px 12px;border-radius:16px;${me?'border-bottom-right-radius:5px':'border-bottom-left-radius:5px'};font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;">${body}</div>${did}${adds}${music}${tag}</div>`;
   };
   el.innerHTML=(gwenChat.length?gwenChat.map(bubble).join(''):`<div style="text-align:center;padding:30px 10px;color:var(--sub);font-size:14px;"><div style="font-size:42px;margin-bottom:10px;">💜</div>${gwenCfg.key?'Say hi to Gwen. She can see your day and add tasks for you.':'Add your Gwen key in Settings to start chatting.'}</div>`)
     +(gwenBusy?`<div style="color:var(--sub);font-size:13px;padding:2px 4px;">Gwen is typing…</div>`:'');
@@ -1656,10 +1667,12 @@ function gwenCheer(){
   if(!gwenCfg.key||gwenCfg.cheered===tod)return;
   gwenCfg.cheered=tod;try{localStorage.setItem('dt_gwen_cfg',JSON.stringify(gwenCfg));}catch(e){}
   const lines=['All done! Look at you go 💜','Everything checked off?! Proud of you 💜','That’s the whole list. You earned a break 😌','Done with everything! I knew you could 💜'];
-  const text=lines[Math.floor(Math.random()*lines.length)];
-  gwenChat.push({role:'assistant',content:text,brain:'cloud',first:true});gwenChat=gwenChat.slice(-60);
-  try{localStorage.setItem('dt_gwen_chat',JSON.stringify(gwenChat));}catch(e){}
-  renderGwen();showToast('💜 Gwen: '+text);gwenGesture('happy');
+  gwenLine(lines[Math.floor(Math.random()*lines.length)],'happy');
+}
+// Something she says on her own in the app: into the chat, a toast, a gesture, and her voice if it's on
+function gwenLine(text,gesture){
+  gwenChat.push({role:'assistant',content:text,brain:'cloud',first:true});gwenSaveChat();
+  renderGwen();showToast('💜 Gwen: '+text);gwenGesture(gesture);gwenSpeak(text,!!g3.ping);
 }
 // Birthdays and holidays coming up (Hijri ones by the Umm al-Qura calendar)
 function gwenSpecialDays(days){
@@ -1677,7 +1690,8 @@ let _gwenDays={};
 function renderGwenDays(){
   const el=document.getElementById('gwen-days'),tod=toDateStr(new Date());if(!el)return;
   if(_gwenDays.date!==tod){const s=gwenSpecialDays(30)[0];_gwenDays={date:tod,text:s?`${s.what} ${s.in===0?'is today!':s.in===1?'is tomorrow':`in ${s.in} days`}`:''};}
-  el.textContent=_gwenDays.text;el.style.display=_gwenDays.text?'block':'none';
+  const text=[gwenWx&&gwenWx.short,gwenCfg.key&&`💜 Bond level ${gwenLevel(gwenBondPts())}`,_gwenDays.text].filter(Boolean).join('  ·  ');
+  el.textContent=text;el.style.display=text?'block':'none';
 }
 function toggleGwenVoice(){
   gwenMute=!gwenMute;if(gwenMute)stopGwenVoice();
@@ -1820,10 +1834,10 @@ async function gwenSelfieShot(){
   x.fillStyle=bg;x.fillRect(0,0,c.width,c.height);x.drawImage(src,0,0,c.width,c.height);
   return c.toDataURL('image/jpeg',0.85);
 }
-async function gwenSnap(){
+async function gwenSnap(line){
   if(!g3.vrm){showToast('Her selfies need her 3D model from your PC');return;}
   const img=await gwenSelfieShot(),lines=['Here, just for you 📸','Do I look cute or what? 😌','Selfie time! 💜','Caught me on a good hair day 💁‍♀️'];
-  gwenChat.push({role:'assistant',content:lines[Math.floor(Math.random()*lines.length)],brain:'cloud',thumb:img});
+  gwenChat.push({role:'assistant',content:line||lines[Math.floor(Math.random()*lines.length)],brain:'cloud',thumb:img});
   gwenSaveChat();renderGwen();
 }
 async function gwenSaveImg(i){
@@ -1861,10 +1875,109 @@ async function gwenGames(){
       say:(t,g)=>{gwenGesture(g);gwenSpeak(t,!!g3.ping);},
       done:(name,r)=>{
         gwenChat.push({role:'assistant',content:r==='won'?`🎮 You beat me at ${name}… this time 😤`:r==='lost'?`🎮 I beat you at ${name} 😌`:`🎮 Our ${name} game was a draw 🤝`,brain:'cloud'});
-        gwenSaveChat();renderGwen();
+        gwenSaveChat();gwenBond(2);renderGwen();
       },
       close:()=>closeOv('gwen-ov')});
   }catch(e){body.innerHTML='<div style="text-align:center;color:var(--sub);padding:30px;">Couldn\'t load the games, check your connection</div>';}
+}
+
+// Study buddy: a focus timer with her, saved with the Timer tab's sessions. The server pushes "time's up" if the app is in the background.
+let gwenStudyTick=0,gwenAwayAt=0;
+const gwenStoreCfg=()=>{try{localStorage.setItem('dt_gwen_cfg',JSON.stringify(gwenCfg));}catch(e){}};
+function gwenStudyPick(){
+  if(gwenCfg.study){showToast('You\'re already studying 😤');return;}
+  const body=document.getElementById('gwen-ov-body'),btn='flex:1;background:var(--pri);color:white;border:none;border-radius:11px;padding:12px 0;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;';
+  body.innerHTML=`<div style="width:36px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 14px;"></div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:6px;text-align:center;color:var(--txt);">📚 Study with Gwen</div>
+    <div style="font-size:13px;color:var(--sub);text-align:center;margin-bottom:12px;">She keeps you company and tells you when it's break time.</div>
+    <input class="inp" id="gwen-study-in" placeholder="What are you studying?" maxlength="60" style="margin-bottom:10px;">
+    <div style="display:flex;gap:8px;margin-bottom:8px;">${[25,45,60].map(m=>`<button onclick="gwenStudyStart(${m})" style="${btn}">${m} min</button>`).join('')}</div>
+    <button onclick="closeOv('gwen-ov')" style="width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>`;
+  document.getElementById('gwen-ov').classList.add('on');
+}
+function gwenStudyStart(mins){
+  const what=document.getElementById('gwen-study-in').value.trim().slice(0,60)||'studying',now=Date.now();
+  gwenCfg.study={what,mins,start:now,end:now+mins*60e3};gwenStoreCfg();syncReminders();closeOv('gwen-ov');
+  gwenLine(`Okay, ${mins} minutes of ${what}. Phone down, I'm watching 👀`,'nod');
+  gwenStudyRun();
+}
+function gwenStudyRun(){
+  const s=gwenCfg.study,bar=document.getElementById('gwen-study');if(!s)return;
+  document.getElementById('gwen-study-what').textContent=s.what;bar.style.display='flex';
+  const tick=()=>{
+    const left=s.end-Date.now();
+    if(left<=0)return gwenStudyStop(false);
+    document.getElementById('gwen-study-left').textContent=`${Math.floor(left/60e3)}:${String(Math.floor(left/1e3)%60).padStart(2,'0')}`;
+  };
+  clearInterval(gwenStudyTick);gwenStudyTick=setInterval(tick,1000);tick();
+}
+function gwenStudyStop(early){
+  const s=gwenCfg.study;if(!s)return;
+  clearInterval(gwenStudyTick);document.getElementById('gwen-study').style.display='none';
+  gwenCfg.study=null;gwenStoreCfg();syncReminders();
+  const ms=Math.max(0,Math.min(Date.now(),s.end)-s.start),mins=Math.round(ms/60e3);
+  if(mins>=1){savedSessions.unshift({id:uid(),name:`📚 ${s.what} with Gwen`,date:new Date(s.start).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),total:ms,items:[{name:s.what,dur:ms}]});save();renderPastSessions();}
+  if(early&&mins<5)return gwenLine('Giving up already? 😏 Okay, we can try again later.','pout');
+  gwenLine(early?`${mins} minutes of ${s.what}, not bad 💜 Take a little break.`:`🎉 ${s.mins} minutes of ${s.what} done! Take a 5 minute break, you earned it 💜`,'happy');
+  gwenBond(3);
+}
+// Coming back to the app mid-session
+document.addEventListener('visibilitychange',()=>{
+  const s=gwenCfg.study;if(!s)return;
+  if(document.hidden){gwenAwayAt=Date.now();return;}
+  if(Date.now()>=s.end)gwenStudyStop(false);
+  else if(gwenAwayAt&&Date.now()-gwenAwayAt>120e3)showToast(`💜 Gwen: Welcome back 👀 ${Math.ceil((s.end-Date.now())/60e3)} min left on ${s.what}`);
+  gwenAwayAt=0;
+});
+
+// Bond level: grows when you talk, play, study together and give her gifts (at most 30 points a day)
+const gwenLevel=p=>Math.floor(Math.sqrt(p/4))+1;
+const gwenBondPts=()=>(gwenCfg.bond&&gwenCfg.bond.pts)||0;
+function gwenBond(n){
+  const tod=toDateStr(new Date()),b=gwenCfg.bond||(gwenCfg.bond={pts:0,day:tod,today:0});
+  if(b.day!==tod){b.day=tod;b.today=0;}
+  n=Math.min(n,30-b.today);if(n<=0)return;
+  const was=gwenLevel(b.pts);b.pts+=n;b.today+=n;gwenStoreCfg();renderGwenDays();
+  const lv=gwenLevel(b.pts);if(lv===was)return;
+  if(g3.vrm)gwenSnap(`💜 Bond level ${lv}! Here's a selfie, just for you`);
+  else gwenLine(`💜 We just reached bond level ${lv}! We're getting closer, you know that?`,'happy');
+}
+const GWEN_GIFTS=[['🌹','flowers'],['☕','a coffee'],['🍫','chocolate'],['🍪','cookies'],['🧸','a teddy bear'],['📚','a book'],['🎮','a new game'],['🐟','a treat for Yasuo']];
+function gwenGifts(){
+  const body=document.getElementById('gwen-ov-body');
+  body.innerHTML=`<div style="width:36px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 14px;"></div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:12px;text-align:center;color:var(--txt);">🎁 Give Gwen a gift</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">${GWEN_GIFTS.map(([e,n],i)=>`<button onclick="gwenGive(${i})" style="background:var(--pril);color:var(--txt);border:none;border-radius:13px;padding:10px 2px;font-size:11px;cursor:pointer;font-family:inherit;"><div style="font-size:26px;margin-bottom:3px;">${e}</div>${n.replace(/^an? /,'')}</button>`).join('')}</div>
+    <button onclick="closeOv('gwen-ov')" style="width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Close</button>`;
+  document.getElementById('gwen-ov').classList.add('on');
+}
+async function gwenGive(i){
+  const[e,n]=GWEN_GIFTS[i],tod=toDateStr(new Date());closeOv('gwen-ov');
+  if(!await sendGwen({said:`*gives you ${e} ${n}*`}))return;
+  const first=gwenCfg.giftDay!==tod;gwenCfg.giftDay=tod;gwenStoreCfg();gwenBond(first?4:0); // the first gift of the day counts extra
+}
+
+// Real weather where he is (opt-in): Open-Meteo, no key, cached for 30 minutes
+const GWEN_WX=[[0,'clear sky','☀️'],[3,'some clouds','⛅'],[48,'fog','🌫'],[57,'drizzle','🌦'],[67,'rain','🌧'],[77,'snow','❄️'],[82,'rain showers','🌦'],[86,'snow showers','🌨'],[99,'thunderstorms','⛈']];
+let gwenWx=null;
+async function gwenWeather(){
+  const l=gwenCfg.loc;if(!l)return null;
+  if(gwenWx&&Date.now()-gwenWx.at<30*60e3)return gwenWx;
+  try{
+    const d=await(await fetchT(`https://api.open-meteo.com/v1/forecast?latitude=${l.lat}&longitude=${l.lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`,{},4000)).json();
+    const t=Math.round(d.current.temperature_2m),w=GWEN_WX.find(([m])=>d.current.weather_code<=m)||GWEN_WX[0];
+    gwenWx={at:Date.now(),short:`${w[2]} ${t}°`,text:`${t}°C and ${w[1]} right now, ${Math.round(d.daily.temperature_2m_max[0])}°C high and ${Math.round(d.daily.temperature_2m_min[0])}°C low today`};
+    renderGwenDays();
+  }catch(e){}
+  return gwenWx;
+}
+function gwenWxToggle(box){
+  if(!box.checked){gwenCfg.loc=null;gwenWx=null;gwenStoreCfg();syncReminders();renderGwenDays();return;}
+  if(!navigator.geolocation){box.checked=false;showToast('This phone can\'t share its location');return;}
+  navigator.geolocation.getCurrentPosition(p=>{
+    gwenCfg.loc={lat:Math.round(p.coords.latitude*10)/10,lon:Math.round(p.coords.longitude*10)/10};gwenWx=null;
+    gwenStoreCfg();syncReminders();gwenWeather();
+  },()=>{box.checked=false;showToast('Location is off, so no weather for Gwen');},{maximumAge:3600e3,timeout:15000});
 }
 
 // Gwen in your room: WebXR AR in Chrome (needs Google Play Services for AR). Point at the floor, tap to place her.

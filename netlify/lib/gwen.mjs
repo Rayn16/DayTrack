@@ -31,3 +31,14 @@ export function specialDays(tod, days, extra = {}) {
   }
   return out;
 }
+
+// Today's weather at {lat, lon} from Open-Meteo (free, no key): "38°C high, 27°C low, clear sky", or '' if it fails
+const WX = [[0, 'clear sky'], [3, 'some clouds'], [48, 'fog'], [57, 'drizzle'], [67, 'rain'], [77, 'snow'], [82, 'rain showers'], [86, 'snow showers'], [99, 'thunderstorms']];
+export const wxText = code => (WX.find(([max]) => code <= max) || [0, ''])[1];
+export async function weatherToday({ lat, lon }) {
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=1`, { signal: AbortSignal.timeout(4000) });
+    const d = (await r.json()).daily;
+    return `${Math.round(d.temperature_2m_max[0])}°C high, ${Math.round(d.temperature_2m_min[0])}°C low, ${wxText(d.weather_code[0])}`;
+  } catch (e) { console.error('Weather failed:', e.message); return ''; }
+}

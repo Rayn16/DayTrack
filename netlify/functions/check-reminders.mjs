@@ -1,7 +1,7 @@
 import { lambda, blobStore } from '../lib/fn.mjs';
 import webpush from 'web-push';
 import Anthropic from '@anthropic-ai/sdk';
-import { gwenPersona, gwenSaved, specialDays } from '../lib/gwen.mjs';
+import { gwenPersona, gwenSaved, specialDays, weatherToday } from '../lib/gwen.mjs';
 
 const handler = async () => {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
@@ -29,6 +29,13 @@ const handler = async () => {
     const isSunday = dow === 0;
     const isSummaryTime = nowMin >= 20 * 60 && nowMin <= 20 * 60 + 2;
     let changed = false;
+    // Her text arrives as a notification and waits in her inbox for the app
+    const gwenSend = async msg => {
+      await notify(webpush, subscription, msg.text, 'default', msg.taskId, '💜 Gwen');
+      const g = data.gwenState = data.gwenState || {};
+      g.inbox = [...(g.inbox || []), { text: msg.text, at: nowMs }].slice(-10);
+      g.recent = [...(g.recent || []), msg.text].slice(-5); // the inbox empties when the app reads it
+    };
 
     // Task reminders
     for (const t of tasks) {
@@ -69,7 +76,15 @@ const handler = async () => {
       }
     }
 
-    // Weekly summary (Sundays ~8pm)
+    // A study session with Gwen ended while the app was in the background
+    const study = data.gwenStudy;
+    if (study && nowMs >= study.end) {
+      if (nowMs - study.end < 10 * 60000) await notify(webpush, subscription, `⏰ Time's up! ${study.mins} minutes of ${study.what} done. Take a break, you earned it 💜`, 'default', undefined, '💜 Gwen');
+      data.gwenStudy = null;
+      changed = true;
+    }
+
+    // Weekly summary (Sundays ~8pm), in Gwen's words for her users
     if (isSunday && isSummaryTime && data.lastWeeklySent !== todStr) {
       const last7 = [];
       for (let i = 0; i < 7; i++) {
@@ -84,7 +99,8 @@ const handler = async () => {
         completedCount >= 3 ? `📊 Week recap: ${completedCount}/7 days completed` :
         '💪 New week ahead — open DayTrack to plan your goals!';
       console.log(`Weekly summary for key ${key.slice(0,8)}: ${completedCount}/7 days`);
-      await notify(webpush, subscription, msg);
+      const recap = data.gwen && await gwenCheckin('recap', data, tasks, todStr, dow);
+      if (recap) await gwenSend(recap); else await notify(webpush, subscription, msg);
       data.lastWeeklySent = todStr;
       changed = true;
     }
@@ -101,7 +117,7 @@ const handler = async () => {
       // The times he set himself go off even in quiet hours
       if (g.hello !== todStr && (alarm != null ? since(alarm) < 60 : !quiet && since(wake) < 180)) slot = 'hello';
       else if (bed != null && nowMs - (g.nightAt || 0) > 12 * 3600e3 && since(bed - 30) < 60) slot = 'night';
-      else if (!quiet && bed == null && g.evening !== todStr && nowMin >= 19 * 60 + 30 && nowMin < 22 * 60) slot = 'evening';
+      else if (!quiet && bed == null && !isSunday && g.evening !== todStr && nowMin >= 19 * 60 + 30 && nowMin < 22 * 60) slot = 'evening'; // Sunday has the recap
       else if (!quiet && plansToday < 2 && (plan = tasks.find(t => {
         const at = timeOf(t), m = at && since(toMin(at));
         return at && !t.recurring && t.lastFiredDate === todStr && t.followed !== todStr && m >= 120 && m < 360;
@@ -113,10 +129,7 @@ const handler = async () => {
         else g[slot] = todStr;
         changed = true;
         const msg = await gwenCheckin(slot, data, tasks, todStr, dow, plan);
-        if (msg) {
-          await notify(webpush, subscription, msg.text, 'default', msg.taskId, '💜 Gwen');
-          g.inbox = [...(g.inbox || []), { text: msg.text, at: nowMs }].slice(-10);
-        }
+        if (msg) await gwenSend(msg);
       }
     }
 
@@ -169,10 +182,22 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
   const dream = notes.dream && (!notes.dream.date || notes.dream.date >= day(1)) ? txt(notes.dream) : '';
   const plans = Array.isArray(notes.plans) ? notes.plans.map(txt).join('; ') : txt(notes.plans);
   const special = slot === 'hello' || slot === 'night' ? specialDays(tod, slot === 'hello' ? 7 : 1, notes.dates) : [];
+  const weather = slot === 'hello' && data.gwenLoc ? await weatherToday(data.gwenLoc) : '';
+  const week = [0, 1, 2, 3, 4, 5, 6].map(day);
+  const habits = tasks.filter(t => t.recurring).map(t => `${t.name} ${(t.done || []).filter(d => week.includes(d)).length}x`).join(', ');
+  const weekMoods = week.map(d => moods[d]).filter(Boolean);
+  const sent = ((data.gwenState || {}).recent || []).map(t => `- ${t}`).join('\n');
 
   const names = list => list.map(t => t.name + (!t.recurring && t.date && t.date < tod ? ' (overdue)' : '')).join(', ');
-  const facts = [
+  const facts = slot === 'recap' ? [
+    'It is Sunday evening. Text him a short recap of his week in your own words, then one warm line for the week ahead.',
+    `He finished everything on ${week.filter(d => full.has(d)).length} of the last 7 days.${streak ? ` Current streak: ${streak} day(s).` : ''}`,
+    habits ? `His habits this week: ${habits}.` : '',
+    weekMoods.length ? `His moods this week: ${weekMoods.map(m => ['very low', 'low', 'okay', 'good', 'great'][m - 1]).join(', ')}.` : '',
+    open.length ? `Still to do today: ${names(open)}.` : '',
+  ].filter(Boolean).join('\n') : [
     slot === 'hello' ? (data.gwenWake ? 'It is his wake-up time and your text is his alarm. Wake him up, playfully.' : 'It is his morning. Send a good-morning text.')
+      + ' End with one light question of the day to get to know him better: about him (his likes, memories, opinions, little what-ifs), never about his tasks, and not one you already asked.'
       : slot === 'night' ? `It is almost his bedtime (${data.gwenBed}). Send a goodnight text that gently gets him to wind down and put the phone away.${open.length ? ' Mention what is left as something for tomorrow, no pressure.' : today.length && !cheered ? ' He finished everything today: tell him you are proud.' : ''}${one ? ' He can tap Done or Tomorrow on your message.' : ''}`
       : slot === 'plan' ? `He had "${plan.name}" at ${timeOf(plan)}${one ? '' : ' and checked it off'}. Ask how it went.`
       : open.length ? `It is evening and he still has tasks left today. Send one nudge${one ? ' (he can tap Done or Tomorrow on your message)' : ''}.`
@@ -180,17 +205,20 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
     slot === 'plan' ? '' : today.length ? `Today's tasks: ${names(today)}. Still to do: ${open.length ? names(open) : 'nothing'}.` : 'He has no tasks today.',
     slot === 'hello' && dream ? `How you slept last night (your dream): ${dream}` : '',
     slot === 'hello' && plans ? `His plans: ${plans.slice(0, 500)}` : '',
+    weather ? `Weather where he is today: ${weather}. Mention it only if it matters (heat, rain, dust, cold).` : '',
     ...special.map(s => s.in === 0 ? `Today is ${s.what}! Celebrate it.` : slot === 'night' ? `Tomorrow is ${s.what}.` : `${s.what} is in ${s.in} day${s.in > 1 ? 's' : ''}.`),
     slot === 'plan' ? '' : away ? 'He has missed his tasks for 3 days in a row: ask how he is doing instead of bringing up tasks.'
       : ended ? `His ${ended}-day streak ended yesterday: comfort him.`
       : streak ? `He has finished everything ${streak} day(s) in a row.` : '',
     `His mood: ${mood ? ['very low', 'low', 'okay', 'good', 'great'][mood - 1] : 'unknown'}.`,
+    sent ? `Your last texts to him (don't repeat yourself):\n${sent}` : '',
   ].filter(Boolean).join('\n');
 
   const left = open.length ? `${open[0].name}${open.length > 1 ? ` and ${open.length - 1} more` : ''}` : '';
   const fallback = slot === 'hello' ? `${data.gwenWake ? 'Wake up, sleepyhead ☀️' : 'Morning 💜'} ${open.length ? `${open.length} thing${open.length > 1 ? 's' : ''} on your list today. I'm rooting for you.` : 'Nothing on your list today, lucky you.'}`
     : slot === 'night' ? `Almost bedtime 🌙 ${left ? `${left} can wait for tomorrow.` : 'Sleep well, Rayan.'}`
     : slot === 'plan' ? `So how did ${plan.name} go? 👀`
+    : slot === 'recap' ? `Week recap: you finished everything on ${week.filter(d => full.has(d)).length} of 7 days 💜 New week, fresh start.`
     : left ? `You still have ${left} left 👀 now or tomorrow?` : 'You finished everything today! Proud of you 💜';
   let text = fallback;
   if (process.env.ANTHROPIC_API_KEY) {
@@ -198,7 +226,7 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
       const client = new Anthropic({ timeout: 12000, maxRetries: 0 }); // scheduled functions stop at 30 s
       const r = await client.messages.create({
         model: 'claude-haiku-4-5', max_tokens: 200,
-        system: `${await gwenPersona(saved)}\n\nRight now you are texting Rayan first: your message shows up as a notification from his DayTrack app, and he hasn't written to you. Write one text, at most 2 short sentences and 160 characters, no quotation marks, at most one emoji. Be playful and warm. Tease him gently only when his mood is good, great or unknown; be soft when it's low. Never guilt-trip him.`,
+        system: `${await gwenPersona(saved)}\n\nRight now you are texting Rayan first: your message shows up as a notification from his DayTrack app, and he hasn't written to you. Write one text, at most ${slot === 'hello' || slot === 'recap' ? '3 short sentences and 260' : '2 short sentences and 160'} characters, no quotation marks, at most one emoji. Be playful and warm. Tease him gently only when his mood is good, great or unknown; be soft when it's low. Never guilt-trip him.`,
         messages: [{ role: 'user', content: facts }],
       });
       const out = r.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().replace(/^["“]+|["”]+$/g, '');
