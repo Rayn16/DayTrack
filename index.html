@@ -1286,7 +1286,7 @@ async function sendGwen(){
   inp.value='';gwenChat.push({role:'user',content:text});gwenBusy=true;renderGwen();
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
-  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext()});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':'Could not reach Gwen'};}
+  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':'Could not reach Gwen'};}
   gwenBusy=false;
   if(res.text){const{clean,added}=applyGwenActions(res.text);gwenChat.push({role:'assistant',content:clean||'👍',brain:res.brain,added});}
   else gwenChat.push({role:'assistant',content:res.error||'No answer',error:true});
