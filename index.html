@@ -1466,16 +1466,17 @@ function toggleGwenVoice(){
 // Tap 🎤, talk, and it sends when you stop. Tap again to cancel.
 function gwenMic(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition,btn=document.getElementById('gwen-mic');
-  if(!SR){showToast('Talking isn\'t supported in this browser');return;}
+  // Samsung Internet has the speech API but it never hears anything, so the keyboard's own mic does the job there
+  if(!SR||/SamsungBrowser/.test(navigator.userAgent)){document.getElementById('gwen-in').focus();showToast('Tap the 🎤 on your keyboard to talk, then send');return;}
   if(gwenRec){gwenRec.cancelled=true;gwenRec.abort();return;}
   if(!gwenCfg.key){showToast('Add your Gwen key in Settings first');return;}
   gwenAudioCtx();stopGwenVoice();
   const rec=gwenRec=new SR(),inp=document.getElementById('gwen-in');let heard='';
   rec.interimResults=true;
   rec.onresult=e=>{const tx=[...e.results].map(x=>x[0].transcript).join('');inp.value=tx;if(e.results[e.results.length-1].isFinal)heard=tx;};
-  rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed')showToast('Allow the microphone to talk to Gwen');};
+  rec.onerror=e=>{rec.failed=true;showToast(e.error==='not-allowed'||e.error==='service-not-allowed'?'Allow the microphone to talk to Gwen':e.error==='no-speech'?'I didn\'t hear anything, try again':'Mic problem: '+e.error);};
   rec.onend=()=>{gwenRec=null;btn.style.background='var(--pril)';btn.style.color='var(--pri)';
-    if(!rec.cancelled&&heard.trim()){inp.value=heard;sendGwen();}else if(rec.cancelled)inp.value='';};
+    if(!rec.cancelled&&heard.trim()){inp.value=heard;sendGwen();}else if(rec.cancelled)inp.value='';else if(!rec.failed&&!inp.value.trim())showToast('I didn\'t hear anything, try again');};
   btn.style.background='#EF4444';btn.style.color='white';
   try{rec.start();}catch(e){rec.onend();}
 }
