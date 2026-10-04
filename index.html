@@ -72,6 +72,9 @@
     @keyframes slideInLeft{from{transform:translateX(-40px);opacity:0}to{transform:translateX(0);opacity:1}}
     .tab.slide-in-right{animation:slideInRight .22s cubic-bezier(.32,.72,0,1);}
     .tab.slide-in-left{animation:slideInLeft .22s cubic-bezier(.32,.72,0,1);}
+    body.gwen-calling #gwen-stage{position:fixed!important;inset:0;height:100%!important;margin:0!important;z-index:60;display:block!important;}
+    body.gwen-calling #gwen-call{display:block!important;}
+    body.gwen-calling #gwen-home{display:none!important;}
   </style>
 </head>
 <body>
@@ -180,20 +183,28 @@
         <canvas id="gwen-canvas" style="width:100%;height:100%;display:block;"></canvas>
         <div id="gwen-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;">💜 Gwen is on her way…</div>
         <div id="gwen-pop" style="position:absolute;left:50%;top:18%;font-size:30px;pointer-events:none;opacity:0;transform:translate(-50%,0);transition:opacity .25s,transform .9s ease-out;"></div>
+        <div id="gwen-call-heart" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:90px;">💜</div>
+        <div id="gwen-call" style="display:none;position:absolute;left:0;right:0;bottom:0;padding:18px 16px calc(24px + env(safe-area-inset-bottom));text-align:center;background:linear-gradient(transparent,rgba(0,0,0,.35));">
+          <div id="gwen-call-status" style="color:white;font-size:15px;margin-bottom:14px;min-height:20px;text-shadow:0 1px 3px rgba(0,0,0,.6);"></div>
+          <button onclick="gwenHangUp()" aria-label="End call" style="background:#EF4444;color:white;border:none;border-radius:50%;width:64px;height:64px;font-size:26px;cursor:pointer;">📞</button>
+        </div>
         <div id="gwen-home" style="display:none;position:absolute;left:10px;right:10px;bottom:6px;text-align:center;color:var(--sub);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
       </div>
       <div class="card" style="padding:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <div class="cl" style="margin:0;">💜 Gwen</div>
-          <div><button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
+          <div><button onclick="gwenCall()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">📞 Call</button>
+          <button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
           <button onclick="clearGwen()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">Clear chat</button></div>
         </div>
         <div id="gwen-days" style="display:none;font-size:12px;color:var(--sub);margin:-2px 0 8px;"></div>
         <div id="gwen-msgs"></div>
       </div>
+      <div id="gwen-photo" style="display:none;align-items:center;gap:8px;margin-bottom:8px;"></div>
       <div style="display:flex;gap:8px;">
         <input class="inp" id="gwen-in" placeholder="Message Gwen…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();sendGwen();}">
-        <button id="gwen-mic" onclick="gwenMic()" style="background:var(--pril);color:var(--pri);border:none;border-radius:12px;padding:0 14px;font-size:16px;cursor:pointer;flex-shrink:0;">🎤</button>
+        <label style="background:var(--pril);color:var(--pri);border-radius:12px;padding:0 12px;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;">📷<input type="file" accept="image/*" style="display:none;" onchange="gwenPickPhoto(this)"></label>
+        <button id="gwen-mic" onclick="gwenMic()" onpointerdown="gwenMicDown()" onpointerup="gwenMicUp(true)" onpointerleave="gwenMicUp(false)" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;background:var(--pril);color:var(--pri);border:none;border-radius:12px;padding:0 14px;font-size:16px;cursor:pointer;flex-shrink:0;">🎤</button>
         <button id="gwen-send" onclick="sendGwen()" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:16px;cursor:pointer;flex-shrink:0;">➤</button>
       </div>
     </div>
@@ -1310,26 +1321,40 @@ async function pcAlive(){
 async function askGwen(body){
   const opts={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
   if(await pcAlive()){
-    try{const r=await fetchT(pcUrl()+'/daytrack/chat',opts,90000);if(r.ok){const j=await r.json();if(j.text)return{text:j.text,brain:'pc'};}}catch(e){}
+    try{const r=await fetchT(pcUrl()+'/daytrack/chat',opts,90000);if(r.ok){const j=await r.json();if(j.text)return{text:j.text,brain:'pc',did:j.did};}}catch(e){}
   }
   const r=await fetchT('/.netlify/functions/gwen',opts,20000),j=await r.json().catch(()=>({}));
   return r.ok?{text:j.text,brain:'cloud'}:{error:j.error||`Error ${r.status}`};
 }
-async function sendGwen(){
-  const inp=document.getElementById('gwen-in'),text=inp.value.trim();
-  if(!text||gwenBusy)return;
-  if(!gwenCfg.key){showToast('Add your Gwen key in Settings first');return;}
-  gwenAudioCtx();stopGwenVoice();
-  inp.value='';gwenChat.push({role:'user',content:text});gwenBusy=true;renderGwen();
+// said: words from the mic or a call instead of the text box; voice: he sent a voice note (seconds)
+async function sendGwen(opts={}){
+  const inp=document.getElementById('gwen-in'),text=(opts.said??inp.value).trim(),image=gwenPhoto;
+  if((!text&&!image)||gwenBusy)return null;
+  if(!gwenCfg.key){showToast('Add your Gwen key in Settings first');return null;}
+  gwenAudioCtx();if(!g3.call)stopGwenVoice();
+  if(opts.said===undefined)inp.value='';
+  const msg={role:'user',content:text||'📷 (photo)'};
+  if(opts.voice)msg.voice=opts.voice;
+  if(image){msg.thumb=gwenPhotoThumb;gwenPhoto=gwenPhotoThumb=null;renderGwenPhoto();}
+  gwenChat.push(msg);gwenBusy=true;renderGwen();
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
-  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':'Could not reach Gwen'};}
+  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':'Could not reach Gwen'};}
   gwenBusy=false;
-  if(res.text){const{clean,added}=applyGwenActions(res.text);gwenChat.push({role:'assistant',content:clean||'👍',brain:res.brain,added});if(clean){gwenGesture(gwenPickGesture(clean));gwenSpeak(clean,res.brain==='pc');}}
+  let out=null;
+  if(res.text){
+    const{clean,added}=applyGwenActions(res.text);
+    out={role:'assistant',content:clean||'👍',brain:res.brain,added};
+    if(Array.isArray(res.did)&&res.did.length)out.did=res.did.slice(0,5).map(d=>String(d).slice(0,120));
+    if(opts.voice)out.voice=true; // a voice note gets one back
+    gwenChat.push(out);
+    if(clean){gwenGesture(gwenPickGesture(clean));if(!g3.call)gwenSpeak(clean,res.brain==='pc',!!opts.voice);}
+  }
   else gwenChat.push({role:'assistant',content:res.error||'No answer',error:true});
   gwenChat=gwenChat.slice(-60);
   try{localStorage.setItem('dt_gwen_chat',JSON.stringify(gwenChat));}catch(e){}
   renderGwen();
+  return out;
 }
 function renderGwen(){
   const el=document.getElementById('gwen-msgs');if(!el)return;
@@ -1337,9 +1362,14 @@ function renderGwen(){
     const me=m.role==='user',hear=!me&&!m.error;
     const bg=me?'var(--pri)':m.error?'#FEE2E2':'var(--inp)',fg=me?'white':m.error?'#991B1B':'var(--txt)';
     const tag=me||m.error?'':`<div style="font-size:10px;color:var(--sub);margin-top:3px;">${m.first?'💌 she messaged you':m.brain==='pc'?'💻 from your PC':'☁️ from the cloud'} · 🔊 tap to hear</div>`;
+    const secs=me?m.voice:Math.max(1,Math.round(m.content.length/14));
+    const body=(m.thumb?`<img src="${m.thumb}" alt="photo" style="display:block;max-width:180px;border-radius:11px;${m.content==='📷 (photo)'?'':'margin-bottom:6px;'}">`:'')
+      +(m.voice?`<div style="display:flex;align-items:center;gap:8px;"><span>${me?'🎙':'▶'}</span><span style="letter-spacing:1px;opacity:.75;">▂▅▇▅▃▆▂▅▃▇▂▅</span><span style="font-size:12px;">${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}</span></div><div style="font-size:12px;opacity:.75;margin-top:4px;">${esc(m.content)}</div>`
+        :m.thumb&&m.content==='📷 (photo)'?'':esc(m.content));
+    const did=(m.did||[]).map(d=>`<div style="font-size:12px;color:var(--sub);margin-top:4px;">💻 ${esc(d)}</div>`).join('');
     const adds=(m.added||[]).map(a=>`<div style="font-size:12px;color:var(--grntxt);background:var(--grnl);border-radius:9px;padding:4px 9px;margin-top:5px;">📝 Added: ${esc(a)}</div>`).join('');
     return `<div style="display:flex;flex-direction:column;align-items:${me?'flex-end':'flex-start'};margin-bottom:9px;">
-      <div ${hear?`onclick="gwenSay(${i})" `:''}style="${hear?'cursor:pointer;':''}max-width:82%;background:${bg};color:${fg};padding:9px 12px;border-radius:16px;${me?'border-bottom-right-radius:5px':'border-bottom-left-radius:5px'};font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;">${esc(m.content)}</div>${adds}${tag}</div>`;
+      <div ${hear?`onclick="gwenSay(${i})" `:''}style="${hear?'cursor:pointer;':''}max-width:82%;background:${bg};color:${fg};padding:9px 12px;border-radius:16px;${me?'border-bottom-right-radius:5px':'border-bottom-left-radius:5px'};font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;">${body}</div>${did}${adds}${tag}</div>`;
   };
   el.innerHTML=(gwenChat.length?gwenChat.map(bubble).join(''):`<div style="text-align:center;padding:30px 10px;color:var(--sub);font-size:14px;"><div style="font-size:42px;margin-bottom:10px;">💜</div>${gwenCfg.key?'Say hi to Gwen. She can see your day and add tasks for you.':'Add your Gwen key in Settings to start chatting.'}</div>`)
     +(gwenBusy?`<div style="color:var(--sub);font-size:13px;padding:2px 4px;">Gwen is typing…</div>`:'');
@@ -1584,8 +1614,8 @@ async function gwenSpeak(text,fromPc,force){
         stopGwenVoice();
         const src=_actx.createBufferSource(),an=_actx.createAnalyser();
         an.fftSize=1024;src.buffer=buf;src.connect(an);an.connect(_actx.destination);
-        src.onended=()=>{if(g3.src===src)g3.src=g3.analyser=null;};
-        g3.src=src;g3.analyser=an;src.start();return;
+        g3.src=src;g3.analyser=an;src.start();
+        return new Promise(done=>{src.onended=()=>{if(g3.src===src)g3.src=g3.analyser=null;done();};});
       }
     }catch(e){}
   }
@@ -1593,7 +1623,7 @@ async function gwenSpeak(text,fromPc,force){
   const say=text.replace(/\*[^*]*\*/g,' ').replace(/\s+/g,' ').trim();if(!say)return;
   const u=new SpeechSynthesisUtterance(say),vs=speechSynthesis.getVoices().filter(v=>v.lang.startsWith('en'));
   u.voice=vs.find(v=>/female|samantha|zira|aria|jenny/i.test(v.name))||vs[0]||null;u.pitch=1.1;
-  speechSynthesis.speak(u);
+  return new Promise(done=>{u.onend=u.onerror=()=>done();speechSynthesis.speak(u);});
 }
 // Tap one of her messages to hear it, even with her voice off
 function gwenSay(i){const m=gwenChat[i];if(!m)return;gwenAudioCtx();stopGwenVoice();gwenSpeak(m.content,!!g3.ping,true);}
@@ -1632,7 +1662,9 @@ function toggleGwenVoice(){
   renderGwen();
 }
 // Tap 🎤, talk, and it sends when you stop. Tap again to cancel.
+const gwenSR=()=>!/SamsungBrowser/.test(navigator.userAgent)&&(window.SpeechRecognition||window.webkitSpeechRecognition);
 function gwenMic(){
+  if(gwenHold==='sent'){gwenHold=null;return;} // that press was a voice note
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition,btn=document.getElementById('gwen-mic');
   // Samsung Internet has the speech API but it never hears anything, so the keyboard's own mic does the job there
   if(!SR||/SamsungBrowser/.test(navigator.userAgent)){document.getElementById('gwen-in').focus();showToast('Tap the 🎤 on your keyboard to talk, then send');return;}
@@ -1647,6 +1679,107 @@ function gwenMic(){
     if(!rec.cancelled&&heard.trim()){inp.value=heard;sendGwen();}else if(rec.cancelled)inp.value='';else if(!rec.failed&&!inp.value.trim())showToast('I didn\'t hear anything, try again');};
   btn.style.background='#EF4444';btn.style.color='white';
   try{rec.start();}catch(e){rec.onend();}
+}
+
+// Hold 🎤 for a voice note (like WhatsApp): she hears it as text and answers with a voice note.
+// Slide off the button to cancel.
+let gwenHold=null;
+function gwenMicDown(){
+  if(gwenHold==='sent')gwenHold=null;
+  if(!gwenSR()||gwenRec||g3.call||!gwenCfg.key)return;
+  gwenHold=setTimeout(gwenNoteStart,350);
+}
+function gwenMicUp(send){
+  // Touch screens send pointerleave right after pointerup, so only the first one counts
+  if(gwenRec&&gwenRec.note){if(gwenRec.stopping)return;gwenRec.stopping=true;gwenHold=send?'sent':null;gwenRec.send=send;gwenRec.stop();if(!send)showToast('Voice note cancelled');}
+  else if(gwenHold!=='sent'){clearTimeout(gwenHold);gwenHold=null;}
+}
+function gwenNoteStart(){
+  const SR=gwenSR(),btn=document.getElementById('gwen-mic'),inp=document.getElementById('gwen-in');
+  gwenAudioCtx();stopGwenVoice();if(navigator.vibrate)navigator.vibrate(20);
+  const rec=gwenRec=new SR();rec.continuous=true;rec.interimResults=true;rec.note={at:Date.now(),text:''};
+  rec.onresult=e=>{rec.note.text=[...e.results].map(x=>x[0].transcript).join('');inp.value='🎙 '+rec.note.text;};
+  rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed')showToast('Allow the microphone to talk to Gwen');};
+  rec.onend=()=>{
+    gwenRec=null;btn.style.background='var(--pril)';btn.style.color='var(--pri)';inp.value='';inp.placeholder='Message Gwen…';
+    const said=rec.note.text.trim();
+    if(rec.send&&said)sendGwen({said,voice:Math.max(1,Math.round((Date.now()-rec.note.at)/1000))});
+    else if(rec.send)showToast('I didn\'t hear anything, try again');
+  };
+  btn.style.background='#EF4444';btn.style.color='white';inp.value='';inp.placeholder='🎙 Recording… let go to send';
+  try{rec.start();}catch(e){rec.onend();}
+}
+
+// Call mode: full-screen Gwen, talking back and forth hands-free until you hang up
+async function gwenCall(){
+  const SR=gwenSR();
+  if(!SR){showToast('Calls need Chrome (its speech recognition)');return;}
+  if(!gwenCfg.key){showToast('Add your Gwen key in Settings first');return;}
+  if(g3.call||gwenBusy)return;
+  if(gwenRec){gwenRec.cancelled=true;gwenRec.abort();}
+  gwenAudioCtx();stopGwenVoice();
+  const c=g3.call={quiet:0};
+  document.body.classList.add('gwen-calling');
+  try{if(navigator.wakeLock)c.lock=await navigator.wakeLock.request('screen');}catch(e){}
+  gwen3d();
+  Promise.resolve(g3.loading).then(v=>{if(g3.call!==c||v)return;document.getElementById('gwen-call-heart').style.display='flex';document.getElementById('gwen-loading').style.display='none';});
+  gwenGesture('wave');
+  gwenCallListen(c);
+}
+function gwenCallListen(c){
+  if(g3.call!==c)return;
+  const rec=c.rec=new(gwenSR())();let heard='';
+  rec.interimResults=true;
+  rec.onresult=e=>{const tx=[...e.results].map(x=>x[0].transcript).join('');gwenCallStatus(tx);if(e.results[e.results.length-1].isFinal)heard=tx;};
+  rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){showToast('Allow the microphone to call Gwen');gwenHangUp();}};
+  rec.onend=async()=>{
+    if(g3.call!==c)return;
+    if(!heard.trim()){
+      // About a minute and a half of silence ends the call
+      if(++c.quiet>=12){gwenHangUp();showToast('Call ended, I didn\'t hear you for a while');}
+      else setTimeout(()=>gwenCallListen(c),300);
+      return;
+    }
+    c.quiet=0;gwenCallStatus('💭 Gwen is thinking…');
+    const out=await sendGwen({said:heard});
+    if(g3.call!==c)return;
+    if(out&&out.content){
+      gwenCallStatus('💜 '+out.content.replace(/\*[^*]*\*/g,'').trim());
+      await Promise.race([gwenSpeak(out.content,out.brain==='pc',true),new Promise(r=>setTimeout(r,4000+out.content.length*120))]);
+    }
+    gwenCallListen(c);
+  };
+  gwenCallStatus('🎙 Listening…');
+  try{rec.start();}catch(e){setTimeout(()=>gwenCallListen(c),1000);}
+}
+function gwenHangUp(){
+  const c=g3.call;if(!c)return;
+  g3.call=null;
+  try{c.rec&&c.rec.abort();}catch(e){}
+  try{c.lock&&c.lock.release();}catch(e){}
+  stopGwenVoice();
+  document.body.classList.remove('gwen-calling');document.getElementById('gwen-call-heart').style.display='none';
+  if(!g3.vrm)document.getElementById('gwen-stage').style.display='none';
+  renderGwen();
+}
+function gwenCallStatus(t){document.getElementById('gwen-call-status').textContent=t;}
+
+// Photos: shrunk on the phone, her PC looks at it first (cloud Gwen can see it too)
+let gwenPhoto=null,gwenPhotoThumb=null;
+async function gwenPickPhoto(input){
+  const f=input.files[0];input.value='';if(!f)return;
+  try{
+    const img=await createImageBitmap(f);
+    const shrink=(max,q)=>{const k=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');
+      c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q);};
+    gwenPhoto=shrink(1024,0.85);gwenPhotoThumb=shrink(200,0.6);
+  }catch(e){showToast('Couldn\'t open that photo');return;}
+  renderGwenPhoto();document.getElementById('gwen-in').focus();
+}
+function renderGwenPhoto(){
+  const el=document.getElementById('gwen-photo');
+  el.innerHTML=gwenPhoto?`<img src="${gwenPhotoThumb}" alt="photo to send" style="height:56px;border-radius:9px;"><span style="font-size:12px;color:var(--sub);flex:1;">Add a message or just send</span><button onclick="gwenPhoto=gwenPhotoThumb=null;renderGwenPhoto()" style="background:none;border:none;color:var(--sub);font-size:18px;cursor:pointer;">✕</button>`:'';
+  el.style.display=gwenPhoto?'flex':'none';
 }
 
 // ── Mood ──────────────────────────────────────────────────────────────────────

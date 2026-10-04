@@ -41,6 +41,13 @@ const handler = async (event) => {
   while (messages.length && messages[0].role !== 'user') messages.shift();
   if (!messages.length || messages[messages.length - 1].role !== 'user') return reply(400, { error: 'Nothing to answer' });
 
+  // A photo he sent goes with his last message (shrunk to ~1024 px on the phone)
+  const photo = typeof body.image === 'string' && body.image.length < 6e6 && body.image.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=]+)$/);
+  if (photo) {
+    const last = messages[messages.length - 1];
+    last.content = [{ type: 'image', source: { type: 'base64', media_type: photo[1], data: photo[2] } }, { type: 'text', text: last.content }];
+  }
+
   const system = [await gwenPersona(), String(body.context || '').slice(0, 8000)].filter(Boolean).join('\n\n');
 
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY, timeout: 8000, maxRetries: 1 }); // Netlify cuts functions off at 10 s
