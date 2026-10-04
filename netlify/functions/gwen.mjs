@@ -1,10 +1,9 @@
 import { lambda, blobStore } from '../lib/fn.mjs';
 import Anthropic from '@anthropic-ai/sdk';
+import { gwenPersona } from '../lib/gwen.mjs';
 
 // Cloud Gwen: answers in the app when Gwen's PC doesn't. Her PC uploads her real
-// persona and recent memories here ({key, persona, memory}); until then a short default is used.
-const DEFAULT_PERSONA = `You are Gwen, Rayan's AI companion. You normally live on his PC; right now you're answering from the cloud because his PC is off or away.
-You're warm, playful and a little teasing, and you care about how his day is going. You text like a close friend: short, natural, no lists unless he asks.`;
+// persona and recent memories here ({key, persona, memory}).
 
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return reply(405, { error: 'POST only' });
@@ -24,6 +23,14 @@ const handler = async (event) => {
     return reply(200, { ok: true });
   }
 
+  // Messages she sent first while the app was closed (keyed by the phone's push subscription)
+  if (typeof body.inbox === 'string' && body.inbox) {
+    const subs = blobStore('daytrack'), data = await subs.get(body.inbox, { type: 'json' }).catch(() => null);
+    const inbox = (data && data.gwenState && data.gwenState.inbox) || [];
+    if (inbox.length) { data.gwenState.inbox = []; await subs.setJSON(body.inbox, data); }
+    return reply(200, { messages: inbox });
+  }
+
   const messages = (Array.isArray(body.messages) ? body.messages : [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .slice(-16)
@@ -31,12 +38,7 @@ const handler = async (event) => {
   while (messages.length && messages[0].role !== 'user') messages.shift();
   if (!messages.length || messages[messages.length - 1].role !== 'user') return reply(400, { error: 'Nothing to answer' });
 
-  const saved = await store.get('persona', { type: 'json' }).catch(e => { console.error('Persona read failed:', e.message); return null; });
-  const system = [
-    (saved && saved.text) || DEFAULT_PERSONA,
-    saved && saved.memory ? `Things you remember about Rayan:\n${saved.memory}` : '',
-    String(body.context || '').slice(0, 8000),
-  ].filter(Boolean).join('\n\n');
+  const system = [await gwenPersona(), String(body.context || '').slice(0, 8000)].filter(Boolean).join('\n\n');
 
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY, timeout: 8000, maxRetries: 1 }); // Netlify cuts functions off at 10 s
   try {

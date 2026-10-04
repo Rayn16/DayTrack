@@ -238,6 +238,7 @@
         <input class="inp" id="gwen-key" type="password" placeholder="Same as GWEN_KEY in Netlify" onchange="saveGwenCfg()">
         <div class="sl">PC address (optional)</div>
         <input class="inp" id="gwen-pc" type="url" placeholder="https://your-pc.your-tailnet.ts.net" onchange="saveGwenCfg()">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--txt);"><input type="checkbox" id="gwen-first" checked onchange="saveGwenCfg()">She can message me first (needs notifications on)</label>
         <button onclick="testGwen()" style="margin-top:10px;width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Check connection</button>
         <div id="gwen-test" style="font-size:12px;color:var(--sub);margin-top:8px;text-align:center;"></div>
       </div>
@@ -445,7 +446,7 @@
     <!-- Gwen -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">💜 Gwen</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Chat with Gwen about your day. She sees today's tasks, what's coming up, your streak and your mood. Ask her to add a task or remind you and it shows up in your list. Tap 🎤 to talk to her out loud; she answers in her voice (🔊 in the chat turns it off). She answers from your PC when it's on (💻) and from the cloud when it isn't (☁️). Set her up in Settings.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Chat with Gwen about your day. She sees today's tasks, what's coming up, your streak and your mood. Ask her to add a task or remind you and it shows up in your list. Tap 🎤 to talk to her out loud; she answers in her voice (🔊 in the chat turns it off). She also messages you first: a morning hello and an evening nudge if something's left, even with the app closed. She answers from your PC when it's on (💻) and from the cloud when it isn't (☁️). Set her up in Settings.</div>
     </div>
 
     <!-- Settings -->
@@ -590,9 +591,12 @@ async function syncReminders(){
     const reg=await navigator.serviceWorker.ready;
     const sub=await reg.pushManager.getSubscription();
     if(!sub)return;
+    const w=new Date();w.setDate(w.getDate()-7);const weekAgo=toDateStr(w);
     await fetch('/.netlify/functions/save-reminder',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({subscription:sub,tasks:tasks.filter(t=>t.reminder),completedDays,quiet,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})
+      // All tasks so Gwen knows what's left (recent days only for repeating ones), plus a week of moods
+      body:JSON.stringify({subscription:sub,tasks:tasks.map(t=>t.recurring?{...t,done:t.done.filter(d=>d>=weekAgo)}:t),completedDays,quiet,
+        tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo))})
     });
   }catch(e){}
 }
@@ -693,9 +697,10 @@ async function applyPendingDone(){
   try{
     const c=await caches.open('dt-actions');let n=0;
     for(const req of await c.keys()){
-      const m=new URL(req.url).pathname.match(/__done\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/);
-      const t=m&&tasks.find(x=>x.id===m[1]);
-      if(t&&!t.done.includes(m[2])){t.done.push(m[2]);n++;}
+      const m=new URL(req.url).pathname.match(/__(done|move)\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/);
+      const t=m&&tasks.find(x=>x.id===m[2]);
+      if(t&&m[1]==='done'&&!t.done.includes(m[3])){t.done.push(m[3]);n++;}
+      if(t&&m[1]==='move'&&!t.recurring&&!t.done.length){t.date=m[3];n++;} // Tomorrow on Gwen's nudge
       await c.delete(req);
     }
     if(n){updateStreakAfterCheck();save();renderTaskList();}
@@ -816,10 +821,11 @@ function boot(){
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   buildEmoGrid();renderTaskList();renderMood();renderTimerTab();renderCal();renderSyncUI();renderQuiet();
   applyPendingDone();
-  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;renderGwen();
+  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;renderGwen();
+  pullGwenInbox();if(new URLSearchParams(location.search).get('tab')==='gwen')switchTab('gwen');
   if(syncCode)pullSync();
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();gwen3d();});
-  if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='dt-actions')applyPendingDone();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();gwen3d();pullGwenInbox();});
+  if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='dt-actions')applyPendingDone();if(e.data==='gwen-open'){switchTab('gwen');pullGwenInbox();}});
   setInterval(()=>{sesItems.forEach(it=>{if(!it.running)return;const el=document.getElementById('td-'+it.id);if(el)el.textContent=fDur(it.accum+(Date.now()-it.startedAt),true);});},500);
   setInterval(checkNotifs,30000);
   if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});setTimeout(checkPushStatus,1500);}
@@ -1307,7 +1313,7 @@ function renderGwen(){
   const bubble=(m)=>{
     const me=m.role==='user';
     const bg=me?'var(--pri)':m.error?'#FEE2E2':'var(--inp)',fg=me?'white':m.error?'#991B1B':'var(--txt)';
-    const tag=me||m.error?'':`<div style="font-size:10px;color:var(--sub);margin-top:3px;">${m.brain==='pc'?'💻 from your PC':'☁️ from the cloud'}</div>`;
+    const tag=me||m.error?'':`<div style="font-size:10px;color:var(--sub);margin-top:3px;">${m.first?'💌 she messaged you':m.brain==='pc'?'💻 from your PC':'☁️ from the cloud'}</div>`;
     const adds=(m.added||[]).map(a=>`<div style="font-size:12px;color:var(--grntxt);background:var(--grnl);border-radius:9px;padding:4px 9px;margin-top:5px;">📝 Added: ${esc(a)}</div>`).join('');
     return `<div style="display:flex;flex-direction:column;align-items:${me?'flex-end':'flex-start'};margin-bottom:9px;">
       <div style="max-width:82%;background:${bg};color:${fg};padding:9px 12px;border-radius:16px;${me?'border-bottom-right-radius:5px':'border-bottom-left-radius:5px'};font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;">${esc(m.content)}</div>${adds}${tag}</div>`;
@@ -1318,10 +1324,23 @@ function renderGwen(){
   document.getElementById('gwen-voice').textContent=gwenMute?'🔇 Voice off':'🔊 Voice on';
   const main=document.getElementById('main');if(document.getElementById('tab-gwen').classList.contains('on'))main.scrollTop=main.scrollHeight;
 }
+// Messages she sent as notifications while the app was closed
+async function pullGwenInbox(){
+  try{
+    if(!gwenCfg.key||!('serviceWorker' in navigator))return;
+    const sub=await(await navigator.serviceWorker.ready).pushManager.getSubscription();if(!sub)return;
+    const r=await fetchT('/.netlify/functions/gwen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:gwenCfg.key,inbox:sub.toJSON().keys.auth})},10000);
+    const{messages}=await r.json();if(!messages||!messages.length)return;
+    messages.forEach(m=>gwenChat.push({role:'assistant',content:m.text,brain:'cloud',first:true}));
+    gwenChat=gwenChat.slice(-60);try{localStorage.setItem('dt_gwen_chat',JSON.stringify(gwenChat));}catch(e){}
+    renderGwen();
+  }catch(e){}
+}
 function clearGwen(){if(!gwenChat.length||!confirm('Clear the chat with Gwen?'))return;gwenChat=[];try{localStorage.removeItem('dt_gwen_chat');}catch(e){}renderGwen();}
 function saveGwenCfg(){
-  gwenCfg={key:document.getElementById('gwen-key').value.trim(),pc:document.getElementById('gwen-pc').value.trim()};
+  gwenCfg={key:document.getElementById('gwen-key').value.trim(),pc:document.getElementById('gwen-pc').value.trim(),first:document.getElementById('gwen-first').checked};
   try{localStorage.setItem('dt_gwen_cfg',JSON.stringify(gwenCfg));}catch(e){}
+  syncReminders();
   renderGwen();
 }
 async function testGwen(){
