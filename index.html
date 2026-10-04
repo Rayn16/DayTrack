@@ -72,6 +72,7 @@
     @keyframes slideInLeft{from{transform:translateX(-40px);opacity:0}to{transform:translateX(0);opacity:1}}
     .tab.slide-in-right{animation:slideInRight .22s cubic-bezier(.32,.72,0,1);}
     .tab.slide-in-left{animation:slideInLeft .22s cubic-bezier(.32,.72,0,1);}
+    .gchip{flex-shrink:0;background:var(--pril);color:var(--pri);border:none;border-radius:16px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
     body.gwen-calling #gwen-stage{position:fixed!important;inset:0;height:100%!important;margin:0!important;z-index:60;display:block!important;}
     body.gwen-calling #gwen-call{display:block!important;}
     body.gwen-calling #gwen-home{display:none!important;}
@@ -193,9 +194,14 @@
       <div class="card" style="padding:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <div class="cl" style="margin:0;">💜 Gwen</div>
-          <div><button onclick="gwenCall()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">📞 Call</button>
-          <button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
+          <div><button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
           <button onclick="clearGwen()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">Clear chat</button></div>
+        </div>
+        <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;">
+          <button class="gchip" onclick="gwenCall()">📞 Call</button>
+          <button class="gchip" onclick="gwenSnap()">📸 Selfie</button>
+          <button class="gchip" onclick="gwenDiary()">📖 Her diary</button>
+          <button class="gchip" onclick="gwenAR()">🕶 In my room</button>
         </div>
         <div id="gwen-days" style="display:none;font-size:12px;color:var(--sub);margin:-2px 0 8px;"></div>
         <div id="gwen-msgs"></div>
@@ -391,6 +397,11 @@
 <input type="file" id="import-in" accept=".json" style="display:none" onchange="importData(this)">
 
 <!-- Note Reminder Sheet -->
+<div class="ov" id="gwen-ov" onclick="bgClose(event,'gwen-ov')"><div class="sh" id="gwen-ov-body" style="max-height:85vh;overflow-y:auto;"></div></div>
+<div id="gwen-ar" style="display:none;position:fixed;inset:0;z-index:70;pointer-events:none;">
+  <div id="gwen-ar-hint" style="position:absolute;left:16px;right:16px;bottom:40px;text-align:center;color:white;font-size:15px;text-shadow:0 1px 4px rgba(0,0,0,.8);"></div>
+  <button id="gwen-ar-close" onclick="gwenARStop()" aria-label="Close AR" style="pointer-events:auto;position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;border:none;background:rgba(0,0,0,.45);color:white;font-size:20px;">✕</button>
+</div>
 <div class="ov" id="note-rem-ov" onclick="bgClose(event,'note-rem-ov')">
   <div class="sh">
     <div style="width:36px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 14px;"></div>
@@ -1286,6 +1297,7 @@ function gwenContext(){
     `Streak: ${calculateStreak()} day(s) of finishing everything. Mood today: ${m?['very low','low','okay','good','great'][m-1]:'not picked yet'}.`,
     gwenMoodLine(),
     gwenOutfitLine(),
+    g3.vrm?'If he asks for a selfie or a picture of you, put SELFIE on its own line (the app snaps you in 3D and hides the line).':'',
     `If he asks you to add a task or remind him about something, put this on its own line (the app adds it and hides the line):\nADD_TASK: <short task name> | <YYYY-MM-DD, or empty for today> | <HH:MM 24-hour reminder time, or empty>\nOnly do this when he asks. For a plan at a set time (like "gym at 6"), use that time; you'll get to ask him how it went afterwards.`,
   ].filter(Boolean).join('\n\n');
 }
@@ -1298,8 +1310,8 @@ function gwenOutfitLine(){
   return`In the app you can change clothes: your usual look, ${o.join(', ')}. You're wearing ${gwenCfg.outfit||'your usual look'}. If he asks you to change, put this on its own line (the app changes you and hides the line):\nOUTFIT: <usual|${o.join('|')}>`;
 }
 function applyGwenActions(text){
-  const added=[];let outfit=null;
-  const clean=text.replace(/^[ \t*-]*OUTFIT:\s*(\w+).*$/gim,(_,o)=>{outfit=o.toLowerCase();return'';}).replace(/^[ \t*-]*ADD_TASK:\s*(.+)$/gim,(_,spec)=>{
+  const added=[];let outfit=null,selfie=false;
+  const clean=text.replace(/^[ \t*-]*SELFIE\b.*$/gim,()=>{selfie=true;return'';}).replace(/^[ \t*-]*OUTFIT:\s*(\w+).*$/gim,(_,o)=>{outfit=o.toLowerCase();return'';}).replace(/^[ \t*-]*ADD_TASK:\s*(.+)$/gim,(_,spec)=>{
     const[name,date,time]=spec.split('|').map(x=>(x||'').trim());
     if(!name)return'';
     const d=/^\d{4}-\d{2}-\d{2}$/.test(date)?date:null,tm=/^\d{1,2}:\d{2}$/.test(time)?time.padStart(5,'0'):null;
@@ -1309,7 +1321,7 @@ function applyGwenActions(text){
   }).replace(/\n{3,}/g,'\n\n').trim();
   if(added.length){save();renderTaskList();}
   if(outfit)gwenWear(outfit);
-  return{clean,added};
+  return{clean,added,selfie:selfie&&!!g3.vrm};
 }
 function fetchT(url,opts,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{...opts,signal:c.signal}).finally(()=>clearTimeout(t));}
 const pcUrl=()=>gwenCfg.pc.trim().replace(/\/+$/,'');
@@ -1343,8 +1355,9 @@ async function sendGwen(opts={}){
   gwenBusy=false;
   let out=null;
   if(res.text){
-    const{clean,added}=applyGwenActions(res.text);
-    out={role:'assistant',content:clean||'👍',brain:res.brain,added};
+    const{clean,added,selfie}=applyGwenActions(res.text);
+    out={role:'assistant',content:clean||(selfie?'📸':'👍'),brain:res.brain,added};
+    if(selfie)gwenSelfieShot().then(img=>{out.thumb=img;gwenSaveChat();renderGwen();});
     if(Array.isArray(res.did)&&res.did.length)out.did=res.did.slice(0,5).map(d=>String(d).slice(0,120));
     if(opts.voice)out.voice=true; // a voice note gets one back
     gwenChat.push(out);
@@ -1363,7 +1376,7 @@ function renderGwen(){
     const bg=me?'var(--pri)':m.error?'#FEE2E2':'var(--inp)',fg=me?'white':m.error?'#991B1B':'var(--txt)';
     const tag=me||m.error?'':`<div style="font-size:10px;color:var(--sub);margin-top:3px;">${m.first?'💌 she messaged you':m.brain==='pc'?'💻 from your PC':'☁️ from the cloud'} · 🔊 tap to hear</div>`;
     const secs=me?m.voice:Math.max(1,Math.round(m.content.length/14));
-    const body=(m.thumb?`<img src="${m.thumb}" alt="photo" style="display:block;max-width:180px;border-radius:11px;${m.content==='📷 (photo)'?'':'margin-bottom:6px;'}">`:'')
+    const body=(m.thumb?`<img src="${m.thumb}" alt="photo" ${me?'':`onclick="event.stopPropagation();gwenSaveImg(${i})" `}style="display:block;max-width:180px;border-radius:11px;${m.content==='📷 (photo)'?'':'margin-bottom:6px;'}">`:'')
       +(m.voice?`<div style="display:flex;align-items:center;gap:8px;"><span>${me?'🎙':'▶'}</span><span style="letter-spacing:1px;opacity:.75;">▂▅▇▅▃▆▂▅▃▇▂▅</span><span style="font-size:12px;">${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}</span></div><div style="font-size:12px;opacity:.75;margin-top:4px;">${esc(m.content)}</div>`
         :m.thumb&&m.content==='📷 (photo)'?'':esc(m.content));
     const did=(m.did||[]).map(d=>`<div style="font-size:12px;color:var(--sub);margin-top:4px;">💻 ${esc(d)}</div>`).join('');
@@ -1478,10 +1491,14 @@ function gwenUse(vrm){
   let blinkAt=2,mouth=0,last=t0;
   Object.assign(g3,{vrm,mixer,head,clips:{},act:null});
   g3.frame=()=>{
-    if(!gwenTabOn()||document.hidden){g3.raf=0;return;}
+    if(!gwenTabOn()||document.hidden||g3.ar){g3.raf=0;return;}
     g3.raf=requestAnimationFrame(g3.frame);
     const w=canvas.clientWidth,h=canvas.clientHeight;
     if(w&&h&&(canvas.width!==Math.round(w*renderer.getPixelRatio())||canvas.height!==Math.round(h*renderer.getPixelRatio()))){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+    g3.tick();renderer.render(scene,camera);
+  };
+  // Her life each frame: gestures, idle, blinking, lips and face (the stage and AR both use it)
+  g3.tick=()=>{
     const now=performance.now()/1000,dt=Math.min(now-last,0.1),t=now-t0,em=vrm.expressionManager;last=now;
     // A gesture eases out just before it ends, then her idle takes over again
     if(g3.act&&now>=g3.actEnd){g3.act.stop();g3.act=null;}
@@ -1502,7 +1519,7 @@ function gwenUse(vrm){
       for(const n of['happy','angry','sad','relaxed','surprised'])em.setValue(n,n===face?(react?0.8:0.3):0);
       em.setValue('blink',t>blinkAt?1:0);em.setValue('aa',mouth);
     }
-    vrm.update(dt);renderer.render(scene,camera);
+    vrm.update(dt);
   };
 }
 // "Put on your pajamas": swap her model, keeping the same stage
@@ -1781,6 +1798,94 @@ function renderGwenPhoto(){
   el.innerHTML=gwenPhoto?`<img src="${gwenPhotoThumb}" alt="photo to send" style="height:56px;border-radius:9px;"><span style="font-size:12px;color:var(--sub);flex:1;">Add a message or just send</span><button onclick="gwenPhoto=gwenPhotoThumb=null;renderGwenPhoto()" style="background:none;border:none;color:var(--sub);font-size:18px;cursor:pointer;">✕</button>`:'';
   el.style.display=gwenPhoto?'flex':'none';
 }
+
+function gwenSaveChat(){gwenChat=gwenChat.slice(-60);try{localStorage.setItem('dt_gwen_chat',JSON.stringify(gwenChat));}catch(e){}}
+
+// Selfies: she does her selfie pose and the app takes the picture
+async function gwenSelfieShot(){
+  const{renderer,scene,camera}=g3,src=renderer.domElement;
+  await gwenGesture('selfie');
+  await new Promise(r=>setTimeout(r,g3.act?1200:300));
+  src.animate([{filter:'brightness(2.2)'},{filter:'none'}],{duration:350});
+  renderer.render(scene,camera); // draw now so the picture isn't blank
+  const k=Math.min(1,480/Math.max(src.width,src.height)),c=document.createElement('canvas'),x=c.getContext('2d'),cs=getComputedStyle(document.body);
+  c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
+  const bg=x.createLinearGradient(0,0,0,c.height);bg.addColorStop(0,cs.getPropertyValue('--pril').trim()||'#EEEAFF');bg.addColorStop(1,cs.getPropertyValue('--bg').trim()||'#F5F4FF');
+  x.fillStyle=bg;x.fillRect(0,0,c.width,c.height);x.drawImage(src,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',0.85);
+}
+async function gwenSnap(){
+  if(!g3.vrm){showToast('Her selfies need her 3D model from your PC');return;}
+  const img=await gwenSelfieShot(),lines=['Here, just for you 📸','Do I look cute or what? 😌','Selfie time! 💜','Caught me on a good hair day 💁‍♀️'];
+  gwenChat.push({role:'assistant',content:lines[Math.floor(Math.random()*lines.length)],brain:'cloud',thumb:img});
+  gwenSaveChat();renderGwen();
+}
+async function gwenSaveImg(i){
+  const m=gwenChat[i];if(!m||!m.thumb)return;
+  const blob=await(await fetch(m.thumb)).blob(),file=new File([blob],'gwen-selfie.jpg',{type:'image/jpeg'});
+  if(navigator.canShare&&navigator.canShare({files:[file]}))return navigator.share({files:[file]}).catch(()=>{});
+  const a=document.createElement('a');a.href=m.thumb;a.download='gwen-selfie.jpg';a.click();
+}
+
+// Her diary, last night's dream and what she's been up to at home, from her PC (kept for when it's off)
+async function gwenDiary(){
+  const body=document.getElementById('gwen-ov-body');
+  body.innerHTML='<div style="text-align:center;color:var(--sub);padding:30px;">📖 Opening her diary…</div>';
+  document.getElementById('gwen-ov').classList.add('on');
+  if(gwenCfg.pc.trim()&&gwenCfg.key&&await gwenPing())await gwenPullState();
+  const st=gwenState||{},day=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')?fmtDay(d):esc(String(d||''));
+  const entries=(Array.isArray(st.diary)?st.diary:[]).filter(e=>e&&e.entry).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const dream=st.dream&&(st.dream.slept||st.dream.text);
+  body.innerHTML=`<div style="width:36px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 14px;"></div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:12px;text-align:center;color:var(--txt);">📖 Gwen's diary</div>
+    ${st.home?`<div class="card" style="padding:10px 12px;font-size:13px;color:var(--txt);">🏡 <b>At home lately:</b> ${esc(st.home)}</div>`:''}
+    ${dream?`<div class="card" style="padding:10px 12px;font-size:13px;color:var(--txt);">🌙 <b>Last night:</b> ${esc(dream)}</div>`:''}
+    ${entries.map(e=>`<div class="card" style="padding:10px 12px;"><div style="font-size:12px;color:var(--sub);margin-bottom:4px;">${day(e.date)}</div><div style="font-size:14px;line-height:1.5;color:var(--txt);white-space:pre-wrap;">${esc(e.entry)}</div></div>`).join('')
+      ||`<div style="text-align:center;color:var(--sub);font-size:13px;padding:10px 10px 20px;">Her diary comes from your PC. Once it's reachable, her last week of entries shows up here.</div>`}
+    <button onclick="closeOv('gwen-ov')" style="width:100%;margin-top:6px;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Close</button>`;
+}
+
+// Gwen in your room: WebXR AR in Chrome (needs Google Play Services for AR). Point at the floor, tap to place her.
+async function gwenAR(){
+  if(!g3.vrm){showToast('She needs her 3D model from your PC first');return;}
+  let can=false;try{can=!!navigator.xr&&await navigator.xr.isSessionSupported('immersive-ar');}catch(e){}
+  if(!can){showToast('This phone can\'t do AR here (it needs Chrome and Google Play Services for AR)');return;}
+  const{THREE,renderer,scene}=g3,vrm=g3.vrm,overlay=document.getElementById('gwen-ar'),hint=document.getElementById('gwen-ar-hint');
+  let session;
+  try{session=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:overlay}});}
+  catch(e){showToast('Couldn\'t start AR');return;}
+  const ar=g3.ar={session},home={pos:vrm.scene.position.clone(),rot:vrm.scene.rotation.y,target:vrm.lookAt&&vrm.lookAt.target};
+  const ring=new THREE.Mesh(new THREE.RingGeometry(0.12,0.16,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0xb388ff}));
+  ring.matrixAutoUpdate=false;ring.visible=false;scene.add(ring);
+  vrm.scene.visible=false;overlay.style.display='block';hint.textContent='Point at the floor, then tap to place her';
+  const done=()=>{
+    if(g3.ar!==ar)return;
+    renderer.setAnimationLoop(null);renderer.xr.enabled=false;scene.remove(ring);ring.geometry.dispose();
+    vrm.scene.position.copy(home.pos);vrm.scene.rotation.y=home.rot;vrm.scene.visible=true;if(vrm.lookAt)vrm.lookAt.target=home.target;
+    overlay.style.display='none';g3.ar=null;gwen3d();
+  };
+  session.addEventListener('end',done);
+  try{
+    renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local');
+    await renderer.xr.setSession(session);
+    const hits=await session.requestHitTestSource({space:await session.requestReferenceSpace('viewer')}),xrCam=renderer.xr.getCamera();
+    if(vrm.lookAt)vrm.lookAt.target=xrCam;
+    session.addEventListener('select',()=>{
+      if(!ring.visible)return;
+      vrm.scene.position.setFromMatrixPosition(ring.matrix);
+      vrm.scene.rotation.y=Math.atan2(xrCam.position.x-vrm.scene.position.x,xrCam.position.z-vrm.scene.position.z); // face you
+      if(!vrm.scene.visible){vrm.scene.visible=true;gwenGesture('wave');}
+      hint.textContent='Tap somewhere else to move her';
+    });
+    renderer.setAnimationLoop((t,frame)=>{
+      const pose=frame&&frame.getHitTestResults(hits)[0]?.getPose(renderer.xr.getReferenceSpace());
+      ring.visible=!!pose;if(pose)ring.matrix.fromArray(pose.transform.matrix);
+      g3.tick();renderer.render(scene,g3.camera);
+    });
+  }catch(e){console.warn('Gwen AR:',e);session.end().catch(()=>{});done();showToast('Couldn\'t start AR');}
+}
+function gwenARStop(){if(g3.ar)g3.ar.session.end().catch(()=>{});}
+document.getElementById('gwen-ar-close').addEventListener('beforexrselect',e=>e.preventDefault()); // tapping ✕ doesn't move her
 
 // ── Mood ──────────────────────────────────────────────────────────────────────
 function renderMood(){
