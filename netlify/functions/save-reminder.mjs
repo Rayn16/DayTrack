@@ -3,7 +3,7 @@ import { lambda, blobStore } from '../lib/fn.mjs';
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405 };
   try {
-    const { subscription, tasks, completedDays, tz, quiet, gwen, moods } = JSON.parse(event.body);
+    const { subscription, tasks, completedDays, tz, quiet, gwen, moods, gwenWake, gwenBed, gwenCheered } = JSON.parse(event.body);
     if (!subscription || !subscription.keys || !subscription.keys.auth) {
       console.log('Missing subscription or keys');
       return { statusCode: 400, body: 'Missing subscription' };
@@ -16,10 +16,12 @@ const handler = async (event) => {
     const merged = tasks.map(t => {
       const p = prev[t.id];
       if (!p || JSON.stringify(p.reminder) !== JSON.stringify(t.reminder)) return t;
-      return { ...t, lastFiredDate: p.lastFiredDate, lastFiredMs: p.lastFiredMs, snoozeUntil: p.snoozeUntil };
+      return { ...t, lastFiredDate: p.lastFiredDate, lastFiredMs: p.lastFiredMs, snoozeUntil: p.snoozeUntil, followed: p.followed };
     });
     // ...old keeps what only the server tracks (weekly summary, Gwen's messages)
-    await store.setJSON(key, { ...old, subscription, tasks: merged, completedDays: completedDays || [], tz: tz || old.tz, quiet: quiet || old.quiet, gwen: !!gwen, moods: moods || {} });
+    await store.setJSON(key, { ...old, subscription, tasks: merged, completedDays: completedDays || [], tz: tz || old.tz, quiet: quiet || old.quiet, gwen: !!gwen, moods: moods || {},
+      // Gwen's wake-up and bedtime messages, and the day she already cheered him in the app
+      gwenWake: hhmm(gwenWake), gwenBed: hhmm(gwenBed), gwenCheered: /^\d{4}-\d{2}-\d{2}$/.test(gwenCheered || '') ? gwenCheered : null });
     console.log(`Saved subscription key=${key.slice(0,8)}... tasks=${tasks.length} tz=${tz}`);
     // The push service said this phone's subscription expired: tell the app to make a new one
     const gone = !!(old.subscription && old.subscription.gone && old.subscription.endpoint === subscription.endpoint);
@@ -29,4 +31,5 @@ const handler = async (event) => {
     return { statusCode: 500, body: e.message };
   }
 };
+const hhmm = v => /^\d{2}:\d{2}$/.test(v || '') ? v : null;
 export default lambda(handler);

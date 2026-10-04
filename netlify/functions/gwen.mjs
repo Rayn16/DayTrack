@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { gwenPersona } from '../lib/gwen.mjs';
 
 // Cloud Gwen: answers in the app when Gwen's PC doesn't. Her PC uploads her real
-// persona and recent memories here ({key, persona, memory}).
+// persona, recent memories and notes here ({key, persona, memory, notes: {dream, plans, dates, diary}}).
 
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return reply(405, { error: 'POST only' });
@@ -18,7 +18,10 @@ const handler = async (event) => {
   const store = blobStore('daytrack-gwen');
 
   if (typeof body.persona === 'string') {
-    try { await store.setJSON('persona', { text: body.persona.slice(0, 20000), memory: String(body.memory || '').slice(0, 20000), updatedAt: Date.now() }); }
+    // Notes only come when they changed, so keep the last ones otherwise
+    const fresh = body.notes && typeof body.notes === 'object' && JSON.stringify(body.notes).length < 50000;
+    const notes = fresh ? body.notes : ((await store.get('persona', { type: 'json' }).catch(() => null)) || {}).notes || {};
+    try { await store.setJSON('persona', { text: body.persona.slice(0, 20000), memory: String(body.memory || '').slice(0, 20000), notes, updatedAt: Date.now() }); }
     catch (e) { console.error('Persona save failed:', e.message); return reply(500, { error: 'Could not save persona' }); }
     return reply(200, { ok: true });
   }
