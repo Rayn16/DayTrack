@@ -1,0 +1,49 @@
+// DayTrack as an installable Android app: a Trusted Web Activity that opens
+// https://yasuomain.netlify.app in Chrome without the browser bar, so the site
+// stays the app and updates the moment it's published.
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.rayn16.daytrack'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.rayn16.daytrack'
+        minSdk 24
+        targetSdk 36
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
+        versionName '1.0'
+    }
+
+    // The key lives in GitHub secrets so every build can install over the last one
+    signingConfigs {
+        release {
+            storeFile file('../release.keystore')
+            storePassword System.getenv('KEYSTORE_PASSWORD')
+            keyAlias 'daytrack'
+            keyPassword System.getenv('KEYSTORE_PASSWORD')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
+}

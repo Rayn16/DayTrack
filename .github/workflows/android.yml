@@ -1,0 +1,56 @@
+# Builds the DayTrack Android app (android/) and publishes it as the "app" release,
+# so the install link stays https://github.com/Rayn16/DayTrack/releases/download/app/DayTrack.apk
+name: Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      # Pull requests only check that the app builds, signed with a throwaway key
+      - name: Throwaway signing key
+        if: github.event_name == 'pull_request'
+        run: |
+          PW=$(openssl rand -hex 16)
+          keytool -genkeypair -keystore android/release.keystore -storetype PKCS12 -alias daytrack -keyalg RSA -keysize 2048 -validity 1 -storepass "$PW" -keypass "$PW" -dname "CN=Test"
+          echo "KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+
+      # main gets the real key: the keystore is in android/ encrypted with this one password
+      - name: Signing key
+        if: github.event_name != 'pull_request'
+        env:
+          PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          openssl enc -d -aes-256-cbc -pbkdf2 -in android/release.keystore.enc -out android/release.keystore -pass env:PW
+          echo "KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: gradle -p android assembleRelease --no-daemon
+
+      - name: Publish
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk DayTrack.apk
+          gh release delete app --yes --cleanup-tag || true
+          gh release create app DayTrack.apk --title "DayTrack app" --notes "Install DayTrack.apk on your phone. Build ${{ github.run_number }}."
