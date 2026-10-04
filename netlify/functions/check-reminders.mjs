@@ -1,5 +1,7 @@
 import { lambda, blobStore } from '../lib/fn.mjs';
 import webpush from 'web-push';
+import Anthropic from '@anthropic-ai/sdk';
+import { gwenPersona } from '../lib/gwen.mjs';
 
 const handler = async () => {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
@@ -87,6 +89,23 @@ const handler = async () => {
       changed = true;
     }
 
+    // Gwen texts first: a morning hello, then an evening nudge (or a cheer if all is done). At most 2 a day.
+    if (data.gwen && !inQuiet(nowMin, data.quiet)) {
+      const g = data.gwenState = data.gwenState || {};
+      const wake = data.quiet && data.quiet.on ? toMin(data.quiet.to) : 9 * 60;
+      const slot = nowMin >= wake && nowMin < wake + 180 && g.hello !== todStr ? 'hello'
+        : nowMin >= 19 * 60 + 30 && nowMin < 22 * 60 && g.evening !== todStr ? 'evening' : null;
+      if (slot) {
+        g[slot] = todStr; // once a day, even if there was nothing to say
+        changed = true;
+        const msg = await gwenCheckin(slot, data, tasks, todStr, dow);
+        if (msg) {
+          await notify(webpush, subscription, msg.text, 'default', msg.taskId, '💜 Gwen');
+          g.inbox = [...(g.inbox || []), { text: msg.text, at: nowMs }].slice(-10);
+        }
+      }
+    }
+
     if (changed) await store.setJSON(key, { ...data, subscription, tasks });
   }
 
@@ -108,21 +127,67 @@ function localNow(tz) {
   };
 }
 
+const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+
 function inQuiet(min, q) {
   if (!q || !q.on) return false;
-  const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
   const f = toMin(q.from), t = toMin(q.to);
   return f <= t ? (min >= f && min < t) : (min >= f || min < t); // window can cross midnight
 }
 
-async function notify(webpush, subscription, body, notifStyle = 'default', taskId) {
+// What Gwen says when she texts first. Written by cloud Gwen with her persona and memories; a plain line if that fails.
+async function gwenCheckin(slot, data, tasks, tod, dow) {
+  const day = n => { const d = new Date(tod + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+  const today = tasks.filter(t => t.recurring ? !t.days || !t.days.length || t.days.includes(dow) : (t.done || []).length ? t.done.includes(tod) : !t.date || t.date <= tod);
+  const open = today.filter(t => !(t.done || []).includes(tod));
+  if (slot === 'evening' && !today.length) return null;
+  const full = new Set(data.completedDays || []);
+  let streak = 0; while (full.has(day(streak + 1))) streak++;                       // full days in a row up to yesterday
+  let ended = 0; if (!full.has(day(1))) while (full.has(day(ended + 2))) ended++;   // a streak that broke yesterday
+  const away = [1, 2, 3].every(n => !full.has(day(n))) && [...full].some(d => d >= day(14));
+  const moods = data.moods || {}, mood = moods[tod] || moods[day(1)];
+  const one = slot === 'evening' && open.length === 1 && !open[0].recurring ? open[0] : null;
+
+  const names = list => list.map(t => t.name + (!t.recurring && t.date && t.date < tod ? ' (overdue)' : '')).join(', ');
+  const facts = [
+    slot === 'hello' ? 'It is his morning. Send a good-morning text.'
+      : open.length ? `It is evening and he still has tasks left today. Send one nudge${one ? ' (he can tap Done or Tomorrow on your message)' : ''}.`
+      : 'It is evening and he finished everything today. Cheer him on.',
+    today.length ? `Today's tasks: ${names(today)}. Still to do: ${open.length ? names(open) : 'nothing'}.` : 'He has no tasks today.',
+    away ? 'He has missed his tasks for 3 days in a row: ask how he is doing instead of bringing up tasks.'
+      : ended ? `His ${ended}-day streak ended yesterday: comfort him.`
+      : streak ? `He has finished everything ${streak} day(s) in a row.` : '',
+    `His mood: ${mood ? ['very low', 'low', 'okay', 'good', 'great'][mood - 1] : 'unknown'}.`,
+  ].filter(Boolean).join('\n');
+
+  const fallback = slot === 'hello' ? `Morning 💜 ${open.length ? `${open.length} thing${open.length > 1 ? 's' : ''} on your list today. I'm rooting for you.` : 'Nothing on your list today, lucky you.'}`
+    : open.length ? `You still have ${open[0].name}${open.length > 1 ? ` and ${open.length - 1} more` : ''} left 👀 now or tomorrow?` : 'You finished everything today! Proud of you 💜';
+  let text = fallback;
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const client = new Anthropic({ timeout: 12000, maxRetries: 0 }); // scheduled functions stop at 30 s
+      const r = await client.messages.create({
+        model: 'claude-haiku-4-5', max_tokens: 200,
+        system: `${await gwenPersona()}\n\nRight now you are texting Rayan first: your message shows up as a notification from his DayTrack app, and he hasn't written to you. Write one text, at most 2 short sentences and 160 characters, no quotation marks, at most one emoji. Be playful and warm. Tease him gently only when his mood is good, great or unknown; be soft when it's low. Never guilt-trip him.`,
+        messages: [{ role: 'user', content: facts }],
+      });
+      const out = r.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().replace(/^["“]+|["”]+$/g, '');
+      if (r.stop_reason !== 'refusal' && out) text = out.slice(0, 300);
+    } catch (e) { console.error('Gwen check-in error:', e.status, e.message); }
+  }
+  return { text, taskId: one && one.id };
+}
+
+async function notify(webpush, subscription, body, notifStyle = 'default', taskId, title = '⏰ DayTrack') {
   try {
     console.log('Sending push:', body, 'style:', notifStyle);
-    const payload = JSON.stringify({ title: '⏰ DayTrack', body, notifStyle, taskId });
-    const result = await webpush.sendNotification(subscription, payload);
+    const payload = JSON.stringify({ title, body, notifStyle, taskId, gwen: title === '💜 Gwen' || undefined });
+    // High urgency so Android delivers it right away, even with the screen off
+    const result = await webpush.sendNotification(subscription, payload, { urgency: 'high' });
     console.log('Push sent, status:', result.statusCode);
   } catch (e) {
     console.error('Notify error:', e.statusCode, e.message, e.body);
+    if (e.statusCode === 404 || e.statusCode === 410) subscription.gone = true; // the phone renews it on its next save
   }
 }
 export default lambda(handler);

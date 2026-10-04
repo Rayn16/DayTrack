@@ -35,29 +35,33 @@ self.addEventListener('push', e => {
   if (style === 'vibrate' || style === 'both') opts.vibrate = [200, 100, 200, 100, 200];
   if (style === 'sound' || style === 'default' || style === 'both') {} // sound is default browser behavior
   if (style === 'vibrate') opts.silent = true; // vibrate only — suppress sound
-  if (data.taskId) {
-    opts.data = { taskId: data.taskId };
-    opts.actions = [{ action: 'done', title: '✅ Done' }, { action: 'snooze', title: '⏰ 10 min' }];
-  }
+  opts.data = { taskId: data.taskId, gwen: data.gwen };
+  if (data.taskId) opts.actions = [{ action: 'done', title: '✅ Done' }, data.gwen ? { action: 'tomorrow', title: '📅 Tomorrow' } : { action: 'snooze', title: '⏰ 10 min' }];
+  if (data.gwen) opts.tag = 'gwen';
   e.waitUntil(self.registration.showNotification(data.title, opts));
 });
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const id = e.notification.data && e.notification.data.taskId;
+  const { taskId: id, gwen } = e.notification.data || {};
   if (!id || !e.action) {
-    e.waitUntil(clients.matchAll({ type: 'window' }).then(cs => cs.length ? cs[0].focus() : clients.openWindow('./')));
+    // Gwen's messages open her chat
+    e.waitUntil(clients.matchAll({ type: 'window' }).then(cs => {
+      if (!cs.length) return clients.openWindow(gwen ? './?tab=gwen' : './');
+      if (gwen) cs[0].postMessage('gwen-open');
+      return cs[0].focus();
+    }));
     return;
   }
-  const d = new Date();
-  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const d = new Date(), date = e.action === 'tomorrow' ? ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) : ymd(d);
   e.waitUntil((async () => {
-    if (e.action === 'done') {
+    if (e.action === 'done' || e.action === 'tomorrow') {
       // The page applies this next time it's open (it can't be reached from here)
-      await (await caches.open('dt-actions')).put(`./__done/${id}/${date}`, new Response(''));
+      await (await caches.open('dt-actions')).put(`./__${e.action === 'done' ? 'done' : 'move'}/${id}/${date}`, new Response(''));
       (await clients.matchAll({ type: 'window' })).forEach(c => c.postMessage('dt-actions'));
     }
-    // Tell the reminder server so it stops (done) or comes back in 10 minutes (snooze)
+    // Tell the reminder server so it stops (done), moves it (tomorrow) or comes back in 10 minutes (snooze)
     const sub = await self.registration.pushManager.getSubscription();
     if (sub) await fetch('/.netlify/functions/reminder-action', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
