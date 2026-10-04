@@ -197,6 +197,10 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="theme-presets"></div>
       </div>
       <div class="card">
+        <div class="cl">Cloud Sync</div>
+        <div id="sync-box"></div>
+      </div>
+      <div class="card">
         <div class="cl">Data</div>
         <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -391,7 +395,7 @@
     <!-- Settings -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:16px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">⚙️ Settings</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;"><b style="color:var(--txt);">Push Notifications</b> — tap Activate to enable background reminders. <b style="color:var(--txt);">Dark Mode</b> — switch themes. <b style="color:var(--txt);">Export</b> — download a JSON backup of all your tasks, sessions, and notes. <b style="color:var(--txt);">Import</b> — restore from a backup file. Every Sunday at 8pm you'll receive a weekly recap notification.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;"><b style="color:var(--txt);">Push Notifications</b> — tap Activate to enable background reminders. <b style="color:var(--txt);">Dark Mode</b> — switch themes. <b style="color:var(--txt);">Cloud Sync</b> — back up automatically and open your data on another phone with your private code. <b style="color:var(--txt);">Export</b> — download a JSON backup of all your tasks, sessions, and notes. <b style="color:var(--txt);">Import</b> — restore from a backup file. Every Sunday at 8pm you'll receive a weekly recap notification.</div>
     </div>
 
     <button onclick="closeOv('info-ov')" style="width:100%;background:var(--pri);color:white;border:none;border-radius:13px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">Got it!</button>
@@ -503,6 +507,11 @@ let expandedTasks=new Set();
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 function save(){
+  localUpdated=Date.now();
+  writeLocal();
+  syncReminders();queueSync();
+}
+function writeLocal(){
   try{
     localStorage.setItem('dt_tasks',JSON.stringify(tasks));
     localStorage.setItem('dt_sessions',JSON.stringify(savedSessions));
@@ -511,8 +520,8 @@ function save(){
     localStorage.setItem('dt_completed',JSON.stringify(completedDays));
     localStorage.setItem('dt_theme',currentTheme);
     localStorage.setItem('dt_preset',currentPreset);
+    localStorage.setItem('dt_updated',localUpdated);
   }catch(e){}
-  syncReminders();
 }
 async function syncReminders(){
   try{
@@ -535,7 +544,71 @@ function load(){
     completedDays=JSON.parse(localStorage.getItem('dt_completed')||'[]');
     currentTheme=localStorage.getItem('dt_theme')||'purple';
     currentPreset=localStorage.getItem('dt_preset')||'default';
+    localUpdated=Number(localStorage.getItem('dt_updated'))||0;
+    syncCode=localStorage.getItem('dt_sync');
   }catch(e){tasks=[];savedSessions=[];calNotes={};completedDays=[];}
+}
+
+// ── Cloud sync ───────────────────────────────────────────────────────────────
+// Whole data set stored under a private random code; newest copy wins.
+// ponytail: last write wins per device, merge per task if two phones edit offline at once
+const SYNC_URL='/.netlify/functions/sync';
+let syncCode=null,syncReady=false,syncTimer,localUpdated=0;
+function queueSync(){if(!syncCode)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncReady?pushSync():pullSync(),1500);}
+async function pushSync(){
+  try{await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:syncCode,data:{tasks,savedSessions,calNotes,completedDays,updatedAt:localUpdated}})});}catch(e){}
+}
+async function pullSync(){
+  try{
+    const r=await fetch(SYNC_URL+'?code='+syncCode);if(!r.ok)return;
+    const d=await r.json();syncReady=true;
+    if(d&&d.updatedAt>localUpdated)applyData(d);
+    else if(!d||d.updatedAt<localUpdated)pushSync();
+  }catch(e){} // offline: try again on the next change or app open
+}
+function applyData(d){
+  tasks=d.tasks||[];savedSessions=d.savedSessions||[];calNotes=d.calNotes||{};completedDays=d.completedDays||[];
+  localUpdated=d.updatedAt;writeLocal();syncReminders();
+  renderTaskList();renderCal();renderSummary();renderPastSessions();
+}
+function startSync(){
+  syncCode=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  try{localStorage.setItem('dt_sync',syncCode);}catch(e){}
+  localUpdated=Date.now();writeLocal();
+  syncReady=true;pushSync();renderSyncUI();showToast('☁️ Cloud sync on!');
+}
+async function joinSync(){
+  const c=(prompt('Enter your sync code')||'').trim().toLowerCase();if(!c)return;
+  if(!/^[a-f0-9]{32}$/.test(c)){showToast('❌ That code doesn\'t look right');return;}
+  try{
+    const r=await fetch(SYNC_URL+'?code='+c);const d=r.ok?await r.json():null;
+    if(!d){showToast('❌ No data found for that code');return;}
+    if(!confirm('Replace the data on this phone with your cloud data?'))return;
+    syncCode=c;try{localStorage.setItem('dt_sync',c);}catch(e){}
+    syncReady=true;applyData(d);renderSyncUI();showToast('☁️ Synced!');
+  }catch(e){showToast('❌ Could not reach the server');}
+}
+function stopSync(){
+  if(!confirm('Stop syncing this phone? Your data stays here and in the cloud.'))return;
+  syncCode=null;syncReady=false;try{localStorage.removeItem('dt_sync');}catch(e){}
+  renderSyncUI();
+}
+function copySyncCode(){navigator.clipboard.writeText(syncCode).then(()=>showToast('📋 Code copied'),()=>showToast('❌ Copy failed, select it instead'));}
+function renderSyncUI(){
+  const el=document.getElementById('sync-box');if(!el)return;
+  const btn='border:none;border-radius:11px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;';
+  el.innerHTML=syncCode?`
+    <div style="font-size:12px;color:var(--sub);margin-bottom:8px;">✅ On. Use this private code to open your data on another phone. Keep it secret.</div>
+    <div style="font-family:ui-monospace,monospace;font-size:13px;background:var(--inp);border-radius:10px;padding:10px;word-break:break-all;user-select:all;color:var(--txt);margin-bottom:10px;">${syncCode}</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="copySyncCode()" style="${btn}flex:1;background:var(--pril);color:var(--pri);">📋 Copy code</button>
+      <button onclick="stopSync()" style="${btn}background:var(--inp);color:var(--sub);">Turn off</button>
+    </div>`:`
+    <div style="font-size:12px;color:var(--sub);margin-bottom:10px;">Back up automatically and use your data on another phone.</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="startSync()" style="${btn}flex:1;background:var(--pri);color:white;">☁️ Turn on</button>
+      <button onclick="joinSync()" style="${btn}background:var(--inp);border:1.5px solid var(--brd);color:var(--txt);">I have a code</button>
+    </div>`;
 }
 
 // ── Export / Import ──────────────────────────────────────────────────────────
@@ -648,7 +721,9 @@ function boot(){
   applyColorTheme(currentTheme);
   renderThemeUI();
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-  buildEmoGrid();renderTaskList();renderTimerTab();renderCal();
+  buildEmoGrid();renderTaskList();renderTimerTab();renderCal();renderSyncUI();
+  if(syncCode)pullSync();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&syncCode)pullSync();});
   setInterval(()=>{sesItems.forEach(it=>{if(!it.running)return;const el=document.getElementById('td-'+it.id);if(el)el.textContent=fDur(it.accum+(Date.now()-it.startedAt),true);});},500);
   setInterval(checkNotifs,30000);
   if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});setTimeout(checkPushStatus,1500);}
