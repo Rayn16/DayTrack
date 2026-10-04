@@ -72,6 +72,11 @@
     @keyframes slideInLeft{from{transform:translateX(-40px);opacity:0}to{transform:translateX(0);opacity:1}}
     .tab.slide-in-right{animation:slideInRight .22s cubic-bezier(.32,.72,0,1);}
     .tab.slide-in-left{animation:slideInLeft .22s cubic-bezier(.32,.72,0,1);}
+    .gg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;color:var(--txt);font-size:16px;}.gg-head button,.gg-new{background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
+    .gg-menu{display:grid;grid-template-columns:1fr 1fr;gap:10px;}.gg-menu button{background:var(--pril);color:var(--txt);border:none;border-radius:14px;padding:18px 8px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;}
+    .gg-status{text-align:center;font-size:14px;font-weight:600;color:var(--txt);margin-bottom:4px;}.gg-say{text-align:center;font-size:13px;color:var(--sub);margin-bottom:8px;}
+    .gg-board{display:grid;gap:2px;width:100%;max-width:420px;margin:0 auto 12px;box-sizing:border-box;}.gg-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;user-select:none;-webkit-user-select:none;}
+    .gg-disc{width:80%;height:80%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:inset 0 -2px 3px #0003;}.gg-dot{position:absolute;width:28%;height:28%;border-radius:50%;background:rgba(251,191,36,.75);pointer-events:none;}.gg-new{display:block;width:100%;padding:11px;font-size:14px;}
     .gchip{flex-shrink:0;background:var(--pril);color:var(--pri);border:none;border-radius:16px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
     body.gwen-calling #gwen-stage{position:fixed!important;inset:0;height:100%!important;margin:0!important;z-index:60;display:block!important;}
     body.gwen-calling #gwen-call{display:block!important;}
@@ -202,6 +207,7 @@
           <button class="gchip" onclick="gwenSnap()">📸 Selfie</button>
           <button class="gchip" onclick="gwenDiary()">📖 Her diary</button>
           <button class="gchip" onclick="gwenAR()">🕶 In my room</button>
+          <button class="gchip" onclick="gwenGames()">🎮 Games</button>
         </div>
         <div id="gwen-days" style="display:none;font-size:12px;color:var(--sub);margin:-2px 0 8px;"></div>
         <div id="gwen-msgs"></div>
@@ -1843,6 +1849,22 @@ async function gwenDiary(){
     ${entries.map(e=>`<div class="card" style="padding:10px 12px;"><div style="font-size:12px;color:var(--sub);margin-bottom:4px;">${day(e.date)}</div><div style="font-size:14px;line-height:1.5;color:var(--txt);white-space:pre-wrap;">${esc(e.entry)}</div></div>`).join('')
       ||`<div style="text-align:center;color:var(--sub);font-size:13px;padding:10px 10px 20px;">Her diary comes from your PC. Once it's reachable, her last week of entries shows up here.</div>`}
     <button onclick="closeOv('gwen-ov')" style="width:100%;margin-top:6px;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Close</button>`;
+}
+
+// Board games with her (gwen-games.js): her lines show on the sheet, she gestures and talks, results land in the chat
+async function gwenGames(){
+  const body=document.getElementById('gwen-ov-body');
+  body.innerHTML='<div style="text-align:center;color:var(--sub);padding:30px;">🎮 Getting the games out…</div>';
+  document.getElementById('gwen-ov').classList.add('on');
+  try{
+    (await import('./gwen-games.js')).openGames({el:body,
+      say:(t,g)=>{gwenGesture(g);gwenSpeak(t,!!g3.ping);},
+      done:(name,r)=>{
+        gwenChat.push({role:'assistant',content:r==='won'?`🎮 You beat me at ${name}… this time 😤`:r==='lost'?`🎮 I beat you at ${name} 😌`:`🎮 Our ${name} game was a draw 🤝`,brain:'cloud'});
+        gwenSaveChat();renderGwen();
+      },
+      close:()=>closeOv('gwen-ov')});
+  }catch(e){body.innerHTML='<div style="text-align:center;color:var(--sub);padding:30px;">Couldn\'t load the games, check your connection</div>';}
 }
 
 // Gwen in your room: WebXR AR in Chrome (needs Google Play Services for AR). Point at the floor, tap to place her.
