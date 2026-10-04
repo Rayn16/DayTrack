@@ -1,16 +1,15 @@
-const { getStore } = require('@netlify/blobs');
+import { lambda, blobStore } from '../lib/fn.mjs';
 
-exports.handler = async (event) => {
+const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405 };
   try {
-    const { NETLIFY_SITE_ID, NETLIFY_AUTH_TOKEN } = process.env;
     const { subscription, tasks, completedDays, tz, quiet } = JSON.parse(event.body);
     if (!subscription || !subscription.keys || !subscription.keys.auth) {
       console.log('Missing subscription or keys');
       return { statusCode: 400, body: 'Missing subscription' };
     }
     const key = subscription.keys.auth;
-    const store = getStore({ name: 'daytrack', consistency: 'strong', siteID: NETLIFY_SITE_ID, token: NETLIFY_AUTH_TOKEN });
+    const store = blobStore('daytrack');
     // Keep what the server remembers about already-sent reminders, unless that reminder was changed
     const old = (await store.get(key, { type: 'json' })) || {};
     const prev = Object.fromEntries((old.tasks || []).map(t => [t.id, t]));
@@ -27,3 +26,4 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: e.message };
   }
 };
+export default lambda(handler);
