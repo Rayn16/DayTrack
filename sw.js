@@ -37,7 +37,7 @@ self.addEventListener('push', e => {
   if (style === 'vibrate') opts.silent = true; // vibrate only — suppress sound
   opts.data = { taskId: data.taskId, gwen: data.gwen };
   if (data.taskId) opts.actions = [{ action: 'done', title: '✅ Done' }, data.gwen ? { action: 'tomorrow', title: '📅 Tomorrow' } : { action: 'snooze', title: '⏰ 10 min' }];
-  if (data.gwen) opts.tag = 'gwen';
+  if (data.gwen) { opts.tag = 'gwen'; opts.renotify = true; } // a new message replaces the old one and still alerts
   e.waitUntil(self.registration.showNotification(data.title, opts));
 });
 
