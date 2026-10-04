@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <meta name="theme-color" content="#6C63FF">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -28,7 +28,7 @@
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
     html,body{margin:0;height:100%;overflow:hidden;}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--txt);transition:background .25s,color .25s;}
-    #app{display:flex;flex-direction:column;height:100dvh;height:100vh;}
+    #app{display:flex;flex-direction:column;height:100%;position:relative;}
     #hdr{background:var(--hdr);padding:calc(env(safe-area-inset-top,0px) + 10px) 15px 10px;border-bottom:1px solid var(--brd);flex-shrink:0;transition:background .25s,border-color .25s;}
     #main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);transition:background .25s;}
     #nav{background:var(--nav);border-top:1px solid var(--brd);display:grid;grid-template-columns:repeat(6,1fr);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:background .25s,border-color .25s;}
@@ -39,7 +39,9 @@
       .toast{bottom:80px;}
     }
     .tab{display:none;padding:12px 12px 28px;}.tab.on{display:block;}
-    .nb{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--sub);font-size:10px;font-weight:500;padding:10px 0;font-family:inherit;transition:color .2s;width:100%;}.nb.on{color:var(--pri);}
+    .nb{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--sub);font-size:10px;font-weight:500;padding:7px 0 8px;font-family:inherit;transition:color .2s;width:100%;}.nb.on{color:var(--pri);font-weight:700;}
+    .nb .ic{width:50px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center;transition:background .2s,box-shadow .2s;}.nb .ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+    .nb.on .ic{background:var(--pril);box-shadow:0 0 14px color-mix(in srgb,var(--pri) 35%,transparent);}.nb.on .ic .fill{fill:currentColor;}
     .card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px;transition:background .25s;}
     .cl{font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;}
     .ov{position:fixed;inset:0;background:var(--over);display:flex;align-items:flex-end;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}.ov.on{opacity:1;pointer-events:all;}
@@ -52,7 +54,6 @@
     .eb{background:var(--inp);border:2px solid transparent;border-radius:9px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;flex-shrink:0;transition:all .15s;}.eb.on{border-color:var(--pri);background:var(--pril);}
     .chk{width:24px;height:24px;border-radius:50%;border:2.5px solid var(--chk);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:12px;color:white;transition:all .15s;}.chk.on{border-color:var(--pri);background:var(--pri);}
     .toast{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 72px);left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--tbg);color:var(--ttxt);padding:8px 18px;border-radius:22px;font-size:13px;font-weight:500;pointer-events:none;z-index:200;transition:transform .25s,opacity .25s,background .25s,color .25s;width:max-content;max-width:calc(100vw - 32px);text-align:center;}.toast.on{transform:translateX(-50%) translateY(0);opacity:1;}
-    .add-btn{width:100%;background:var(--pri);color:white;border:none;border-radius:14px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:12px;}.add-btn:active{opacity:.85;}
     .tog{width:46px;height:28px;border-radius:14px;background:var(--brd);border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;}.tog::after{content:'';position:absolute;width:22px;height:22px;border-radius:50%;background:white;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.25);}.tog.on{background:var(--grn);}.tog.on::after{left:21px;}
     .dimmed{opacity:.45;}
     .ti-row{display:flex;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--brd);}.ti-row:last-child{border-bottom:none;}
@@ -66,8 +67,41 @@
     .int-box{flex:1;text-align:center;}.int-box label{display:block;font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;}.int-box input{width:100%;border:1.5px solid var(--brd);border-radius:12px;padding:10px 4px;font-size:22px;font-weight:700;color:var(--txt);background:var(--inp);outline:none;font-family:inherit;text-align:center;transition:border-color .15s;}.int-box input:focus{border-color:var(--pri);}
     .heat-cell{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
     .sub-row{display:flex;align-items:center;gap:8px;padding:5px 0;}
-    .task-item{padding:10px 0;border-bottom:1px solid var(--brd);}.task-item:last-child{border-bottom:none;}
-    .task-main{display:flex;gap:10px;align-items:center;}
+    .task-item{border-bottom:1px solid var(--brd);position:relative;overflow:hidden;}.task-item:last-child{border-bottom:none;}
+    .task-main{display:flex;gap:10px;align-items:center;padding:10px 0;background:var(--card);position:relative;z-index:1;transition:transform .2s ease-out,background .25s;}
+    .task-item[data-swipe]::before{content:'';position:absolute;inset:0;display:flex;align-items:center;padding:0 16px;font-size:13px;font-weight:700;}
+    .task-item[data-swipe=r]::before{content:'✓ Done';background:var(--grnl);color:var(--grntxt);}.task-item.done[data-swipe=r]::before{content:'↺ Undo';}
+    .task-item[data-swipe=l]::before{content:'Tomorrow 📅';background:var(--pril);color:var(--pri);justify-content:flex-end;}
+    .task-time{font-size:12px;font-weight:600;color:var(--sub);flex-shrink:0;font-variant-numeric:tabular-nums;}
+    .task-more{background:none;border:none;color:var(--sub);font-size:20px;line-height:1;padding:2px 2px 8px;cursor:pointer;flex-shrink:0;font-family:inherit;}
+    .tgrp{font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.6px;padding:14px 0 2px;}.tgrp:first-child{padding-top:0;}
+    .chk.pop{animation:pop .35s ease-out;}@keyframes pop{0%{transform:scale(.5)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+    .mi{display:flex;align-items:center;gap:12px;width:100%;background:none;border:none;padding:13px 8px;font-size:15px;color:var(--txt);font-family:inherit;cursor:pointer;border-radius:12px;text-align:left;}.mi:active{background:var(--inp);}
+    .mt{font-size:13px;color:var(--sub);font-weight:600;padding:0 8px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .confetti{position:fixed;inset:0;pointer-events:none;z-index:150;overflow:hidden;}.confetti i{position:absolute;top:-14px;width:8px;height:13px;border-radius:2px;animation:fall linear forwards;}
+    @keyframes fall{to{transform:translate(var(--x),105vh) rotate(var(--r));}}
+    #tab-tasks{padding-bottom:96px;}
+    #fab{position:absolute;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 76px);width:56px;height:56px;border-radius:18px;border:none;background:var(--pri);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:5;box-shadow:0 6px 18px color-mix(in srgb,var(--pri) 45%,transparent),0 2px 6px rgba(0,0,0,.2);transition:transform .15s;}
+    #fab:active{transform:scale(.92);}#fab svg{width:26px;height:26px;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;fill:none;}
+    body[data-tab=tasks] #fab{display:flex;}
+    #gwen-hi{display:none;gap:12px;align-items:center;cursor:pointer;background:linear-gradient(135deg,var(--pril),var(--card) 80%);}
+    #gwen-hi .av{width:48px;height:48px;border-radius:50%;flex-shrink:0;background:var(--pril);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--pri);}
+    #gwen-hi .av img{width:100%;height:100%;object-fit:cover;object-position:50% 25%;}
+    #gwen-hi .hi{font-size:16px;font-weight:700;color:var(--txt);}
+    #gwen-hi .msg{font-size:13px;color:var(--sub);margin-top:2px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+    #tab-gwen.on{display:flex;flex-direction:column;height:100%;padding:0;position:relative;overflow:hidden;}
+    #gwen-stage{display:none;position:absolute;inset:0;background:radial-gradient(ellipse at 50% 28%,var(--pril),var(--bg) 78%);}
+    #tab-gwen.has3d #gwen-stage{display:block;}
+    #gwen-sheet{flex:1;min-height:0;display:flex;flex-direction:column;padding:12px 12px 10px;}
+    #tab-gwen.has3d #gwen-sheet{position:absolute;left:0;right:0;bottom:0;height:46%;z-index:3;padding-top:0;background:color-mix(in srgb,var(--card) 88%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-radius:22px 22px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.12);transition:height .3s cubic-bezier(.32,.72,0,1);}
+    #tab-gwen.has3d #gwen-sheet.open{height:86%;}
+    #gwen-grab{display:none;padding:9px 0 8px;cursor:pointer;touch-action:none;}#gwen-grab i{display:block;width:40px;height:5px;border-radius:3px;background:var(--brd);margin:0 auto;}
+    #tab-gwen.has3d #gwen-grab{display:block;}
+    #gwen-msgs{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    @media(pointer:coarse){#gwen-sheet:has(#gwen-in:focus) .gtop,#gwen-sheet:has(#gwen-in:focus) .hscroll{display:none!important;}} /* keyboard up: room for the chat */
+    .gtop{display:flex;align-items:center;gap:4px;margin-bottom:8px;}
+    #gwen-days{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--sub);}
+    .gmini{background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;padding:2px 4px;margin-left:auto;}.gmini+.gmini{margin-left:0;}
     @keyframes slideInRight{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
     @keyframes slideInLeft{from{transform:translateX(-40px);opacity:0}to{transform:translateX(0);opacity:1}}
     .tab.slide-in-right{animation:slideInRight .22s cubic-bezier(.32,.72,0,1);}
@@ -83,7 +117,7 @@
     body.gwen-calling #gwen-home{display:none!important;}
   </style>
 </head>
-<body>
+<body data-tab="tasks">
 <div id="app">
 
   <div id="hdr">
@@ -108,6 +142,7 @@
 
     <!-- TASKS TAB -->
     <div id="tab-tasks" class="tab on">
+      <div class="card" id="gwen-hi" onclick="switchTab('gwen')"></div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <span style="font-size:13px;font-weight:600;color:var(--txt);">Today's Progress</span>
@@ -119,7 +154,6 @@
         <div id="prog-label" style="font-size:12px;color:var(--sub);margin-top:6px;text-align:right;">0 / 0 tasks</div>
       </div>
       <div class="card" id="mood-card"></div>
-      <button class="add-btn" onclick="openAddTask()">+ New Task</button>
       <div class="card"><div class="cl">Today's Tasks</div><div id="task-list"></div></div>
     </div>
 
@@ -185,25 +219,22 @@
 
     <!-- GWEN TAB -->
     <div id="tab-gwen" class="tab">
-      <div id="gwen-stage" style="display:none;position:sticky;top:0;z-index:2;height:42vh;margin:-12px -12px 10px;background:linear-gradient(var(--pril),var(--bg));">
+      <div id="gwen-stage">
         <canvas id="gwen-canvas" style="width:100%;height:100%;display:block;"></canvas>
-        <div id="gwen-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;">💜 Gwen is on her way…</div>
+        <div id="gwen-loading" style="position:absolute;inset:0 0 46% 0;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;">💜 Gwen is on her way…</div>
         <div id="gwen-pop" style="position:absolute;left:50%;top:18%;font-size:30px;pointer-events:none;opacity:0;transform:translate(-50%,0);transition:opacity .25s,transform .9s ease-out;"></div>
         <div id="gwen-call-heart" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:90px;">💜</div>
         <div id="gwen-call" style="display:none;position:absolute;left:0;right:0;bottom:0;padding:18px 16px calc(24px + env(safe-area-inset-bottom));text-align:center;background:linear-gradient(transparent,rgba(0,0,0,.35));">
           <div id="gwen-call-status" style="color:white;font-size:15px;margin-bottom:14px;min-height:20px;text-shadow:0 1px 3px rgba(0,0,0,.6);"></div>
           <button onclick="gwenHangUp()" aria-label="End call" style="background:#EF4444;color:white;border:none;border-radius:50%;width:64px;height:64px;font-size:26px;cursor:pointer;">📞</button>
         </div>
-        <div id="gwen-home" style="display:none;position:absolute;left:10px;right:10px;bottom:6px;text-align:center;color:var(--sub);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+        <div id="gwen-home" style="display:none;position:absolute;left:10px;right:10px;top:10px;text-align:center;color:var(--sub);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
       </div>
-      <div class="card" style="padding:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <div class="cl" style="margin:0;">💜 Gwen</div>
-          <div><button id="gwen-voice" onclick="toggleGwenVoice()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;"></button>
-          <button onclick="clearGwen()" style="background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;">Clear chat</button></div>
-        </div>
-        <div id="gwen-study" style="display:none;align-items:center;gap:8px;background:var(--pril);color:var(--txt);border-radius:12px;padding:8px 10px;margin-bottom:10px;font-size:13px;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📚 <b id="gwen-study-what"></b> with Gwen · <span id="gwen-study-left" style="font-variant-numeric:tabular-nums;"></span> left</span><button onclick="gwenStudyStop(true)" style="background:var(--card);color:var(--pri);border:none;border-radius:9px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">End</button></div>
-        <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;">
+      <div id="gwen-sheet">
+        <div id="gwen-grab" onpointerdown="gwenGrab(event)" onpointerup="gwenGrab(event)"><i></i></div>
+        <div class="gtop"><div id="gwen-days"></div><button id="gwen-voice" class="gmini" onclick="toggleGwenVoice()"></button><button class="gmini" onclick="clearGwen()">Clear chat</button></div>
+        <div id="gwen-study" style="display:none;align-items:center;gap:8px;background:var(--pril);color:var(--txt);border-radius:12px;padding:8px 10px;margin-bottom:8px;flex-shrink:0;font-size:13px;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📚 <b id="gwen-study-what"></b> with Gwen · <span id="gwen-study-left" style="font-variant-numeric:tabular-nums;"></span> left</span><button onclick="gwenStudyStop(true)" style="background:var(--card);color:var(--pri);border:none;border-radius:9px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">End</button></div>
+        <div class="hscroll" style="display:flex;gap:6px;overflow-x:auto;margin-bottom:8px;padding-bottom:2px;flex-shrink:0;">
           <button class="gchip" onclick="gwenCall()">📞 Call</button>
           <button class="gchip" onclick="gwenSnap()">📸 Selfie</button>
           <button class="gchip" onclick="gwenDiary()">📖 Her diary</button>
@@ -212,15 +243,14 @@
           <button class="gchip" onclick="gwenStudyPick()">📚 Study</button>
           <button class="gchip" onclick="gwenGifts()">🎁 Gift</button>
         </div>
-        <div id="gwen-days" style="display:none;font-size:12px;color:var(--sub);margin:-2px 0 8px;"></div>
         <div id="gwen-msgs"></div>
-      </div>
-      <div id="gwen-photo" style="display:none;align-items:center;gap:8px;margin-bottom:8px;"></div>
-      <div style="display:flex;gap:8px;">
-        <input class="inp" id="gwen-in" placeholder="Message Gwen…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();sendGwen();}">
-        <label style="background:var(--pril);color:var(--pri);border-radius:12px;padding:0 12px;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;">📷<input type="file" accept="image/*" style="display:none;" onchange="gwenPickPhoto(this)"></label>
-        <button id="gwen-mic" onclick="gwenMic()" onpointerdown="gwenMicDown()" onpointerup="gwenMicUp(true)" onpointerleave="gwenMicUp(false)" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;background:var(--pril);color:var(--pri);border:none;border-radius:12px;padding:0 14px;font-size:16px;cursor:pointer;flex-shrink:0;">🎤</button>
-        <button id="gwen-send" onclick="sendGwen()" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:16px;cursor:pointer;flex-shrink:0;">➤</button>
+        <div id="gwen-photo" style="display:none;align-items:center;gap:8px;margin-top:8px;"></div>
+        <div style="display:flex;gap:8px;flex-shrink:0;margin-top:8px;">
+          <input class="inp" id="gwen-in" placeholder="Message Gwen…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();sendGwen();}">
+          <label style="background:var(--pril);color:var(--pri);border-radius:12px;padding:0 12px;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;">📷<input type="file" accept="image/*" style="display:none;" onchange="gwenPickPhoto(this)"></label>
+          <button id="gwen-mic" onclick="gwenMic()" onpointerdown="gwenMicDown()" onpointerup="gwenMicUp(true)" onpointerleave="gwenMicUp(false)" oncontextmenu="return false" style="touch-action:none;user-select:none;-webkit-user-select:none;background:var(--pril);color:var(--pri);border:none;border-radius:12px;padding:0 14px;font-size:16px;cursor:pointer;flex-shrink:0;">🎤</button>
+          <button id="gwen-send" onclick="sendGwen()" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:16px;cursor:pointer;flex-shrink:0;">➤</button>
+        </div>
       </div>
     </div>
 
@@ -316,13 +346,14 @@
 
   </div>
 
+  <button id="fab" onclick="openAddTask()" aria-label="New task"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
   <div id="nav">
-    <button class="nb on" data-t="tasks" onclick="switchTab('tasks')"><span style="font-size:22px;">✅</span>Tasks</button>
-    <button class="nb" data-t="timer" onclick="switchTab('timer')"><span style="font-size:22px;">⏱️</span>Timer</button>
-    <button class="nb" data-t="cal" onclick="switchTab('cal')"><span style="font-size:22px;">📅</span>Calendar</button>
-    <button class="nb" data-t="summary" onclick="switchTab('summary')"><span style="font-size:22px;">📊</span>Summary</button>
-    <button class="nb" data-t="gwen" onclick="switchTab('gwen')"><span style="font-size:22px;">💜</span>Gwen</button>
-    <button class="nb" data-t="settings" onclick="switchTab('settings')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>
+    <button class="nb on" data-t="tasks" onclick="switchTab('tasks')"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>Tasks</button>
+    <button class="nb" data-t="timer" onclick="switchTab('timer')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg></span>Timer</button>
+    <button class="nb" data-t="cal" onclick="switchTab('cal')"><span class="ic"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>Calendar</button>
+    <button class="nb" data-t="summary" onclick="switchTab('summary')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/></svg></span>Summary</button>
+    <button class="nb" data-t="gwen" onclick="switchTab('gwen')"><span class="ic"><svg viewBox="0 0 24 24"><path class="fill" d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>Gwen</button>
+    <button class="nb" data-t="settings" onclick="switchTab('settings')"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Settings</button>
   </div>
 
 </div>
@@ -407,6 +438,7 @@
 <input type="file" id="import-in" accept=".json" style="display:none" onchange="importData(this)">
 
 <!-- Note Reminder Sheet -->
+<div class="ov" id="task-menu" onclick="bgClose(event,'task-menu')"><div class="sh" id="task-menu-body"></div></div>
 <div class="ov" id="gwen-ov" onclick="bgClose(event,'gwen-ov')"><div class="sh" id="gwen-ov-body" style="max-height:85vh;overflow-y:auto;"></div></div>
 <div id="gwen-ar" style="display:none;position:fixed;inset:0;z-index:70;pointer-events:none;">
   <div id="gwen-ar-hint" style="position:absolute;left:16px;right:16px;bottom:40px;text-align:center;color:white;font-size:15px;text-shadow:0 1px 4px rgba(0,0,0,.8);"></div>
@@ -440,7 +472,7 @@
     <!-- Tasks -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">✅ Tasks</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Tap <b style="color:var(--txt);">+ New Task</b> to create a task. Choose <b style="color:var(--txt);">One-time</b> for a single-day task, or <b style="color:var(--txt);">Recurring 🔄</b> to repeat it on specific days of the week (or every day). One-time tasks can get a day; future ones wait greyed out until then. Tap a task to mark it done. Tap ✕ to delete it. Use <b style="color:var(--txt);">▲▼</b> to reorder.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Tap the <b style="color:var(--txt);">+</b> button to create a task. Choose <b style="color:var(--txt);">One-time</b> for a single-day task, or <b style="color:var(--txt);">Recurring 🔄</b> to repeat it on specific days of the week (or every day). One-time tasks can get a day; future ones wait greyed out until then. Tap a task to mark it done, or swipe it right. Swipe left to move it to tomorrow. Tap <b style="color:var(--txt);">⋯</b> to edit, delete or reorder it. Tasks with a time sort into morning, afternoon and evening.</div>
     </div>
 
     <!-- Priority -->
@@ -795,7 +827,7 @@ function updateStreakAfterCheck(){
   const tod=toDateStr(new Date()),dow=new Date().getDay();
   const todayTasks=tasks.filter(t=>isTodayTask(t,tod,dow));
   const allDone=todayTasks.length>0&&todayTasks.every(t=>t.done.includes(tod));
-  if(allDone){if(!completedDays.includes(tod)){completedDays.push(tod);gwenCheer();}}
+  if(allDone){if(!completedDays.includes(tod)){completedDays.push(tod);gwenCheer();confetti();}}
   else{completedDays=completedDays.filter(d=>d!==tod);}
 }
 function calcTaskStreak(t){
@@ -814,7 +846,8 @@ function calcTaskStreak(t){
 
 // ── Task reorder ─────────────────────────────────────────────────────────────
 function moveTask(id,dir){
-  const v=shownTasks(),k=v.findIndex(t=>t.id===id);if(k<0||!v[k+dir])return;
+  const tod=toDateStr(new Date()),dow=new Date().getDay(),t=tasks.find(x=>x.id===id);if(!t)return;
+  const g=taskGroup(t,tod,dow),v=shownTasks().filter(x=>taskGroup(x,tod,dow)===g),k=v.indexOf(t);if(!v[k+dir])return;
   const i=tasks.indexOf(v[k]),j=tasks.indexOf(v[k+dir]);
   [tasks[i],tasks[j]]=[tasks[j],tasks[i]];
   save();renderTaskList();
@@ -880,7 +913,7 @@ let _curTabIdx=0;
 function switchTab(t,dir){
   const oldIdx=_curTabIdx,newIdx=TABS.indexOf(t);
   const goRight=dir!=null?dir>0:(newIdx>oldIdx);
-  _curTabIdx=newIdx;
+  _curTabIdx=newIdx;document.body.dataset.tab=t;
   document.querySelectorAll('.tab').forEach(e=>e.classList.remove('on','slide-in-right','slide-in-left'));
   document.querySelectorAll('.nb').forEach(e=>e.classList.remove('on'));
   const el=document.getElementById('tab-'+t);
@@ -1043,7 +1076,13 @@ function saveTask(){
 }
 
 // ── Render Tasks ──────────────────────────────────────────────────────────────
+// Morning / afternoon / evening by reminder time; no time → Anytime; not due today → last
+const TGROUPS=['🌅 Morning','☀️ Afternoon','🌙 Evening','✨ Anytime','📅 Not today'];
+function taskTime(t){const r=t.reminder,v=typeof r==='string'?r:r&&r.type==='time'?r.time:'';return v?v.padStart(5,'0'):'';}
+function taskGroup(t,tod,dow){if(!isTodayTask(t,tod,dow))return 4;const tm=taskTime(t);return!tm?3:tm<'12:00'?0:tm<'17:00'?1:2;}
+let justChecked=null;
 function renderTaskList(){
+  renderGwenHi();
   const el=document.getElementById('task-list');
   const tod=toDateStr(new Date()),dow=new Date().getDay();
   const todayTasks=tasks.filter(t=>isTodayTask(t,tod,dow));
@@ -1057,12 +1096,12 @@ function renderTaskList(){
   if(sb)sb.style.display=streak>0?'inline':'none';if(sn)sn.textContent=streak;
 
   if(!shown.length){
-    el.innerHTML=`<div style="text-align:center;padding:36px 10px;color:var(--sub);font-size:14px;"><div style="font-size:48px;margin-bottom:12px;">📋</div>No tasks yet.<br>Tap "+ New Task" to start!</div>`;
+    el.innerHTML=`<div style="text-align:center;padding:36px 10px;color:var(--sub);font-size:14px;"><div style="font-size:48px;margin-bottom:12px;">📋</div>No tasks yet.<br>Tap + to add your first one!</div>`;
     return;
   }
 
-  el.innerHTML=shown.map((t,idx)=>{
-    const done=t.done.includes(tod);
+  const row=t=>{
+    const done=t.done.includes(tod),tm=taskTime(t);
     const activeToday=isTodayTask(t,tod,dow);
     const ic=t.iconType==='image'
       ?`<img src="${t.icon}" style="width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
@@ -1075,7 +1114,7 @@ function renderTaskList(){
     // Badges
     const recBadge=t.recurring?`<span style="font-size:11px;background:var(--badge);color:var(--sub);padding:2px 8px;border-radius:11px;">🔄 ${t.days.length===0?'Every day':t.days.map(d=>DNAMES[d]).join('·')}</span>`:'';
     const rl=remLabel(t.reminder);
-    const remBadge=rl?`<span style="font-size:11px;background:var(--grnl);color:var(--grntxt);padding:2px 8px;border-radius:11px;">${rl}</span>`:'';
+    const remBadge=rl&&!tm?`<span style="font-size:11px;background:var(--grnl);color:var(--grntxt);padding:2px 8px;border-radius:11px;">${rl}</span>`:'';
     const notTodayBadge=t.recurring&&!activeToday?`<span style="font-size:11px;background:var(--badge);color:var(--sub);padding:2px 8px;border-radius:11px;">Not today</span>`:'';
     const dateBadge=!t.recurring&&t.date&&!done&&t.date!==tod?`<span style="font-size:11px;background:var(--badge);color:${t.date<tod?'#EF4444':'var(--sub)'};padding:2px 8px;border-radius:11px;">${t.date<tod?'⚠️':'📅'} ${fmtDay(t.date)}</span>`:'';
     // Per-task streak
@@ -1102,27 +1141,62 @@ function renderTaskList(){
         }).join('')}
       </div>`:'' ;
 
-    return `<div class="task-item${!activeToday?' dimmed':''}">
+    const canL=activeToday&&!t.recurring&&!t.done.length;
+    return `<div class="task-item${!activeToday?' dimmed':''}${done?' done':''}" data-id="${t.id}"${activeToday?' data-r="1"':''}${canL?' data-l="1"':''}>
       <div class="task-main" onclick="${activeToday?`checkTask('${t.id}')`:''}" style="cursor:${activeToday?'pointer':'default'};">
-        <div class="chk${done?' on':''}">${done?'✓':''}</div>
+        <div class="chk${done?' on':''}${done&&justChecked===t.id?' pop':''}">${done?'✓':''}</div>
         ${priDot}${ic}
         <div style="flex:1;min-width:0;">
           <div style="font-size:15px;font-weight:600;color:${done?'var(--sub)':'var(--txt)'};text-decoration:${done?'line-through':'none'};">${esc(t.name)}</div>
           ${notesHtml}
           ${badges?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">${badges}</div>`:''}
         </div>
-        <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0;">
-          <button onclick="event.stopPropagation();moveTask('${t.id}',-1)" style="background:none;border:none;color:${idx===0?'var(--brd)':'var(--sub)'};font-size:12px;padding:2px 5px;cursor:pointer;line-height:1;" ${idx===0?'disabled':''}>▲</button>
-          <button onclick="event.stopPropagation();moveTask('${t.id}',1)" style="background:none;border:none;color:${idx===shown.length-1?'var(--brd)':'var(--sub)'};font-size:12px;padding:2px 5px;cursor:pointer;line-height:1;" ${idx===shown.length-1?'disabled':''}>▼</button>
-        </div>
-        <button onclick="event.stopPropagation();openEditTask('${t.id}')" style="background:none;border:none;color:var(--sub);font-size:14px;padding:4px;cursor:pointer;" title="Edit">✏️</button>
-        <button onclick="event.stopPropagation();deleteTask('${t.id}')" style="background:none;border:none;color:var(--brd);font-size:15px;padding:4px;cursor:pointer;">✕</button>
+        ${tm?`<span class="task-time">${fmt12(tm)}</span>`:''}
+        <button class="task-more" onclick="event.stopPropagation();taskMenu('${t.id}')" aria-label="More">⋯</button>
       </div>
       ${subsHtml}
     </div>`;
-  }).join('');
+  };
+  const groups=TGROUPS.map(()=>[]);
+  shown.forEach(t=>groups[taskGroup(t,tod,dow)].push(t));
+  groups.slice(0,3).forEach(g=>g.sort((a,b)=>taskTime(a).localeCompare(taskTime(b))));
+  const multi=groups.filter(g=>g.length).length>1;
+  el.innerHTML=groups.map((g,k)=>g.length?(multi?`<div class="tgrp">${TGROUPS[k]}</div>`:'')+g.map(row).join(''):'').join('');
+  justChecked=null;
 }
-function checkTask(id){const t=tasks.find(x=>x.id===id);if(!t)return;const tod=toDateStr(new Date());t.done.includes(tod)?t.done=t.done.filter(d=>d!==tod):t.done.push(tod);updateStreakAfterCheck();save();renderTaskList();}
+function checkTask(id){const t=tasks.find(x=>x.id===id);if(!t)return;const tod=toDateStr(new Date());t.done.includes(tod)?t.done=t.done.filter(d=>d!==tod):t.done.push(tod);justChecked=id;updateStreakAfterCheck();save();renderTaskList();}
+function taskTomorrow(id){
+  const t=tasks.find(x=>x.id===id);if(!t||t.recurring||t.done.length)return;
+  const d=new Date();d.setDate(d.getDate()+1);t.date=toDateStr(d);
+  save();renderTaskList();showToast('📅 Moved to tomorrow');
+}
+function taskMenu(id){
+  const t=tasks.find(x=>x.id===id);if(!t)return;
+  const tod=toDateStr(new Date()),dow=new Date().getDay(),g=taskGroup(t,tod,dow);
+  const b=(label,call,red)=>`<button class="mi"${red?' style="color:#EF4444;"':''} onclick="closeOv('task-menu');${call}">${label}</button>`;
+  document.getElementById('task-menu-body').innerHTML=`<div class="mt">${t.iconType==='image'?'':t.icon+' '}${esc(t.name)}</div>`
+    +b('✏️ Edit',`openEditTask('${id}')`)
+    +(isTodayTask(t,tod,dow)&&!t.recurring&&!t.done.length?b('📅 Move to tomorrow',`taskTomorrow('${id}')`):'')
+    +(g>2?b('⬆️ Move up',`moveTask('${id}',-1)`)+b('⬇️ Move down',`moveTask('${id}',1)`):'')
+    +b('🗑️ Delete',`deleteTask('${id}')`,1);
+  document.getElementById('task-menu').classList.add('on');
+}
+// Gwen's card at the top of Tasks: hello by time of day, her face, her latest message
+function renderGwenHi(){
+  const el=document.getElementById('gwen-hi');if(!el)return;
+  if(!gwenCfg.key){el.style.display='none';return;}
+  const h=new Date().getHours(),hi=h<5?'Up late':h<12?'Good morning':h<17?'Good afternoon':'Good evening';
+  const last=[...gwenChat].reverse().find(m=>m.role==='assistant'&&!m.error),face=[...gwenChat].reverse().find(m=>m.role==='assistant'&&m.thumb);
+  const msg=!last?'Tap to talk to me 💜':last.content==='📷 (photo)'?'Sent you a selfie 📸':last.content;
+  el.innerHTML=`<div class="av">${face?`<img src="${face.thumb}" alt="">`:'💜'}</div><div style="flex:1;min-width:0;"><div class="hi">${hi}, Rayan</div><div class="msg">${esc(msg)}</div></div><div style="color:var(--pri);font-size:20px;">›</div>`;
+  el.style.display='flex';
+}
+function confetti(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const box=document.createElement('div'),cols=['#F472B6','#A78BFA','#60A5FA','#34D399','#FBBF24','#F87171'];box.className='confetti';
+  box.innerHTML=Array.from({length:60},(_,i)=>`<i style="left:${Math.random()*100}%;background:${cols[i%6]};--x:${Math.round((Math.random()-.5)*160)}px;--r:${Math.round(360+Math.random()*720)}deg;animation-duration:${(1.6+Math.random()*1.4).toFixed(2)}s;animation-delay:${(Math.random()*.4).toFixed(2)}s;"></i>`).join('');
+  document.body.appendChild(box);setTimeout(()=>box.remove(),3600);
+}
 function deleteTask(id){tasks=tasks.filter(t=>t.id!==id);save();renderTaskList();showToast('Removed');}
 
 // ── Timer ─────────────────────────────────────────────────────────────────────
@@ -1406,7 +1480,7 @@ function renderGwen(){
   renderGwenDays();
   document.getElementById('gwen-send').disabled=gwenBusy;
   document.getElementById('gwen-voice').textContent=gwenMute?'🔇 Voice off':'🔊 Voice on';
-  const main=document.getElementById('main');if(document.getElementById('tab-gwen').classList.contains('on'))main.scrollTop=main.scrollHeight;
+  el.scrollTop=el.scrollHeight;renderGwenHi();
 }
 // Messages she sent as notifications while the app was closed
 async function pullGwenInbox(){
@@ -1468,7 +1542,7 @@ async function gwenFile(name,ver,path,body,ms){
 }
 async function gwenModel(outfit){
   const p=await gwenPing(),ver=p&&(outfit?(p.outfits||{})[outfit]:p.model)||null;
-  if(ver)document.getElementById('gwen-stage').style.display='block';
+  if(ver)gwenStage(true);
   return gwenFile('/__gwen-model'+(outfit?'-'+outfit:''),ver,'/daytrack/model',outfit?{outfit}:{},120000);
 }
 async function gwenParse(buf){
@@ -1479,9 +1553,8 @@ async function gwenParse(buf){
   return vrm;
 }
 async function gwenLoad(){
-  const buf=await gwenModel(gwenCfg.outfit)||(gwenCfg.outfit?await gwenModel(''):null),stage=document.getElementById('gwen-stage');
-  if(!buf){stage.style.display='none';return null;}
-  stage.style.display='block';
+  const buf=await gwenModel(gwenCfg.outfit)||(gwenCfg.outfit?await gwenModel(''):null);
+  gwenStage(buf);if(!buf)return null;
   const[THREE,{GLTFLoader},VRM,VRMA]=await Promise.all([import('three'),import('three/addons/loaders/GLTFLoader.js'),import('@pixiv/three-vrm'),import('@pixiv/three-vrm-animation')]);
   Object.assign(g3,{THREE,GLTFLoader,VRM,VRMA});
   const canvas=document.getElementById('gwen-canvas'),renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
@@ -1494,6 +1567,22 @@ async function gwenLoad(){
   document.getElementById('gwen-loading').style.display='none';
   return g3.vrm;
 }
+// The 3D stage fills her tab; the chat becomes a sheet over it
+function gwenStage(on){document.getElementById('tab-gwen').classList.toggle('has3d',!!on);const m=document.getElementById('gwen-msgs');m.scrollTop=m.scrollHeight;}
+function gwenSheet(open){
+  const m=document.getElementById('gwen-msgs');document.getElementById('gwen-sheet').classList.toggle('open',open);
+  setTimeout(()=>m.scrollTop=m.scrollHeight,320);
+}
+// Drag the handle up/down to open/close the chat; a tap toggles it
+function gwenGrab(e){
+  if(e.type==='pointerdown'){gwenGrab.y=e.clientY;return;}
+  const d=e.clientY-(gwenGrab.y??e.clientY);gwenSheet(Math.abs(d)>25?d<0:undefined);
+}
+// Step back on narrow screens so her shoulders fit; head in the top quarter, clear of the chat sheet
+function gwenFrame(a){
+  const{camera}=g3,tan=Math.tan(Math.PI/12),z=Math.max(1.5,0.36/(tan*a)),y=g3.hy-0.5*z*tan;
+  camera.position.set(0,y,z);camera.lookAt(0,y,0);
+}
 // Put a loaded model on stage: framing, idle life, gestures and faces
 function gwenUse(vrm){
   const{THREE,scene,camera,renderer}=g3,canvas=renderer.domElement;
@@ -1503,7 +1592,7 @@ function gwenUse(vrm){
   const spine=bone('spine'),head=bone('head'),armL=bone('leftUpperArm'),armR=bone('rightUpperArm');
   vrm.scene.updateMatrixWorld(true);
   const hy=head.getWorldPosition(new THREE.Vector3()).y;
-  camera.position.set(0,hy,1.5);camera.lookAt(0,hy-0.1,0);
+  g3.hy=hy;gwenFrame(camera.aspect);
   const mixer=new THREE.AnimationMixer(vrm.scene),wave=new Uint8Array(1024),t0=performance.now()/1000;
   let blinkAt=2,mouth=0,last=t0;
   Object.assign(g3,{vrm,mixer,head,clips:{},act:null});
@@ -1511,7 +1600,7 @@ function gwenUse(vrm){
     if(!gwenTabOn()||document.hidden||g3.ar){g3.raf=0;return;}
     g3.raf=requestAnimationFrame(g3.frame);
     const w=canvas.clientWidth,h=canvas.clientHeight;
-    if(w&&h&&(canvas.width!==Math.round(w*renderer.getPixelRatio())||canvas.height!==Math.round(h*renderer.getPixelRatio()))){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+    if(w&&h&&(canvas.width!==Math.round(w*renderer.getPixelRatio())||canvas.height!==Math.round(h*renderer.getPixelRatio()))){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();gwenFrame(w/h);}
     g3.tick();renderer.render(scene,camera);
   };
   // Her life each frame: gestures, idle, blinking, lips and face (the stage and AR both use it)
@@ -1623,7 +1712,7 @@ async function gwenGreet(){
 // Called when the Gwen tab opens or the app comes back: load her once, then keep the loop running only while she's on screen
 function gwen3d(){
   if(!gwenTabOn()||document.hidden)return;
-  if(!g3.loading)g3.loading=gwenLoad().catch(e=>{console.warn('Gwen 3D:',e);document.getElementById('gwen-stage').style.display='none';return null;}).then(v=>{if(!v)g3.loading=null;else gwen3d();return v;});
+  if(!g3.loading)g3.loading=gwenLoad().catch(e=>{console.warn('Gwen 3D:',e);gwenStage(false);return null;}).then(v=>{if(!v)g3.loading=null;else gwen3d();return v;});
   else if(g3.vrm&&!g3.raf){g3.raf=requestAnimationFrame(g3.frame);gwenGreet();}
 }
 function gwenAudioCtx(){
@@ -1796,7 +1885,7 @@ function gwenHangUp(){
   try{c.lock&&c.lock.release();}catch(e){}
   stopGwenVoice();
   document.body.classList.remove('gwen-calling');document.getElementById('gwen-call-heart').style.display='none';
-  if(!g3.vrm)document.getElementById('gwen-stage').style.display='none';
+  if(!g3.vrm)gwenStage(false);
   renderGwen();
 }
 function gwenCallStatus(t){document.getElementById('gwen-call-status').textContent=t;}
@@ -1828,10 +1917,14 @@ async function gwenSelfieShot(){
   await new Promise(r=>setTimeout(r,g3.act?1200:300));
   src.animate([{filter:'brightness(2.2)'},{filter:'none'}],{duration:350});
   renderer.render(scene,camera); // draw now so the picture isn't blank
-  const k=Math.min(1,480/Math.max(src.width,src.height)),c=document.createElement('canvas'),x=c.getContext('2d'),cs=getComputedStyle(document.body);
-  c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
+  // Her stage fills the tab now: crop a 4:5 portrait around her face
+  const v=g3.head.getWorldPosition(new g3.THREE.Vector3());v.y+=0.09;v.project(camera);
+  const sw=Math.round(src.width*0.75),sh=Math.min(src.height,Math.round(sw*1.25));
+  const sx=Math.round(Math.min(Math.max((v.x+1)/2*src.width-sw/2,0),src.width-sw)),sy=Math.round(Math.min(Math.max((1-v.y)/2*src.height-sh*0.35,0),src.height-sh));
+  const k=Math.min(1,480/Math.max(sw,sh)),c=document.createElement('canvas'),x=c.getContext('2d'),cs=getComputedStyle(document.body);
+  c.width=Math.round(sw*k);c.height=Math.round(sh*k);
   const bg=x.createLinearGradient(0,0,0,c.height);bg.addColorStop(0,cs.getPropertyValue('--pril').trim()||'#EEEAFF');bg.addColorStop(1,cs.getPropertyValue('--bg').trim()||'#F5F4FF');
-  x.fillStyle=bg;x.fillRect(0,0,c.width,c.height);x.drawImage(src,0,0,c.width,c.height);
+  x.fillStyle=bg;x.fillRect(0,0,c.width,c.height);x.drawImage(src,sx,sy,sw,sh,0,0,c.width,c.height);
   return c.toDataURL('image/jpeg',0.85);
 }
 async function gwenSnap(line){
@@ -2155,7 +2248,7 @@ const TABS=['tasks','timer','cal','summary','gwen','settings'];
 (function initSwipe(){
   const main=document.getElementById('main');
   let tx=0,ty=0,swiping=false;
-  main.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;swiping=true;},{passive:true});
+  main.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;swiping=!e.target.closest('.hscroll,.task-item,#gwen-canvas,#gwen-grab');},{passive:true});
   main.addEventListener('touchmove',e=>{
     if(!swiping)return;
     const dx=e.touches[0].clientX-tx,dy=e.touches[0].clientY-ty;
@@ -2172,6 +2265,36 @@ const TABS=['tasks','timer','cal','summary','gwen','settings'];
     if(dx<0&&cur<TABS.length-1)switchTab(TABS[cur+1],1); // swipe left → next
     else if(dx>0&&cur>0)switchTab(TABS[cur-1],-1);        // swipe right → prev
   },{passive:true});
+})();
+
+// Swipe a task: right = done, left = tomorrow
+(function initTaskSwipe(){
+  const list=document.getElementById('task-list');
+  let x0=0,y0=0,row=null,main=null,dx=0,lock=0,swAt=0;
+  list.addEventListener('touchstart',e=>{
+    row=e.target.closest('.task-item[data-id]');if(!row||e.target.closest('button,.sub-row')){row=null;return;}
+    main=row.querySelector('.task-main');x0=e.touches[0].clientX;y0=e.touches[0].clientY;dx=0;lock=0;swAt=0;
+  },{passive:true});
+  list.addEventListener('touchmove',e=>{
+    if(!row)return;
+    const mx=e.touches[0].clientX-x0,my=e.touches[0].clientY-y0;
+    if(!lock){if(Math.abs(mx)<8&&Math.abs(my)<8)return;lock=Math.abs(mx)>Math.abs(my)*1.2?1:-1;}
+    if(lock<0){row=null;return;}
+    e.preventDefault();
+    dx=(mx>0?row.dataset.r:row.dataset.l)?mx:0;
+    if(dx)row.dataset.swipe=dx>0?'r':'l';
+    main.style.transition='none';main.style.transform=`translateX(${dx}px)`;
+  },{passive:false});
+  const end=()=>{
+    if(!row)return;const r=row,m=main,d=dx;row=null;if(lock>0)swAt=Date.now();
+    m.style.transition='';
+    if(d<=-80){m.style.transform='translateX(-100%)';setTimeout(()=>taskTomorrow(r.dataset.id),180);return;}
+    m.style.transform='';setTimeout(()=>delete r.dataset.swipe,220);
+    if(d>=80)checkTask(r.dataset.id);
+  };
+  list.addEventListener('touchend',end);list.addEventListener('touchcancel',()=>{dx=0;end();});
+  // A swipe isn't also a tap
+  list.addEventListener('click',e=>{if(Date.now()-swAt<250){swAt=0;e.stopPropagation();e.preventDefault();}},true);
 })();
 
 // ── Web Push ──────────────────────────────────────────────────────────────────
