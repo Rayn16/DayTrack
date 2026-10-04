@@ -181,13 +181,6 @@
           </div>
           <button id="notif-btn" onclick="activateNotifs()" style="background:#22C55E;color:white;border:none;border-radius:11px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">🔔 Activate</button>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--brd);margin-top:6px;">
-          <div>
-            <div style="font-size:15px;font-weight:600;color:var(--txt);">Vibration</div>
-            <div style="font-size:12px;color:var(--sub);margin-top:2px;">Vibrate on notification (Android)</div>
-          </div>
-          <button id="vibrate-tog" class="tog" onclick="toggleVibration()"></button>
-        </div>
       </div>
       <div class="card">
         <div class="cl">Appearance</div>
@@ -415,7 +408,7 @@ let tasks=[],savedSessions=[],calNotes={},completedDays=[];
 let calView=new Date(),selDay=null;
 let dIcon='📝',dIconType='emoji',dRec=false,dDays=[],dRemType='none',dPriority='none',dSubtasks=[];
 let sesItems=[];
-let isDark=false,toastTimer,vibrationEnabled=true;
+let isDark=false,toastTimer,pushOn=false;
 let dNotifStyle='default',dShowInCal=true,editingTaskId=null,calShowRecurring=true;
 let currentTheme='purple',currentPreset='default';
 
@@ -529,7 +522,7 @@ async function syncReminders(){
     if(!sub)return;
     await fetch('/.netlify/functions/save-reminder',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({subscription:sub,tasks:tasks.filter(t=>t.reminder),completedDays})
+      body:JSON.stringify({subscription:sub,tasks:tasks.filter(t=>t.reminder),completedDays,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})
     });
   }catch(e){}
 }
@@ -574,6 +567,9 @@ function importData(inp){
 }
 
 // ── Streak helpers ───────────────────────────────────────────────────────────
+// One-time tasks stay on today's list until done, then only on the day they were done
+function isTodayTask(t,tod,dow){return t.recurring?(t.days.length===0||t.days.includes(dow)):(!t.done.length||t.done.includes(tod));}
+function shownTasks(){const tod=toDateStr(new Date());return tasks.filter(t=>t.recurring||isTodayTask(t,tod,0));}
 function calculateStreak(){
   const set=new Set(completedDays);
   let streak=0,d=new Date();
@@ -583,7 +579,7 @@ function calculateStreak(){
 }
 function updateStreakAfterCheck(){
   const tod=toDateStr(new Date()),dow=new Date().getDay();
-  const todayTasks=tasks.filter(t=>!t.recurring||(t.days.length===0||t.days.includes(dow)));
+  const todayTasks=tasks.filter(t=>isTodayTask(t,tod,dow));
   const allDone=todayTasks.length>0&&todayTasks.every(t=>t.done.includes(tod));
   if(allDone){if(!completedDays.includes(tod))completedDays.push(tod);}
   else{completedDays=completedDays.filter(d=>d!==tod);}
@@ -604,8 +600,8 @@ function calcTaskStreak(t){
 
 // ── Task reorder ─────────────────────────────────────────────────────────────
 function moveTask(id,dir){
-  const i=tasks.findIndex(t=>t.id===id);if(i<0)return;
-  const j=i+dir;if(j<0||j>=tasks.length)return;
+  const v=shownTasks(),k=v.findIndex(t=>t.id===id);if(k<0||!v[k+dir])return;
+  const i=tasks.indexOf(v[k]),j=tasks.indexOf(v[k+dir]);
   [tasks[i],tasks[j]]=[tasks[j],tasks[i]];
   save();renderTaskList();
 }
@@ -659,7 +655,6 @@ function boot(){
 }
 
 function toggleDark(){isDark=!isDark;document.body.classList.toggle('dark',isDark);const tog=document.getElementById('dark-tog');if(tog)tog.classList.toggle('on',isDark);applyColorTheme(currentTheme);save();}
-function toggleVibration(){vibrationEnabled=!vibrationEnabled;const tog=document.getElementById('vibrate-tog');if(tog)tog.classList.toggle('on',vibrationEnabled);save();}
 
 let _curTabIdx=0;
 function switchTab(t,dir){
@@ -690,10 +685,10 @@ function setRemType(t){
   if(t==='time'){const d=new Date();d.setHours(d.getHours()+1,0,0);document.getElementById('rem-time').value=`${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 }
 function checkNotifs(){
-  if(!('Notification' in window)||Notification.permission!=='granted')return;
+  if(pushOn||!('Notification' in window)||Notification.permission!=='granted')return; // push from the server covers it
   const now=new Date(),nowMin=now.getHours()*60+now.getMinutes(),tod=toDateStr(now),dow=now.getDay();
   tasks.forEach(t=>{
-    if(!t.reminder)return;
+    if(!t.reminder||!isTodayTask(t,tod,dow)||t.done.includes(tod))return;
     const r=t.reminder;
     if(r.type==='time'||(typeof r==='string')){
       const timeStr=typeof r==='string'?r:r.time;
@@ -750,7 +745,7 @@ function openEditTask(id){
   document.getElementById('new-name').value=t.name;
   document.getElementById('new-notes').value=t.notes||'';
   document.getElementById('sub-in').value='';
-  document.getElementById('sub-list').innerHTML=dSubtasks.map(s=>`<div class="sub-row" id="sub-${s.id}"><span style="flex:1;font-size:13px;color:var(--txt);">${esc(s.name)}</span><button onclick="removeSubtaskInput('${s.id}')" style="background:none;border:none;color:var(--sub);font-size:14px;cursor:pointer;padding:2px 4px;">✕</button></div>`).join('');
+  renderSubtaskInputList();
   document.getElementById('emo-in').value='';
   if(dIconType==='image'){document.getElementById('icon-prev').innerHTML=`<img src="${dIcon}" style="width:50px;height:50px;border-radius:13px;object-fit:cover;">`;}
   else{document.getElementById('icon-prev').innerHTML=`<span style="font-size:28px;">${dIcon}</span>`;}
@@ -811,7 +806,8 @@ function saveTask(){
 function renderTaskList(){
   const el=document.getElementById('task-list');
   const tod=toDateStr(new Date()),dow=new Date().getDay();
-  const todayTasks=tasks.filter(t=>!t.recurring||(t.days.length===0||t.days.includes(dow)));
+  const todayTasks=tasks.filter(t=>isTodayTask(t,tod,dow));
+  const shown=shownTasks();
   const doneCount=todayTasks.filter(t=>t.done.includes(tod)).length;
   const pct=todayTasks.length?Math.round(doneCount/todayTasks.length*100):0;
   const pb=document.getElementById('prog-bar');if(pb)pb.style.width=pct+'%';
@@ -820,12 +816,12 @@ function renderTaskList(){
   const sb=document.getElementById('streak-badge'),sn=document.getElementById('streak-num');
   if(sb)sb.style.display=streak>0?'inline':'none';if(sn)sn.textContent=streak;
 
-  if(!tasks.length){
+  if(!shown.length){
     el.innerHTML=`<div style="text-align:center;padding:36px 10px;color:var(--sub);font-size:14px;"><div style="font-size:48px;margin-bottom:12px;">📋</div>No tasks yet.<br>Tap "+ New Task" to start!</div>`;
     return;
   }
 
-  el.innerHTML=tasks.map((t,idx)=>{
+  el.innerHTML=shown.map((t,idx)=>{
     const done=t.done.includes(tod);
     const activeToday=!t.recurring||(t.days.length===0||t.days.includes(dow));
     const ic=t.iconType==='image'
@@ -876,7 +872,7 @@ function renderTaskList(){
         </div>
         <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0;">
           <button onclick="event.stopPropagation();moveTask('${t.id}',-1)" style="background:none;border:none;color:${idx===0?'var(--brd)':'var(--sub)'};font-size:12px;padding:2px 5px;cursor:pointer;line-height:1;" ${idx===0?'disabled':''}>▲</button>
-          <button onclick="event.stopPropagation();moveTask('${t.id}',1)" style="background:none;border:none;color:${idx===tasks.length-1?'var(--brd)':'var(--sub)'};font-size:12px;padding:2px 5px;cursor:pointer;line-height:1;" ${idx===tasks.length-1?'disabled':''}>▼</button>
+          <button onclick="event.stopPropagation();moveTask('${t.id}',1)" style="background:none;border:none;color:${idx===shown.length-1?'var(--brd)':'var(--sub)'};font-size:12px;padding:2px 5px;cursor:pointer;line-height:1;" ${idx===shown.length-1?'disabled':''}>▼</button>
         </div>
         <button onclick="event.stopPropagation();openEditTask('${t.id}')" style="background:none;border:none;color:var(--sub);font-size:14px;padding:4px;cursor:pointer;" title="Edit">✏️</button>
         <button onclick="event.stopPropagation();deleteTask('${t.id}')" style="background:none;border:none;color:var(--brd);font-size:15px;padding:4px;cursor:pointer;">✕</button>
@@ -950,8 +946,8 @@ function getDayTasks(ds){
       if(ds > tod) return false;          // never show on future days
       return t.days.length===0||t.days.includes(dow);
     }
-    // One-time: show on today (pending) OR on any day it was completed
-    return ds===tod||t.done.includes(ds);
+    // One-time: show on the day it was completed, or on today while still pending
+    return t.done.includes(ds)||(ds===tod&&!t.done.length);
   });
 }
 function getDayProgress(ds){
@@ -1101,7 +1097,7 @@ function renderHeatmap(){
 }
 function renderSummary(){
   const tod=toDateStr(new Date()),dow=new Date().getDay();
-  const todayTasks=tasks.filter(t=>!t.recurring||t.days.length===0||t.days.includes(dow));
+  const todayTasks=tasks.filter(t=>isTodayTask(t,tod,dow));
   const done=todayTasks.filter(t=>t.done.includes(tod)).length;
   const totalTracked=savedSessions.reduce((s,ses)=>s+ses.total,0);
   const streak=calculateStreak();
@@ -1162,12 +1158,12 @@ const TABS=['tasks','timer','cal','summary','settings'];
 // ── Web Push ──────────────────────────────────────────────────────────────────
 const VAPID_PUBLIC_KEY='BDEHFhgEYeKsdZEHpRTorzNXQ20QimeN3vO0_vkCXyL7gw88OtrJAP0gcT7O84CtsYVDCRupuiYz2-Zq7nx7iLk';
 function urlBase64ToUint8Array(b64){const pad='='.repeat((4-b64.length%4)%4);const base64=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base64);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));}
-function setNotifBtnActive(){const btn=document.getElementById('notif-btn');if(btn){btn.textContent='✅ Active';btn.style.background='#6C63FF';btn.onclick=null;btn.style.opacity='0.8';}}
+function setNotifBtnActive(){pushOn=true;const btn=document.getElementById('notif-btn');if(btn){btn.textContent='✅ Active';btn.style.background='#6C63FF';btn.onclick=null;btn.style.opacity='0.8';}}
 async function checkPushStatus(){
   try{
     const reg=await navigator.serviceWorker.ready;
     const sub=await reg.pushManager.getSubscription();
-    if(sub)setNotifBtnActive();
+    if(sub){setNotifBtnActive();syncReminders();}
     const tog=document.getElementById('dark-tog');if(tog)tog.classList.toggle('on',isDark);
   }catch(e){}
 }

@@ -1,4 +1,4 @@
-const CACHE = 'daytrack-v3';
+const CACHE = 'daytrack-v4';
 const FILES = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -13,8 +13,13 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// Network first so new uploads show up right away; the saved copy is only used offline
 self.addEventListener('fetch', e => {
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  e.respondWith(fetch(e.request).then(r => {
+    if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+    return r;
+  }).catch(() => caches.match(e.request)));
 });
 
 self.addEventListener('push', e => {

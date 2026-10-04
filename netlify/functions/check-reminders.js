@@ -13,12 +13,7 @@ exports.handler = async () => {
   const store = getStore({ name: 'daytrack', consistency: 'strong', siteID: NETLIFY_SITE_ID, token: NETLIFY_AUTH_TOKEN });
   const { blobs } = await store.list();
 
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
   const nowMs = Date.now();
-  const todStr = now.toISOString().split('T')[0];
-  const isSunday = now.getDay() === 0;
-  const isSummaryTime = nowMin >= 20 * 60 && nowMin <= 20 * 60 + 2;
 
   console.log(`Found ${blobs.length} subscription(s) in store`);
 
@@ -27,15 +22,22 @@ exports.handler = async () => {
     if (!data) { console.log(`Key ${key}: no data`); continue; }
 
     const { subscription, tasks = [], completedDays = [] } = data;
+    // The server clock is UTC, so work in the phone's own timezone
+    const { min: nowMin, date: todStr, dow } = localNow(data.tz);
+    const isSunday = dow === 0;
+    const isSummaryTime = nowMin >= 20 * 60 && nowMin <= 20 * 60 + 2;
     let changed = false;
 
     // Task reminders
     for (const t of tasks) {
       if (!t.reminder) continue;
       const r = t.reminder;
+      const done = t.done || [];
+      if (t.recurring && t.days && t.days.length && !t.days.includes(dow)) continue; // not one of its days
+      if (done.includes(todStr) || (!t.recurring && done.length)) continue;            // already done
 
-      if (r.type === 'time') {
-        const timeStr = typeof r === 'string' ? r : r.time;
+      const timeStr = typeof r === 'string' ? r : r.type === 'time' ? r.time : null;
+      if (timeStr) {
         const [rh, rm] = timeStr.split(':').map(Number);
         if (Math.abs(nowMin - (rh * 60 + rm)) <= 1 && t.lastFiredDate !== todStr) {
           await notify(webpush, subscription, `Time for: ${t.name}`, t.notifStyle);
@@ -45,7 +47,10 @@ exports.handler = async () => {
       } else if (r.type === 'interval') {
         const ms = (r.h * 60 + r.m) * 60000;
         console.log(`Task "${t.name}": interval ${r.h}h${r.m}m, ms=${ms}, since last=${nowMs-(t.lastFiredMs||0)}`);
-        if (ms > 0 && nowMs - (t.lastFiredMs || 0) >= ms) {
+        if (ms > 0 && !t.lastFiredMs) {
+          t.lastFiredMs = nowMs; // start counting from now, first reminder after one interval
+          changed = true;
+        } else if (ms > 0 && nowMs - t.lastFiredMs >= ms) {
           await notify(webpush, subscription, `Reminder: ${t.name}`, t.notifStyle);
           t.lastFiredMs = nowMs;
           changed = true;
@@ -57,8 +62,8 @@ exports.handler = async () => {
     if (isSunday && isSummaryTime && data.lastWeeklySent !== todStr) {
       const last7 = [];
       for (let i = 0; i < 7; i++) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
+        const d = new Date(todStr + 'T12:00:00Z');
+        d.setUTCDate(d.getUTCDate() - i);
         last7.push(d.toISOString().split('T')[0]);
       }
       const completedCount = last7.filter(d => completedDays.includes(d)).length;
@@ -78,6 +83,21 @@ exports.handler = async () => {
 
   return { statusCode: 200 };
 };
+
+function localNow(tz) {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-US', { timeZone: tz || 'UTC', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short' }).formatToParts(new Date());
+  } catch (_) {
+    return localNow('UTC'); // unknown timezone name
+  }
+  const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+  return {
+    min: Number(p.hour) * 60 + Number(p.minute),
+    date: `${p.year}-${p.month}-${p.day}`,
+    dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday),
+  };
+}
 
 async function notify(webpush, subscription, body, notifStyle = 'default') {
   try {
