@@ -8,7 +8,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    Promise.all(keys.filter(k => k !== CACHE && k !== 'dt-actions').map(k => caches.delete(k)))
   ));
   self.clients.claim();
 });
@@ -35,5 +35,33 @@ self.addEventListener('push', e => {
   if (style === 'vibrate' || style === 'both') opts.vibrate = [200, 100, 200, 100, 200];
   if (style === 'sound' || style === 'default' || style === 'both') {} // sound is default browser behavior
   if (style === 'vibrate') opts.silent = true; // vibrate only — suppress sound
+  if (data.taskId) {
+    opts.data = { taskId: data.taskId };
+    opts.actions = [{ action: 'done', title: '✅ Done' }, { action: 'snooze', title: '⏰ 10 min' }];
+  }
   e.waitUntil(self.registration.showNotification(data.title, opts));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const id = e.notification.data && e.notification.data.taskId;
+  if (!id || !e.action) {
+    e.waitUntil(clients.matchAll({ type: 'window' }).then(cs => cs.length ? cs[0].focus() : clients.openWindow('./')));
+    return;
+  }
+  const d = new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  e.waitUntil((async () => {
+    if (e.action === 'done') {
+      // The page applies this next time it's open (it can't be reached from here)
+      await (await caches.open('dt-actions')).put(`./__done/${id}/${date}`, new Response(''));
+      (await clients.matchAll({ type: 'window' })).forEach(c => c.postMessage('dt-actions'));
+    }
+    // Tell the reminder server so it stops (done) or comes back in 10 minutes (snooze)
+    const sub = await self.registration.pushManager.getSubscription();
+    if (sub) await fetch('/.netlify/functions/reminder-action', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth: sub.toJSON().keys.auth, taskId: id, action: e.action, date }),
+    }).catch(() => {});
+  })());
 });

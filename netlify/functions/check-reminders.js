@@ -35,23 +35,32 @@ exports.handler = async () => {
       const done = t.done || [];
       if (t.recurring && t.days && t.days.length && !t.days.includes(dow)) continue; // not one of its days
       if (done.includes(todStr) || (!t.recurring && done.length)) continue;            // already done
+      if (!t.recurring && t.date && t.date > todStr) continue;                          // dated for later
+
+      if (t.snoozeUntil && nowMs >= t.snoozeUntil) {
+        await notify(webpush, subscription, `Snoozed: ${t.name}`, t.notifStyle, t.id);
+        t.snoozeUntil = null;
+        changed = true;
+        continue;
+      }
 
       const timeStr = typeof r === 'string' ? r : r.type === 'time' ? r.time : null;
       if (timeStr) {
         const [rh, rm] = timeStr.split(':').map(Number);
         if (Math.abs(nowMin - (rh * 60 + rm)) <= 1 && t.lastFiredDate !== todStr) {
-          await notify(webpush, subscription, `Time for: ${t.name}`, t.notifStyle);
+          await notify(webpush, subscription, `Time for: ${t.name}`, t.notifStyle, t.id);
           t.lastFiredDate = todStr;
           changed = true;
         }
       } else if (r.type === 'interval') {
         const ms = (r.h * 60 + r.m) * 60000;
         console.log(`Task "${t.name}": interval ${r.h}h${r.m}m, ms=${ms}, since last=${nowMs-(t.lastFiredMs||0)}`);
+        if (inQuiet(nowMin, data.quiet)) continue; // fires again once quiet hours end
         if (ms > 0 && !t.lastFiredMs) {
           t.lastFiredMs = nowMs; // start counting from now, first reminder after one interval
           changed = true;
         } else if (ms > 0 && nowMs - t.lastFiredMs >= ms) {
-          await notify(webpush, subscription, `Reminder: ${t.name}`, t.notifStyle);
+          await notify(webpush, subscription, `Reminder: ${t.name}`, t.notifStyle, t.id);
           t.lastFiredMs = nowMs;
           changed = true;
         }
@@ -99,10 +108,17 @@ function localNow(tz) {
   };
 }
 
-async function notify(webpush, subscription, body, notifStyle = 'default') {
+function inQuiet(min, q) {
+  if (!q || !q.on) return false;
+  const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+  const f = toMin(q.from), t = toMin(q.to);
+  return f <= t ? (min >= f && min < t) : (min >= f || min < t); // window can cross midnight
+}
+
+async function notify(webpush, subscription, body, notifStyle = 'default', taskId) {
   try {
     console.log('Sending push:', body, 'style:', notifStyle);
-    const payload = JSON.stringify({ title: '⏰ DayTrack', body, notifStyle });
+    const payload = JSON.stringify({ title: '⏰ DayTrack', body, notifStyle, taskId });
     const result = await webpush.sendNotification(subscription, payload);
     console.log('Push sent, status:', result.statusCode);
   } catch (e) {

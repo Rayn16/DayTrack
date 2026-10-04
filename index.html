@@ -108,6 +108,7 @@
         </div>
         <div id="prog-label" style="font-size:12px;color:var(--sub);margin-top:6px;text-align:right;">0 / 0 tasks</div>
       </div>
+      <div class="card" id="mood-card"></div>
       <button class="add-btn" onclick="openAddTask()">+ New Task</button>
       <div class="card"><div class="cl">Today's Tasks</div><div id="task-list"></div></div>
     </div>
@@ -167,6 +168,8 @@
         <div class="cl">Activity — 90 Days</div>
         <div id="heatmap"></div>
       </div>
+      <div class="card"><div class="cl">Habits — Last 30 Days</div><div id="habit-stats"></div></div>
+      <div class="card"><div class="cl">Mood — Last 14 Days</div><div id="mood-chart"></div></div>
       <div class="card"><div class="cl">Recent Sessions</div><div id="sum-sess"></div></div>
     </div>
 
@@ -180,6 +183,16 @@
             <div style="font-size:12px;color:var(--sub);margin-top:2px;">Get reminders even when app is closed</div>
           </div>
           <button id="notif-btn" onclick="activateNotifs()" style="background:#22C55E;color:white;border:none;border-radius:11px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">🔔 Activate</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--brd);margin-top:6px;">
+          <div>
+            <div style="font-size:15px;font-weight:600;color:var(--txt);">Quiet Hours</div>
+            <div style="font-size:12px;color:var(--sub);margin-top:2px;">No "Every…" reminders during these hours</div>
+          </div>
+          <button id="quiet-tog" class="tog" onclick="toggleQuiet()"></button>
+        </div>
+        <div id="quiet-times" style="display:none;gap:8px;align-items:center;padding:4px 0 2px;">
+          <input type="time" class="inp" id="quiet-from" onchange="setQuiet()"><span style="color:var(--sub);font-size:13px;">to</span><input type="time" class="inp" id="quiet-to" onchange="setQuiet()">
         </div>
       </div>
       <div class="card">
@@ -269,6 +282,10 @@
       <button class="rb on" id="rb-one" onclick="setRec(false)">One-time</button>
       <button class="rb" id="rb-rec" onclick="setRec(true)">Recurring 🔄</button>
     </div>
+    <div id="date-wrap" style="margin-bottom:8px;">
+      <div style="font-size:12px;color:var(--sub);margin-bottom:7px;">Which day? (empty = today, stays until done)</div>
+      <input type="date" class="inp" id="task-date">
+    </div>
     <div id="days-wrap" style="display:none;margin-bottom:8px;">
       <div style="font-size:12px;color:var(--sub);margin-bottom:7px;">Which days? (none = every day)</div>
       <div style="display:flex;gap:6px;">
@@ -347,7 +364,7 @@
     <!-- Tasks -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">✅ Tasks</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Tap <b style="color:var(--txt);">+ New Task</b> to create a task. Choose <b style="color:var(--txt);">One-time</b> for a single-day task, or <b style="color:var(--txt);">Recurring 🔄</b> to repeat it on specific days of the week (or every day). Tap a task to mark it done. Tap ✕ to delete it. Use <b style="color:var(--txt);">▲▼</b> to reorder.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Tap <b style="color:var(--txt);">+ New Task</b> to create a task. Choose <b style="color:var(--txt);">One-time</b> for a single-day task, or <b style="color:var(--txt);">Recurring 🔄</b> to repeat it on specific days of the week (or every day). One-time tasks can get a day; future ones wait greyed out until then. Tap a task to mark it done. Tap ✕ to delete it. Use <b style="color:var(--txt);">▲▼</b> to reorder.</div>
     </div>
 
     <!-- Priority -->
@@ -365,7 +382,7 @@
     <!-- Reminders -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">⏰ Reminders</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Set a reminder <b style="color:var(--txt);">At a time</b> (fires once at a specific hour) or <b style="color:var(--txt);">Every… 🔁</b> (repeats on an interval, e.g. every 2h). Reminders fire as push notifications even when the app is closed — just activate notifications in Settings first.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">Set a reminder <b style="color:var(--txt);">At a time</b> (fires once at a specific hour) or <b style="color:var(--txt);">Every… 🔁</b> (repeats on an interval, e.g. every 2h). Reminders fire as push notifications even when the app is closed — just activate notifications in Settings first. On Android you can tap <b style="color:var(--txt);">✅ Done</b> or <b style="color:var(--txt);">⏰ 10 min</b> right on the reminder. <b style="color:var(--txt);">Quiet Hours</b> in Settings pause "Every…" reminders at night.</div>
     </div>
 
     <!-- Streaks -->
@@ -389,7 +406,7 @@
     <!-- Summary -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">📊 Summary</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">See your stats at a glance: today's completion, overall streak, total time tracked, and session count. The <b style="color:var(--txt);">This Week</b> bar chart shows daily completion % for the last 7 days. The <b style="color:var(--txt);">Activity</b> heatmap shows the past 90 days — darker green means more tasks completed.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">See your stats at a glance: today's completion, overall streak, total time tracked, and session count. The <b style="color:var(--txt);">This Week</b> bar chart shows daily completion % for the last 7 days. The <b style="color:var(--txt);">Activity</b> heatmap shows the past 90 days — darker green means more tasks completed. <b style="color:var(--txt);">Habits</b> shows how often you did each recurring task in the last 30 days, and <b style="color:var(--txt);">Mood</b> shows the mood you picked on the Tasks tab each day.</div>
     </div>
 
     <!-- Settings -->
@@ -408,7 +425,9 @@ const MONTHS=['January','February','March','April','May','June','July','August',
 const DNAMES=['Su','Mo','Tu','We','Th','Fr','Sa'];
 const PRI_COLORS={high:'#EF4444',medium:'#F97316',low:'#6C63FF'};
 
-let tasks=[],savedSessions=[],calNotes={},completedDays=[];
+let tasks=[],savedSessions=[],calNotes={},completedDays=[],moods={};
+let quiet={on:false,from:'23:00',to:'07:00'};
+const MOODS=['😞','😕','😐','🙂','😄'];
 let calView=new Date(),selDay=null;
 let dIcon='📝',dIconType='emoji',dRec=false,dDays=[],dRemType='none',dPriority='none',dSubtasks=[];
 let sesItems=[];
@@ -521,6 +540,8 @@ function writeLocal(){
     localStorage.setItem('dt_theme',currentTheme);
     localStorage.setItem('dt_preset',currentPreset);
     localStorage.setItem('dt_updated',localUpdated);
+    localStorage.setItem('dt_moods',JSON.stringify(moods));
+    localStorage.setItem('dt_quiet',JSON.stringify(quiet));
   }catch(e){}
 }
 async function syncReminders(){
@@ -531,7 +552,7 @@ async function syncReminders(){
     if(!sub)return;
     await fetch('/.netlify/functions/save-reminder',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({subscription:sub,tasks:tasks.filter(t=>t.reminder),completedDays,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})
+      body:JSON.stringify({subscription:sub,tasks:tasks.filter(t=>t.reminder),completedDays,quiet,tz:Intl.DateTimeFormat().resolvedOptions().timeZone})
     });
   }catch(e){}
 }
@@ -545,6 +566,8 @@ function load(){
     currentTheme=localStorage.getItem('dt_theme')||'purple';
     currentPreset=localStorage.getItem('dt_preset')||'default';
     localUpdated=Number(localStorage.getItem('dt_updated'))||0;
+    moods=JSON.parse(localStorage.getItem('dt_moods')||'{}');
+    quiet=JSON.parse(localStorage.getItem('dt_quiet')||'null')||quiet;
     syncCode=localStorage.getItem('dt_sync');
   }catch(e){tasks=[];savedSessions=[];calNotes={};completedDays=[];}
 }
@@ -556,7 +579,7 @@ const SYNC_URL='/.netlify/functions/sync';
 let syncCode=null,syncReady=false,syncTimer,localUpdated=0;
 function queueSync(){if(!syncCode)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncReady?pushSync():pullSync(),1500);}
 async function pushSync(){
-  try{await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:syncCode,data:{tasks,savedSessions,calNotes,completedDays,updatedAt:localUpdated}})});}catch(e){}
+  try{await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:syncCode,data:{tasks,savedSessions,calNotes,completedDays,moods,updatedAt:localUpdated}})});}catch(e){}
 }
 async function pullSync(){
   try{
@@ -567,9 +590,9 @@ async function pullSync(){
   }catch(e){} // offline: try again on the next change or app open
 }
 function applyData(d){
-  tasks=d.tasks||[];savedSessions=d.savedSessions||[];calNotes=d.calNotes||{};completedDays=d.completedDays||[];
+  tasks=d.tasks||[];savedSessions=d.savedSessions||[];calNotes=d.calNotes||{};completedDays=d.completedDays||[];moods=d.moods||{};
   localUpdated=d.updatedAt;writeLocal();syncReminders();
-  renderTaskList();renderCal();renderSummary();renderPastSessions();
+  renderTaskList();renderMood();renderCal();renderSummary();renderPastSessions();
 }
 function startSync(){
   syncCode=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -611,9 +634,24 @@ function renderSyncUI(){
     </div>`;
 }
 
+// ── Done from a notification ──────────────────────────────────────────────────
+// The service worker can't reach localStorage, so it leaves ./__done/<task>/<date> in a cache
+async function applyPendingDone(){
+  try{
+    const c=await caches.open('dt-actions');let n=0;
+    for(const req of await c.keys()){
+      const m=new URL(req.url).pathname.match(/__done\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/);
+      const t=m&&tasks.find(x=>x.id===m[1]);
+      if(t&&!t.done.includes(m[2])){t.done.push(m[2]);n++;}
+      await c.delete(req);
+    }
+    if(n){updateStreakAfterCheck();save();renderTaskList();}
+  }catch(e){}
+}
+
 // ── Export / Import ──────────────────────────────────────────────────────────
 function exportData(){
-  const data={tasks,savedSessions,calNotes,completedDays,exportedAt:new Date().toISOString(),version:1};
+  const data={tasks,savedSessions,calNotes,completedDays,moods,exportedAt:new Date().toISOString(),version:1};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -631,7 +669,8 @@ function importData(inp){
       if(d.savedSessions)savedSessions=d.savedSessions;
       if(d.calNotes)calNotes=d.calNotes;
       if(d.completedDays)completedDays=d.completedDays;
-      save();renderTaskList();renderSummary();renderCal();
+      if(d.moods)moods=d.moods;
+      save();renderTaskList();renderMood();renderSummary();renderCal();
       showToast('📥 Imported!');
     }catch(err){showToast('❌ Invalid file');}
   };
@@ -640,9 +679,10 @@ function importData(inp){
 }
 
 // ── Streak helpers ───────────────────────────────────────────────────────────
-// One-time tasks stay on today's list until done, then only on the day they were done
-function isTodayTask(t,tod,dow){return t.recurring?(t.days.length===0||t.days.includes(dow)):(!t.done.length||t.done.includes(tod));}
-function shownTasks(){const tod=toDateStr(new Date());return tasks.filter(t=>t.recurring||isTodayTask(t,tod,0));}
+// One-time tasks stay on the list until done, then only on the day they were done
+// Dated one-time tasks wait until their day, then carry over until done
+function isTodayTask(t,tod,dow){return t.recurring?(t.days.length===0||t.days.includes(dow)):t.done.length?t.done.includes(tod):(!t.date||t.date<=tod);}
+function shownTasks(){const tod=toDateStr(new Date());return tasks.filter(t=>t.recurring||!t.done.length||t.done.includes(tod));}
 function calculateStreak(){
   const set=new Set(completedDays);
   let streak=0,d=new Date();
@@ -721,9 +761,11 @@ function boot(){
   applyColorTheme(currentTheme);
   renderThemeUI();
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-  buildEmoGrid();renderTaskList();renderTimerTab();renderCal();renderSyncUI();
+  buildEmoGrid();renderTaskList();renderMood();renderTimerTab();renderCal();renderSyncUI();renderQuiet();
+  applyPendingDone();
   if(syncCode)pullSync();
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&syncCode)pullSync();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();});
+  if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='dt-actions')applyPendingDone();});
   setInterval(()=>{sesItems.forEach(it=>{if(!it.running)return;const el=document.getElementById('td-'+it.id);if(el)el.textContent=fDur(it.accum+(Date.now()-it.startedAt),true);});},500);
   setInterval(checkNotifs,30000);
   if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});setTimeout(checkPushStatus,1500);}
@@ -772,16 +814,32 @@ function checkNotifs(){
       const[rh,rm]=timeStr.split(':').map(Number);
       if(Math.abs(nowMin-(rh*60+rm))<=1){new Notification('⏰ DayTrack',{body:`Time for: ${t.name}`,icon:'./icon.svg'});if(!t.reminded)t.reminded=[];t.reminded.push(tod);save();}
     }else if(r.type==='interval'){
-      const ms=(r.h*60+r.m)*60000;if(ms<=0)return;
+      const ms=(r.h*60+r.m)*60000;if(ms<=0||inQuiet(nowMin))return;
       if(Date.now()-(t.reminderLastFired||0)>=ms){new Notification('⏰ DayTrack',{body:`Reminder: ${t.name}`,icon:'./icon.svg'});t.reminderLastFired=Date.now();save();}
     }
   });
 }
 
+function inQuiet(min){
+  if(!quiet.on)return false;
+  const toM=s=>{const[h,m]=s.split(':').map(Number);return h*60+m;},f=toM(quiet.from),t=toM(quiet.to);
+  return f<=t?(min>=f&&min<t):(min>=f||min<t); // window can cross midnight
+}
+function renderQuiet(){
+  document.getElementById('quiet-tog').classList.toggle('on',quiet.on);
+  document.getElementById('quiet-times').style.display=quiet.on?'flex':'none';
+  document.getElementById('quiet-from').value=quiet.from;document.getElementById('quiet-to').value=quiet.to;
+}
+function toggleQuiet(){quiet.on=!quiet.on;renderQuiet();writeLocal();syncReminders();}
+function setQuiet(){
+  const f=document.getElementById('quiet-from').value,t=document.getElementById('quiet-to').value;
+  if(f&&t){quiet.from=f;quiet.to=t;writeLocal();syncReminders();}
+}
+
 // ── Icon helpers ──────────────────────────────────────────────────────────────
 function buildEmoGrid(){document.getElementById('emo-grid').innerHTML=EMOS.map((e,i)=>`<button class="eb${i===0?' on':''}" onclick="pickEmo(this,'${e}')">${e}</button>`).join('');}
-function pickEmo(btn,e){dIcon=e;dIconType='emoji';document.querySelectorAll('.eb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.getElementById('emo-in').value='';refreshIconPrev();}
-function emoTyped(v){const em=[...v].find(c=>c.codePointAt(0)>127);if(em){dIcon=em;dIconType='emoji';refreshIconPrev();document.querySelectorAll('.eb').forEach(b=>b.classList.remove('on'));}}
+function pickEmo(btn,e){dIcon=e;dIconType='emoji';document.querySelectorAll('#emo-grid .eb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.getElementById('emo-in').value='';refreshIconPrev();}
+function emoTyped(v){const em=[...v].find(c=>c.codePointAt(0)>127);if(em){dIcon=em;dIconType='emoji';refreshIconPrev();document.querySelectorAll('#emo-grid .eb').forEach(b=>b.classList.remove('on'));}}
 function fileLoad(inp){if(!inp.files[0])return;const r=new FileReader();r.onload=e=>{dIcon=e.target.result;dIconType='image';refreshIconPrev();};r.readAsDataURL(inp.files[0]);}
 function refreshIconPrev(){const el=document.getElementById('icon-prev');el.innerHTML=dIconType==='image'?`<img src="${dIcon}" style="width:44px;height:44px;border-radius:11px;object-fit:cover;">`:`<span style="font-size:28px;">${dIcon}</span>`;}
 
@@ -795,10 +853,11 @@ function openAddTask(){
   document.getElementById('sub-list').innerHTML='';
   document.getElementById('emo-in').value='';
   document.getElementById('icon-prev').innerHTML='<span style="font-size:28px;">📝</span>';
-  document.querySelectorAll('.eb').forEach((b,i)=>b.classList.toggle('on',i===0));
+  document.querySelectorAll('#emo-grid .eb').forEach((b,i)=>b.classList.toggle('on',i===0));
   document.getElementById('rb-one').classList.add('on');
   document.getElementById('rb-rec').classList.remove('on');
   document.getElementById('days-wrap').style.display='none';
+  document.getElementById('date-wrap').style.display='block';document.getElementById('task-date').value='';
   document.querySelectorAll('.db').forEach(b=>b.classList.remove('on'));
   setPri('none');setRemType('none');setNotifStyle('default');
   document.getElementById('rem-h').value='1';
@@ -827,6 +886,7 @@ function openEditTask(id){
   document.getElementById('rb-one').classList.toggle('on',!dRec);
   document.getElementById('rb-rec').classList.toggle('on',dRec);
   document.getElementById('days-wrap').style.display=dRec?'block':'none';
+  document.getElementById('date-wrap').style.display=dRec?'none':'block';document.getElementById('task-date').value=t.date||'';
   document.querySelectorAll('.db').forEach((b,i)=>b.classList.toggle('on',dDays.includes(i)));
   setPri(dPriority);setNotifStyle(dNotifStyle);
   if(dRemType==='time'&&t.reminder){setRemType('time');document.getElementById('rem-time').value=t.reminder.time||'';}
@@ -837,7 +897,7 @@ function openEditTask(id){
   document.getElementById('add-task-ov').classList.add('on');
   setTimeout(()=>document.getElementById('new-name').focus(),300);
 }
-function setRec(v){dRec=v;document.getElementById('rb-one').classList.toggle('on',!v);document.getElementById('rb-rec').classList.toggle('on',v);document.getElementById('days-wrap').style.display=v?'block':'none';}
+function setRec(v){dRec=v;document.getElementById('rb-one').classList.toggle('on',!v);document.getElementById('rb-rec').classList.toggle('on',v);document.getElementById('days-wrap').style.display=v?'block':'none';document.getElementById('date-wrap').style.display=v?'none':'block';}
 function toggleShowInCal(){dShowInCal=!dShowInCal;}
 function toggleCalRecurring(){
   calShowRecurring=!calShowRecurring;
@@ -853,12 +913,13 @@ function saveTask(){
   if(dRemType==='time'){const time=document.getElementById('rem-time').value;if(time)reminder={type:'time',time};}
   else if(dRemType==='interval'){const h=parseInt(document.getElementById('rem-h').value)||0,m=parseInt(document.getElementById('rem-m').value)||0;if(h>0||m>0)reminder={type:'interval',h,m};}
   const notes=document.getElementById('new-notes').value.trim();
+  const date=dRec?null:document.getElementById('task-date').value||null;
   if(editingTaskId){
     const t=tasks.find(x=>x.id===editingTaskId);if(!t)return;
     t.name=name;t.notes=notes;t.icon=dIcon;t.iconType=dIconType;
     t.recurring=dRec;t.days=[...dDays];t.priority=dPriority;
     t.notifStyle=dNotifStyle;t.showInCal=dShowInCal;
-    t.reminder=reminder;
+    t.reminder=reminder;t.date=date;
     // preserve existing subtask done state, add new subtasks
     const existing=t.subtasks||[];
     t.subtasks=dSubtasks.map(s=>{const ex=existing.find(e=>e.id===s.id);return{id:s.id,name:s.name,done:ex?ex.done:[]};});
@@ -866,7 +927,7 @@ function saveTask(){
   } else {
     tasks.push({
       id:uid(),name,notes,icon:dIcon,iconType:dIconType,
-      recurring:dRec,days:[...dDays],done:[],
+      recurring:dRec,days:[...dDays],done:[],date,
       priority:dPriority,notifStyle:dNotifStyle,showInCal:dShowInCal,
       createdAt:toDateStr(new Date()),
       subtasks:dSubtasks.map(s=>({id:s.id,name:s.name,done:[]})),
@@ -898,7 +959,7 @@ function renderTaskList(){
 
   el.innerHTML=shown.map((t,idx)=>{
     const done=t.done.includes(tod);
-    const activeToday=!t.recurring||(t.days.length===0||t.days.includes(dow));
+    const activeToday=isTodayTask(t,tod,dow);
     const ic=t.iconType==='image'
       ?`<img src="${t.icon}" style="width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
       :`<div style="width:36px;height:36px;border-radius:10px;background:var(--pril);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${t.icon}</div>`;
@@ -911,7 +972,8 @@ function renderTaskList(){
     const recBadge=t.recurring?`<span style="font-size:11px;background:var(--badge);color:var(--sub);padding:2px 8px;border-radius:11px;">🔄 ${t.days.length===0?'Every day':t.days.map(d=>DNAMES[d]).join('·')}</span>`:'';
     const rl=remLabel(t.reminder);
     const remBadge=rl?`<span style="font-size:11px;background:var(--grnl);color:var(--grntxt);padding:2px 8px;border-radius:11px;">${rl}</span>`:'';
-    const notTodayBadge=!activeToday?`<span style="font-size:11px;background:var(--badge);color:var(--sub);padding:2px 8px;border-radius:11px;">Not today</span>`:'';
+    const notTodayBadge=t.recurring&&!activeToday?`<span style="font-size:11px;background:var(--badge);color:var(--sub);padding:2px 8px;border-radius:11px;">Not today</span>`:'';
+    const dateBadge=!t.recurring&&t.date&&!done&&t.date!==tod?`<span style="font-size:11px;background:var(--badge);color:${t.date<tod?'#EF4444':'var(--sub)'};padding:2px 8px;border-radius:11px;">${t.date<tod?'⚠️':'📅'} ${fmtDay(t.date)}</span>`:'';
     // Per-task streak
     const tStreak=t.recurring?calcTaskStreak(t):0;
     const streakBadge=tStreak>0?`<span style="font-size:11px;background:var(--badge);color:#F97316;padding:2px 8px;border-radius:11px;">🔥${tStreak}d</span>`:'';
@@ -920,7 +982,7 @@ function renderTaskList(){
     const subsDone=subs.filter(s=>(s.done||[]).includes(tod)).length;
     const subBadge=subs.length?`<button onclick="event.stopPropagation();toggleSubtasks('${t.id}')" style="font-size:11px;background:${expandedTasks.has(t.id)?'var(--pril)':'var(--badge)'};color:${expandedTasks.has(t.id)?'var(--pri)':'var(--sub)'};padding:2px 8px;border-radius:11px;border:none;cursor:pointer;font-family:inherit;">📋 ${subsDone}/${subs.length}</button>`:'';
 
-    const badges=[recBadge,remBadge,notTodayBadge,streakBadge,subBadge].filter(Boolean).join('');
+    const badges=[recBadge,dateBadge,remBadge,notTodayBadge,streakBadge,subBadge].filter(Boolean).join('');
     const notesHtml=t.notes?`<div style="font-size:12px;color:var(--sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.notes)}</div>`:'';
 
     // Expanded subtasks
@@ -1021,8 +1083,9 @@ function getDayTasks(ds){
       if(ds > tod) return false;          // never show on future days
       return t.days.length===0||t.days.includes(dow);
     }
-    // One-time: show on the day it was completed, or on today while still pending
-    return t.done.includes(ds)||(ds===tod&&!t.done.length);
+    // One-time: show on the day it was completed; while pending, on its day (or today if overdue/undated)
+    if(t.done.length)return t.done.includes(ds);
+    return t.date?(ds===t.date||(ds===tod&&t.date<tod)):ds===tod;
   });
 }
 function getDayProgress(ds){
@@ -1081,7 +1144,7 @@ function renderNotePanel(){
     </div>
     <div style="font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;">Tasks</div>
     <div style="margin-bottom:14px;">${taskRows}</div>`:'';
-  body.innerHTML=`${progressHtml}
+  body.innerHTML=`${progressHtml}${moods[selDay]?`<div style="font-size:13px;color:var(--sub);margin-bottom:12px;">Mood: <span style="font-size:18px;">${MOODS[moods[selDay]-1]}</span></div>`:''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
       <div style="font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;">Notes</div>
       <button onclick="setNoteReminder()" title="Remind me about this note" style="background:var(--badge);border:none;border-radius:9px;padding:4px 10px;font-size:12px;font-weight:600;color:var(--sub);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;">🔔 Remind</button>
@@ -1114,9 +1177,47 @@ function confirmNoteReminder(){
   if(!time){showToast('Pick a time first!');return;}
   tasks.push({id:uid(),name:`📅 ${note.slice(0,50)}`,notes:note,icon:'📅',iconType:'emoji',
     recurring:false,days:[],done:[],priority:'none',notifStyle:'default',
-    createdAt:toDateStr(new Date()),subtasks:[],
+    createdAt:toDateStr(new Date()),subtasks:[],date:selDay>toDateStr(new Date())?selDay:null,
     reminder:{type:'time',time},reminderLastFired:null,reminded:[]});
-  save();renderTaskList();closeOv('note-rem-ov');showToast(`🔔 Reminder set for ${fmt12(time)}`);
+  save();renderTaskList();closeOv('note-rem-ov');showToast(`🔔 Reminder set for ${selDay>toDateStr(new Date())?fmtDay(selDay)+' ':''}${fmt12(time)}`);
+}
+
+// ── Mood ──────────────────────────────────────────────────────────────────────
+function renderMood(){
+  const m=moods[toDateStr(new Date())];
+  document.getElementById('mood-card').innerHTML=`<div style="font-size:13px;font-weight:600;color:var(--txt);margin-bottom:8px;">${m?'Today\'s mood':'How are you feeling today?'}</div>
+    <div style="display:flex;justify-content:space-between;">${MOODS.map((e,i)=>`<button class="eb${m===i+1?' on':''}" onclick="setMood(${i+1})" style="width:48px;height:42px;font-size:24px;">${e}</button>`).join('')}</div>`;
+}
+function setMood(v){moods[toDateStr(new Date())]=v;save();renderMood();}
+function renderMoodChart(){
+  const vals=[];let cells='';
+  for(let i=13;i>=0;i--){
+    const d=new Date();d.setDate(d.getDate()-i);const v=moods[toDateStr(d)];if(v)vals.push(v);
+    cells+=`<div style="flex:1;text-align:center;"><div style="font-size:16px;height:22px;">${v?MOODS[v-1]:'<span style="color:var(--brd);">·</span>'}</div><div style="font-size:9px;color:var(--sub);">${DNAMES[d.getDay()][0]}</div></div>`;
+  }
+  const avg=vals.length?MOODS[Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)-1]:'';
+  return `<div style="display:flex;gap:1px;">${cells}</div>`+(avg?`<div style="font-size:12px;color:var(--sub);margin-top:8px;text-align:right;">Average ${avg}</div>`:`<div style="font-size:12px;color:var(--sub);margin-top:8px;text-align:center;">Pick a mood on the Tasks tab</div>`);
+}
+
+// ── Habit stats ───────────────────────────────────────────────────────────────
+function renderHabitStats(){
+  const rec=tasks.filter(t=>t.recurring);
+  if(!rec.length)return `<div style="text-align:center;padding:14px;color:var(--sub);font-size:13px;">Add a recurring task to see habit stats</div>`;
+  return rec.map(t=>{
+    let sched=0,done=0;
+    for(let i=0;i<30;i++){
+      const d=new Date();d.setDate(d.getDate()-i);const ds=toDateStr(d);
+      if(t.createdAt&&ds<t.createdAt)break;
+      if(t.days.length&&!t.days.includes(d.getDay()))continue;
+      if(i===0&&!t.done.includes(ds))continue; // today isn't missed yet
+      sched++;if(t.done.includes(ds))done++;
+    }
+    const pct=sched?Math.round(done/sched*100):0;
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--brd);">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:5px;"><span style="color:var(--txt);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.iconType==='image'?'':t.icon} ${esc(t.name)}</span><span style="color:var(--sub);white-space:nowrap;">${done}/${sched} · ${pct}% · 🔥${calcTaskStreak(t)}</span></div>
+      <div style="background:var(--brd);border-radius:5px;height:6px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${pct>=80?'var(--grn)':'var(--pri)'};border-radius:5px;"></div></div>
+    </div>`;
+  }).join('');
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
@@ -1183,6 +1284,8 @@ function renderSummary(){
     <div style="background:var(--card);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:26px;font-weight:700;color:var(--pri);">${savedSessions.length}</div><div style="font-size:12px;color:var(--sub);margin-top:2px;">Sessions</div></div>`;
   document.getElementById('week-chart').innerHTML=renderWeekChart();
   document.getElementById('heatmap').innerHTML=renderHeatmap();
+  document.getElementById('habit-stats').innerHTML=renderHabitStats();
+  document.getElementById('mood-chart').innerHTML=renderMoodChart();
   const se=document.getElementById('sum-sess');
   if(!savedSessions.length){se.innerHTML=`<div style="text-align:center;padding:18px;color:var(--sub);font-size:14px;">No sessions saved yet</div>`;return;}
   se.innerHTML=savedSessions.slice(0,6).map(s=>`
@@ -1200,6 +1303,7 @@ function openInfo(){document.getElementById('info-ov').classList.add('on');}
 function uid(){return Math.random().toString(36).slice(2,10);}
 function toDateStr(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function pad(n){return String(n).padStart(2,'0');}
+function fmtDay(ds){return new Date(ds+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
 function fmt12(t24){if(!t24)return'';const[h,m]=t24.split(':').map(Number);return`${h%12||12}:${pad(m)} ${h>=12?'PM':'AM'}`;}
 function fDur(ms,full=false){const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;if(h>0||full)return`${pad(h)}:${pad(m)}:${pad(sc)}`;return`${pad(m)}:${pad(sc)}`;}
 function fDurShort(ms){const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h)return`${h}h ${m}m`;if(m)return`${m}m`;return'0m';}
