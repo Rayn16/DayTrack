@@ -1,13 +1,12 @@
-const { getStore } = require('@netlify/blobs');
+import { lambda, blobStore } from '../lib/fn.mjs';
 
 // Whole DayTrack data set per private sync code (32 hex chars made on the phone).
 // inbox-<code> holds tasks Gwen adds from the PC until the phone picks them up.
 const CODE = /^[a-f0-9]{32}$/;
 
-exports.handler = async (event) => {
-  const { NETLIFY_SITE_ID, NETLIFY_AUTH_TOKEN } = process.env;
-  const store = getStore({ name: 'daytrack-sync', consistency: 'strong', siteID: NETLIFY_SITE_ID, token: NETLIFY_AUTH_TOKEN });
+const handler = async (event) => {
   try {
+    const store = blobStore('daytrack-sync');
     if (event.httpMethod === 'GET') {
       const code = (event.queryStringParameters || {}).code || '';
       if (!CODE.test(code)) return { statusCode: 400, body: 'Bad code' };
@@ -40,3 +39,5 @@ exports.handler = async (event) => {
 };
 
 const json = (d) => ({ statusCode: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(d ?? null) });
+
+export default lambda(handler);

@@ -1,16 +1,16 @@
-const { getStore } = require('@netlify/blobs');
-const webpush = require('web-push');
+import { lambda, blobStore } from '../lib/fn.mjs';
+import webpush from 'web-push';
 
-exports.handler = async () => {
-  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, NETLIFY_SITE_ID, NETLIFY_AUTH_TOKEN } = process.env;
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !NETLIFY_SITE_ID || !NETLIFY_AUTH_TOKEN) {
-    console.log('Missing env vars:', { VAPID_PUBLIC_KEY: !!VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY: !!VAPID_PRIVATE_KEY, NETLIFY_SITE_ID: !!NETLIFY_SITE_ID, NETLIFY_AUTH_TOKEN: !!NETLIFY_AUTH_TOKEN });
+const handler = async () => {
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    console.log('Missing env vars:', { VAPID_PUBLIC_KEY: !!VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY: !!VAPID_PRIVATE_KEY });
     return { statusCode: 200 };
   }
 
   webpush.setVapidDetails('mailto:r.alljhanii.4@gmail.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-  const store = getStore({ name: 'daytrack', consistency: 'strong', siteID: NETLIFY_SITE_ID, token: NETLIFY_AUTH_TOKEN });
+  const store = blobStore('daytrack');
   const { blobs } = await store.list();
 
   const nowMs = Date.now();
@@ -125,3 +125,4 @@ async function notify(webpush, subscription, body, notifStyle = 'default', taskI
     console.error('Notify error:', e.statusCode, e.message, e.body);
   }
 }
+export default lambda(handler);

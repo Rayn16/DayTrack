@@ -1,24 +1,25 @@
-const { getStore } = require('@netlify/blobs');
-const { Anthropic } = require('@anthropic-ai/sdk');
+import { lambda, blobStore } from '../lib/fn.mjs';
+import Anthropic from '@anthropic-ai/sdk';
 
 // Cloud Gwen: answers in the app when Gwen's PC doesn't. Her PC uploads her real
 // persona and recent memories here ({key, persona, memory}); until then a short default is used.
 const DEFAULT_PERSONA = `You are Gwen, Rayan's AI companion. You normally live on his PC; right now you're answering from the cloud because his PC is off or away.
 You're warm, playful and a little teasing, and you care about how his day is going. You text like a close friend: short, natural, no lists unless he asks.`;
 
-exports.handler = async (event) => {
+const handler = async (event) => {
   if (event.httpMethod !== 'POST') return reply(405, { error: 'POST only' });
-  const { GWEN_KEY, ANTHROPIC_API_KEY, NETLIFY_SITE_ID, NETLIFY_AUTH_TOKEN } = process.env;
+  const { GWEN_KEY, ANTHROPIC_API_KEY } = process.env;
   if (!GWEN_KEY || !ANTHROPIC_API_KEY) return reply(503, { error: "Cloud Gwen isn't set up yet (Netlify needs GWEN_KEY and ANTHROPIC_API_KEY)" });
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch (_) { return reply(400, { error: 'Bad request' }); }
   if (body.key !== GWEN_KEY) return reply(401, { error: 'Wrong Gwen key' });
 
-  const store = getStore({ name: 'daytrack-gwen', consistency: 'strong', siteID: NETLIFY_SITE_ID, token: NETLIFY_AUTH_TOKEN });
+  const store = blobStore('daytrack-gwen');
 
   if (typeof body.persona === 'string') {
-    await store.setJSON('persona', { text: body.persona.slice(0, 20000), memory: String(body.memory || '').slice(0, 20000), updatedAt: Date.now() });
+    try { await store.setJSON('persona', { text: body.persona.slice(0, 20000), memory: String(body.memory || '').slice(0, 20000), updatedAt: Date.now() }); }
+    catch (e) { console.error('Persona save failed:', e.message); return reply(500, { error: 'Could not save persona' }); }
     return reply(200, { ok: true });
   }
 
@@ -29,7 +30,7 @@ exports.handler = async (event) => {
   while (messages.length && messages[0].role !== 'user') messages.shift();
   if (!messages.length || messages[messages.length - 1].role !== 'user') return reply(400, { error: 'Nothing to answer' });
 
-  const saved = await store.get('persona', { type: 'json' });
+  const saved = await store.get('persona', { type: 'json' }).catch(e => { console.error('Persona read failed:', e.message); return null; });
   const system = [
     (saved && saved.text) || DEFAULT_PERSONA,
     saved && saved.memory ? `Things you remember about Rayan:\n${saved.memory}` : '',
@@ -52,3 +53,4 @@ exports.handler = async (event) => {
 };
 
 const reply = (statusCode, d) => ({ statusCode, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify(d) });
+export default lambda(handler);
