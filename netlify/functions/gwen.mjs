@@ -9,7 +9,8 @@ You're warm, playful and a little teasing, and you care about how his day is goi
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return reply(405, { error: 'POST only' });
   const { GWEN_KEY, ANTHROPIC_API_KEY } = process.env;
-  if (!GWEN_KEY || !ANTHROPIC_API_KEY) return reply(503, { error: "Cloud Gwen isn't set up yet (Netlify needs GWEN_KEY and ANTHROPIC_API_KEY)" });
+  const missing = ['GWEN_KEY', 'ANTHROPIC_API_KEY'].filter(k => !process.env[k]);
+  if (missing.length) return reply(503, { error: `Cloud Gwen isn't set up yet (Netlify needs ${missing.join(' and ')})` });
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch (_) { return reply(400, { error: 'Bad request' }); }
