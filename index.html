@@ -206,10 +206,12 @@
           </div>
           <button id="notif-btn" onclick="activateNotifs()" style="background:#22C55E;color:white;border:none;border-radius:11px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">🔔 Activate</button>
         </div>
+        <button onclick="testPush()" style="width:100%;margin-top:4px;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Send a test notification</button>
+        <div id="push-test" style="font-size:12px;color:var(--sub);margin-top:6px;text-align:center;"></div>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--brd);margin-top:6px;">
           <div>
             <div style="font-size:15px;font-weight:600;color:var(--txt);">Quiet Hours</div>
-            <div style="font-size:12px;color:var(--sub);margin-top:2px;">No "Every…" reminders during these hours</div>
+            <div style="font-size:12px;color:var(--sub);margin-top:2px;">No "Every…" reminders or Gwen messages during these hours</div>
           </div>
           <button id="quiet-tog" class="tog" onclick="toggleQuiet()"></button>
         </div>
@@ -585,19 +587,20 @@ function writeLocal(){
     localStorage.setItem('dt_quiet',JSON.stringify(quiet));
   }catch(e){}
 }
-async function syncReminders(){
+async function syncReminders(renewed){
   try{
     if(!('serviceWorker' in navigator))return;
     const reg=await navigator.serviceWorker.ready;
     const sub=await reg.pushManager.getSubscription();
     if(!sub)return;
     const w=new Date();w.setDate(w.getDate()-7);const weekAgo=toDateStr(w);
-    await fetch('/.netlify/functions/save-reminder',{
+    const r=await fetch('/.netlify/functions/save-reminder',{
       method:'POST',headers:{'Content-Type':'application/json'},
       // All tasks so Gwen knows what's left (recent days only for repeating ones), plus a week of moods
       body:JSON.stringify({subscription:sub,tasks:tasks.map(t=>t.recurring?{...t,done:t.done.filter(d=>d>=weekAgo)}:t),completedDays,quiet,
         tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo))})
     });
+    if(!renewed&&(await r.json().catch(()=>({}))).gone){await renewPush(reg,sub);return syncReminders(true);}
   }catch(e){}
 }
 function load(){
@@ -1631,6 +1634,23 @@ const TABS=['tasks','timer','cal','summary','gwen','settings'];
 
 // ── Web Push ──────────────────────────────────────────────────────────────────
 const VAPID_PUBLIC_KEY='BDEHFhgEYeKsdZEHpRTorzNXQ20QimeN3vO0_vkCXyL7gw88OtrJAP0gcT7O84CtsYVDCRupuiYz2-Zq7nx7iLk';
+// A fresh push address for this phone, when the old one expired
+async function renewPush(reg,old){
+  await old.unsubscribe().catch(()=>{});
+  return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)});
+}
+// Settings → one push to this phone right away, so it's easy to tell whether notifications work
+async function testPush(){
+  const out=document.getElementById('push-test');out.textContent='Sending…';
+  try{
+    const reg=await navigator.serviceWorker.ready;let sub=await reg.pushManager.getSubscription();
+    if(!sub||Notification.permission!=='granted'){out.textContent='Notifications are off here. Tap 🔔 Activate first.';return;}
+    const send=s=>fetchT('/.netlify/functions/test-push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:s})},15000).then(r=>r.json());
+    let r=await send(sub);
+    if(r.status===404||r.status===410){sub=await renewPush(reg,sub);await syncReminders(true);r=await send(sub);}
+    out.textContent=r.ok?'Sent ✅ It should pop up in a few seconds.':`Didn't send: ${r.status?r.status+' ':''}${r.error||''}`;
+  }catch(e){out.textContent='Could not reach the server ('+e.message+')';}
+}
 function urlBase64ToUint8Array(b64){const pad='='.repeat((4-b64.length%4)%4);const base64=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base64);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));}
 function setNotifBtnActive(){pushOn=true;const btn=document.getElementById('notif-btn');if(btn){btn.textContent='✅ Active';btn.style.background='#6C63FF';btn.onclick=null;btn.style.opacity='0.8';}}
 async function checkPushStatus(){

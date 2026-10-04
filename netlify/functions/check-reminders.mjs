@@ -182,10 +182,12 @@ async function notify(webpush, subscription, body, notifStyle = 'default', taskI
   try {
     console.log('Sending push:', body, 'style:', notifStyle);
     const payload = JSON.stringify({ title, body, notifStyle, taskId, gwen: title === '💜 Gwen' || undefined });
-    const result = await webpush.sendNotification(subscription, payload);
+    // High urgency so Android delivers it right away, even with the screen off
+    const result = await webpush.sendNotification(subscription, payload, { urgency: 'high' });
     console.log('Push sent, status:', result.statusCode);
   } catch (e) {
     console.error('Notify error:', e.statusCode, e.message, e.body);
+    if (e.statusCode === 404 || e.statusCode === 410) subscription.gone = true; // the phone renews it on its next save
   }
 }
 export default lambda(handler);

@@ -21,7 +21,9 @@ const handler = async (event) => {
     // ...old keeps what only the server tracks (weekly summary, Gwen's messages)
     await store.setJSON(key, { ...old, subscription, tasks: merged, completedDays: completedDays || [], tz: tz || old.tz, quiet: quiet || old.quiet, gwen: !!gwen, moods: moods || {} });
     console.log(`Saved subscription key=${key.slice(0,8)}... tasks=${tasks.length} tz=${tz}`);
-    return { statusCode: 200, body: '{"ok":true}', headers: { 'Content-Type': 'application/json' } };
+    // The push service said this phone's subscription expired: tell the app to make a new one
+    const gone = !!(old.subscription && old.subscription.gone && old.subscription.endpoint === subscription.endpoint);
+    return { statusCode: 200, body: JSON.stringify({ ok: true, gone }), headers: { 'Content-Type': 'application/json' } };
   } catch (e) {
     console.error('Error:', e.message);
     return { statusCode: 500, body: e.message };
