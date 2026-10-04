@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.rayn16.daytrack",
+    "sha256_cert_fingerprints": ["5F:3E:1E:DA:D6:4F:9D:FC:51:41:CA:FC:52:0A:59:74:B2:4D:7F:57:A7:A0:18:F6:40:7E:B7:9F:FE:C4:03:AD"]
+  }
+}]

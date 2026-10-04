@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The sun from the app icon, in white for the status bar -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="100" android:viewportHeight="100">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M50,31a19,19 0,1 0,0.01 0z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineCap="round"
+        android:pathData="M50,4V14M50,86V96M4,50H14M86,50H96M17,17L24,24M83,17L76,24M17,83L24,76M83,83L76,76" />
+</vector>
