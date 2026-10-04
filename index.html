@@ -1374,7 +1374,7 @@ function gwenContext(){
   const upcoming=tasks.filter(t=>!t.recurring&&!t.done.length&&t.date&&t.date>tod).map(t=>`- ${t.name} on ${fmtDay(t.date)}`);
   const m=moods[tod];
   return[
-    `Right now it is ${now.toLocaleString('en-US',{weekday:'long',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'})}. Rayan is texting you from DayTrack, his day planner app on his phone. Keep replies short, like texts.`,
+    `Right now it is ${now.toLocaleString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'})}. Rayan is texting you from DayTrack, his day planner app on his phone. Keep replies short, like texts.`,
     `His tasks today (${today.filter(t=>t.done.includes(tod)).length} of ${today.length} done):\n${lines.join('\n')||'- nothing yet'}`,
     upcoming.length?`Coming up:\n${upcoming.join('\n')}`:'',
     gwenSpecialDays(7).map(d=>`${d.what.replace(/^\S+ /,'').replace('Your birthday',"Rayan's birthday").replace('Gwen’s birthday','your own birthday')} ${d.in===0?'is today':d.in===1?'is tomorrow':`is in ${d.in} days`}.`).join(' '),
