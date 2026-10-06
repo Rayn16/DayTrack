@@ -1,13 +1,13 @@
-# Builds the DayTrack Android app (android/) and publishes it as the "app" release,
+# Builds the DayTrack Android app (android/, with the web app's files inside) and publishes it as the "app" release,
 # so the install link stays https://github.com/Rayn16/DayTrack/releases/download/app/DayTrack.apk
 name: Android app
 
 on:
   push:
     branches: [main]
-    paths: ['android/**', '.github/workflows/android.yml']
+    paths: ['android/**', 'index.html', 'gwen-games.js', '.github/workflows/android.yml']
   pull_request:
-    paths: ['android/**', '.github/workflows/android.yml']
+    paths: ['android/**', 'index.html', 'gwen-games.js', '.github/workflows/android.yml']
   workflow_dispatch:
 
 permissions:

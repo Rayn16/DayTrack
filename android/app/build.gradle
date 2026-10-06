@@ -1,6 +1,5 @@
-// DayTrack as an installable Android app: a Trusted Web Activity that opens
-// https://yasuomain.netlify.app in Chrome without the browser bar, so the site
-// stays the app and updates the moment it's published.
+// DayTrack as a real Android app: the web app's files ship inside the APK and run in a WebView,
+// and the server calls go to DayTrack on Rayan's PC. No Chrome and no website needed.
 plugins {
     id 'com.android.application'
 }
@@ -42,8 +41,19 @@ android {
     lint {
         checkReleaseBuilds false
     }
+
+    sourceSets {
+        main { assets.srcDirs += layout.buildDirectory.dir('webassets') }
+    }
 }
 
+// The same files the desktop app carries, copied in at build time
+tasks.register('copyWeb', Copy) {
+    from('../..') { include 'index.html', 'gwen-games.js', 'icon.svg', 'manifest.json' }
+    into layout.buildDirectory.dir('webassets/web')
+}
+preBuild.dependsOn copyWeb
+
 dependencies {
-    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
+    implementation 'androidx.webkit:webkit:1.12.1'
 }

@@ -1,0 +1,37 @@
+# Builds DayTrack for Windows (desktop/) and publishes it as the "desktop" release,
+# so the download link stays https://github.com/Rayn16/DayTrack/releases/download/desktop/DayTrack-Setup.exe
+name: Desktop app
+
+on:
+  push:
+    branches: [main]
+    paths: ['desktop/**', 'netlify/**', 'index.html', 'gwen-games.js', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['desktop/**', 'netlify/**', 'index.html', 'gwen-games.js', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run dist
+
+      - name: Publish
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete desktop --yes --cleanup-tag || true
+          gh release create desktop dist/DayTrack-Setup.exe --title "DayTrack for Windows" --notes "Run DayTrack-Setup.exe on your PC. Build ${{ github.run_number }}."
