@@ -4,3 +4,6 @@ android/build/
 android/app/build/
 android/local.properties
 *.keystore
+desktop/web/
+desktop/dist/
+desktop/server/

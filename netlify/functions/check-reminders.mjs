@@ -1,16 +1,12 @@
-import { lambda, blobStore } from '../lib/fn.mjs';
+import { lambda, blobStore, isNative, queueNative } from '../lib/fn.mjs';
 import webpush from 'web-push';
 import Anthropic from '@anthropic-ai/sdk';
 import { gwenPersona, gwenSaved, specialDays, weatherToday } from '../lib/gwen.mjs';
 
 const handler = async () => {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.log('Missing env vars:', { VAPID_PUBLIC_KEY: !!VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY: !!VAPID_PRIVATE_KEY });
-    return { statusCode: 200 };
-  }
-
-  webpush.setVapidDetails('mailto:r.alljhanii.4@gmail.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  // Without push keys only the apps (which fetch their notifications) get reminders
+  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) webpush.setVapidDetails('mailto:r.alljhanii.4@gmail.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
   const store = blobStore('daytrack');
   const { blobs } = await store.list();
@@ -24,6 +20,7 @@ const handler = async () => {
     if (!data) { console.log(`Key ${key}: no data`); continue; }
 
     const { subscription, tasks = [], completedDays = [] } = data;
+    if (!isNative(subscription) && !(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY)) continue;
     // The server clock is UTC, so work in the phone's own timezone
     const { min: nowMin, date: todStr, dow } = localNow(data.tz);
     const isSunday = dow === 0;
@@ -239,7 +236,9 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
 async function notify(webpush, subscription, body, notifStyle = 'default', taskId, title = '⏰ DayTrack') {
   try {
     console.log('Sending push:', body, 'style:', notifStyle);
-    const payload = JSON.stringify({ title, body, notifStyle, taskId, gwen: title === '💜 Gwen' || undefined });
+    const msg = { title, body, notifStyle, taskId, gwen: title === '💜 Gwen' || undefined };
+    if (isNative(subscription)) return await queueNative(subscription, msg);
+    const payload = JSON.stringify(msg);
     // High urgency so Android delivers it right away, even with the screen off
     const result = await webpush.sendNotification(subscription, payload, { urgency: 'high' });
     console.log('Push sent, status:', result.statusCode);

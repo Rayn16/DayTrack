@@ -13,8 +13,17 @@ export const lambda = (handler) => async (req) => {
 
 // Strong reads stop reminders firing twice; fall back to eventual if the platform doesn't offer them
 export const blobStore = (name) => {
+  if (globalThis.dtStore) return globalThis.dtStore(name); // DayTrack.exe keeps them in files on the PC
   let ctx = {};
   try { ctx = JSON.parse(Buffer.from(globalThis.netlifyBlobsContext || process.env.NETLIFY_BLOBS_CONTEXT || '', 'base64').toString()); } catch (_) {}
   if (!ctx.uncachedEdgeURL) console.warn('Blobs: no strong consistency available, using eventual');
   return getStore({ name, consistency: ctx.uncachedEdgeURL ? 'strong' : 'eventual' });
 };
+
+// The phone and desktop apps have no web push: their notifications wait here until the app fetches them
+export const isNative = (sub) => typeof (sub && sub.endpoint) === 'string' && sub.endpoint.startsWith('native:');
+export async function queueNative(sub, msg) {
+  const box = blobStore('daytrack-outbox'), key = sub.keys.auth;
+  const list = (await box.get(key, { type: 'json' })) || [];
+  await box.setJSON(key, [...list, { ...msg, at: Date.now() }].slice(-30));
+}

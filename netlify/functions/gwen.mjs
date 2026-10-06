@@ -8,8 +8,7 @@ import { gwenPersona } from '../lib/gwen.mjs';
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return reply(405, { error: 'POST only' });
   const { GWEN_KEY, ANTHROPIC_API_KEY } = process.env;
-  const missing = ['GWEN_KEY', 'ANTHROPIC_API_KEY'].filter(k => !process.env[k]);
-  if (missing.length) return reply(503, { error: `Cloud Gwen isn't set up yet (Netlify needs ${missing.join(' and ')})` });
+  if (!GWEN_KEY) return reply(503, { error: "Cloud Gwen isn't set up yet (the server needs GWEN_KEY)" });
 
   let body;
   try { body = JSON.parse(event.body || '{}'); } catch (_) { return reply(400, { error: 'Bad request' }); }
@@ -34,6 +33,7 @@ const handler = async (event) => {
     return reply(200, { messages: inbox });
   }
 
+  if (!ANTHROPIC_API_KEY) return reply(503, { error: "Cloud Gwen isn't set up yet (the server needs ANTHROPIC_API_KEY)" });
   const messages = (Array.isArray(body.messages) ? body.messages : [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .slice(-16)
@@ -58,7 +58,7 @@ const handler = async (event) => {
     return reply(200, { text });
   } catch (e) {
     console.error('Gwen error:', e.status, e.message);
-    if (e instanceof Anthropic.AuthenticationError) return reply(502, { error: 'The Anthropic API key in Netlify is wrong' });
+    if (e instanceof Anthropic.AuthenticationError) return reply(502, { error: 'The Anthropic API key on the server is wrong' });
     if (e instanceof Anthropic.RateLimitError) return reply(503, { error: 'Gwen is busy, try again in a minute' });
     if (e instanceof Anthropic.APIError) return reply(502, { error: `Gwen's cloud brain had a problem (${e.status || 'timeout'})` });
     return reply(500, { error: 'Something went wrong' });
