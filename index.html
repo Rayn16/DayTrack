@@ -1601,8 +1601,8 @@ function applyGwenActions(text){
   return{clean,added,selfie:selfie&&!!g3.vrm,music};
 }
 function fetchT(url,opts,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{...opts,signal:c.signal}).finally(()=>clearTimeout(t));}
-// The PC app talks to Gwen's bridge on the same PC directly, not round through Tailscale
-const pcUrl=()=>/Electron/.test(navigator.userAgent)?'http://127.0.0.1:5052':gwenCfg.pc.trim().replace(/\/+$/,'');
+// The PC app reaches Gwen's bridge through DayTrack.exe on the same PC (it adds the CORS header the bridge doesn't send for app://)
+const pcUrl=()=>/Electron/.test(navigator.userAgent)?'http://127.0.0.1:5053/pc':gwenCfg.pc.trim().replace(/\/+$/,'');
 async function pcAlive(){
   if(!gwenCfg.pc.trim())return false;
   try{return(await fetchT(pcUrl()+'/daytrack/ping',{},3000)).ok;}catch(e){return false;}
