@@ -1,9 +1,10 @@
 import { lambda, blobStore } from '../lib/fn.mjs';
+import { localNow, parcelFor } from '../lib/house.mjs';
 
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405 };
   try {
-    const { subscription, tasks, completedDays, tz, quiet, gwen, moods, gwenWake, gwenBed, gwenCheered, gwenLoc, gwenStudy } = JSON.parse(event.body);
+    const { subscription, tasks, completedDays, tz, quiet, gwen, moods, gwenWake, gwenBed, gwenCheered, gwenLoc, gwenStudy, prayers, goals, sleep } = JSON.parse(event.body);
     if (!subscription || !subscription.keys || !subscription.keys.auth) {
       console.log('Missing subscription or keys');
       return { statusCode: 400, body: 'Missing subscription' };
@@ -24,7 +25,14 @@ const handler = async (event) => {
       gwenWake: hhmm(gwenWake), gwenBed: hhmm(gwenBed), gwenCheered: /^\d{4}-\d{2}-\d{2}$/.test(gwenCheered || '') ? gwenCheered : null,
       // Rough location for her weather (about 10 km), and a study session's end for a "time's up" push
       gwenLoc: gwenLoc && Math.abs(gwenLoc.lat) <= 90 && Math.abs(gwenLoc.lon) <= 180 ? { lat: Math.round(gwenLoc.lat * 10) / 10, lon: Math.round(gwenLoc.lon * 10) / 10 } : null,
-      gwenStudy: gwenStudy && Number.isFinite(gwenStudy.end) && gwenStudy.end > Date.now() ? { end: gwenStudy.end, mins: Math.min(240, Math.max(1, Math.round(gwenStudy.mins) || 25)), what: String(gwenStudy.what || 'studying').slice(0, 60) } : null });
+      gwenStudy: gwenStudy && Number.isFinite(gwenStudy.end) && gwenStudy.end > Date.now() ? { end: gwenStudy.end, mins: Math.min(240, Math.max(1, Math.round(gwenStudy.mins) || 25)), what: String(gwenStudy.what || 'studying').slice(0, 60) } : null,
+      // Prayer times worked out on the phone for the next days ({remind, days: {date: {Fajr: 'HH:MM', ...}}}), his goals and sleep log for Gwen
+      prayers: prayers && typeof prayers.days === 'object' && JSON.stringify(prayers).length < 5000 ? { remind: !!prayers.remind, days: prayers.days } : null,
+      goals: Array.isArray(goals) ? goals.slice(0, 20).map(g => ({ name: String(g.name || '').slice(0, 80), done: g.done | 0, total: g.total | 0, lastAt: /^\d{4}-\d{2}-\d{2}$/.test(g.lastAt || '') ? g.lastAt : null })) : [],
+      sleep: sleep && typeof sleep === 'object' && JSON.stringify(sleep).length < 3000 ? sleep : {} });
+    // Finished every task today: a parcel goes to Gwen's house
+    const today = localNow(tz).date;
+    await parcelFor(today, completedDays, tasks.filter(t => (t.done || []).includes(today)).length).catch(e => console.error('Parcel:', e.message));
     console.log(`Saved subscription key=${key.slice(0,8)}... tasks=${tasks.length} tz=${tz}`);
     // The push service said this phone's subscription expired: tell the app to make a new one
     const gone = !!(old.subscription && old.subscription.gone && old.subscription.endpoint === subscription.endpoint);

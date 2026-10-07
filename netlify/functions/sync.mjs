@@ -1,7 +1,7 @@
 import { lambda, blobStore } from '../lib/fn.mjs';
 
 // Whole DayTrack data set per private sync code (32 hex chars made on the phone).
-// inbox-<code> holds tasks Gwen adds from the PC until the phone picks them up.
+// inbox-<code> holds tasks Gwen adds from the PC until the phone picks them up; chat-<code> his chat with Gwen (for backups).
 const CODE = /^[a-f0-9]{32}$/;
 
 const handler = async (event) => {
@@ -14,8 +14,9 @@ const handler = async (event) => {
       return json(await store.get(code, { type: 'json' }));
     }
     if (event.httpMethod === 'POST') {
-      const { code, data, inbox, ack } = JSON.parse(event.body);
+      const { code, data, inbox, ack, chat } = JSON.parse(event.body);
       if (!CODE.test(code || '')) return { statusCode: 400, body: 'Bad code' };
+      if (Array.isArray(chat)) { await store.setJSON('chat-' + code, chat.slice(-60)); return json({ ok: true }); }
       if (inbox || ack) {
         let list = (await store.get('inbox-' + code, { type: 'json' })) || [];
         if (Array.isArray(ack)) list = list.filter(t => !ack.includes(t.id));

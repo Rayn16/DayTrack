@@ -25,7 +25,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npm run dist
+      # Version 1.0.<build>: the app compares its build with the release's to know an update is out
+      - run: npm run dist -- -c.extraMetadata.version=1.0.${{ github.run_number }}
 
       - name: Publish
         if: github.event_name != 'pull_request'

@@ -2,6 +2,7 @@ import { lambda, blobStore, isNative, queueNative } from '../lib/fn.mjs';
 import webpush from 'web-push';
 import Anthropic from '@anthropic-ai/sdk';
 import { gwenPersona, gwenSaved, specialDays, weatherToday } from '../lib/gwen.mjs';
+import { localNow, toMin, inQuiet } from '../lib/house.mjs';
 
 const handler = async () => {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
@@ -44,7 +45,7 @@ const handler = async () => {
       if (!t.recurring && t.date && t.date > todStr) continue;                          // dated for later
 
       if (t.snoozeUntil && nowMs >= t.snoozeUntil) {
-        await notify(webpush, subscription, `Snoozed: ${t.name}`, t.notifStyle, t.id);
+        await notify(webpush, subscription, `Snoozed: ${t.name}`, t.notifStyle, t.id, undefined, { once: !t.recurring });
         t.snoozeUntil = null;
         changed = true;
         continue;
@@ -54,7 +55,7 @@ const handler = async () => {
       if (timeStr) {
         const [rh, rm] = timeStr.split(':').map(Number);
         if (Math.abs(nowMin - (rh * 60 + rm)) <= 1 && t.lastFiredDate !== todStr) {
-          await notify(webpush, subscription, `Time for: ${t.name}`, t.notifStyle, t.id);
+          await notify(webpush, subscription, `Time for: ${t.name}`, t.notifStyle, t.id, undefined, { once: !t.recurring });
           t.lastFiredDate = todStr;
           changed = true;
         }
@@ -66,10 +67,22 @@ const handler = async () => {
           t.lastFiredMs = nowMs; // start counting from now, first reminder after one interval
           changed = true;
         } else if (ms > 0 && nowMs - t.lastFiredMs >= ms) {
-          await notify(webpush, subscription, `Reminder: ${t.name}`, t.notifStyle, t.id);
+          await notify(webpush, subscription, `Reminder: ${t.name}`, t.notifStyle, t.id, undefined, { once: !t.recurring });
           t.lastFiredMs = nowMs;
           changed = true;
         }
+      }
+    }
+
+    // Prayer times (worked out on the phone from its location), when he turned their reminders on
+    const pray = data.prayers && data.prayers.remind && data.prayers.days && data.prayers.days[todStr];
+    if (pray && typeof pray === 'object') {
+      const fired = data.prayerFired && data.prayerFired.date === todStr ? data.prayerFired.names : [];
+      for (const [name, at] of Object.entries(pray)) {
+        if (!/^\d{2}:\d{2}$/.test(at || '') || fired.includes(name) || Math.abs(nowMin - toMin(at)) > 1) continue;
+        await notify(webpush, subscription, `It's time for ${String(name).slice(0, 20)} (${at})`, 'default', undefined, '🕌 Prayer time');
+        data.prayerFired = { date: todStr, names: [...fired, name] };
+        changed = true;
       }
     }
 
@@ -136,29 +149,7 @@ const handler = async () => {
   return { statusCode: 200 };
 };
 
-function localNow(tz) {
-  let parts;
-  try {
-    parts = new Intl.DateTimeFormat('en-US', { timeZone: tz || 'UTC', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short' }).formatToParts(new Date());
-  } catch (_) {
-    return localNow('UTC'); // unknown timezone name
-  }
-  const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
-  return {
-    min: Number(p.hour) * 60 + Number(p.minute),
-    date: `${p.year}-${p.month}-${p.day}`,
-    dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday),
-  };
-}
-
-const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
 const timeOf = t => { const r = t.reminder, at = typeof r === 'string' ? r : r && r.type === 'time' ? r.time : null; return /^\d{1,2}:\d{2}$/.test(at || '') ? at : null; };
-
-function inQuiet(min, q) {
-  if (!q || !q.on) return false;
-  const f = toMin(q.from), t = toMin(q.to);
-  return f <= t ? (min >= f && min < t) : (min >= f || min < t); // window can cross midnight
-}
 
 // What Gwen says when she texts first. Written by cloud Gwen with her persona, memories and notes; a plain line if that fails.
 async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
@@ -184,6 +175,10 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
   const habits = tasks.filter(t => t.recurring).map(t => `${t.name} ${(t.done || []).filter(d => week.includes(d)).length}x`).join(', ');
   const weekMoods = week.map(d => moods[d]).filter(Boolean);
   const sent = ((data.gwenState || {}).recent || []).map(t => `- ${t}`).join('\n');
+  // His sleep log (keyed by the morning he woke up) and his big goals
+  const hrs = s => { if (!s || !/^\d{2}:\d{2}$/.test(s.bed || '') || !/^\d{2}:\d{2}$/.test(s.wake || '')) return null; return ((toMin(s.wake) - toMin(s.bed) + 1440) % 1440) / 60; };
+  const sleep = data.sleep || {}, lastNight = hrs(sleep[tod]), weekSleep = week.map(d => hrs(sleep[d])).filter(h => h != null);
+  const goals = (data.goals || []).filter(g => g.total && g.done < g.total).map(g => `${g.name} (${g.done}/${g.total} steps${g.lastAt ? `, last step ${g.lastAt === tod ? 'today' : g.lastAt}` : ', no step yet'})`).join('; ');
 
   const names = list => list.map(t => t.name + (!t.recurring && t.date && t.date < tod ? ' (overdue)' : '')).join(', ');
   const facts = slot === 'recap' ? [
@@ -191,6 +186,8 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
     `He finished everything on ${week.filter(d => full.has(d)).length} of the last 7 days.${streak ? ` Current streak: ${streak} day(s).` : ''}`,
     habits ? `His habits this week: ${habits}.` : '',
     weekMoods.length ? `His moods this week: ${weekMoods.map(m => ['very low', 'low', 'okay', 'good', 'great'][m - 1]).join(', ')}.` : '',
+    weekSleep.length ? `His sleep this week: ${(weekSleep.reduce((a, b) => a + b, 0) / weekSleep.length).toFixed(1)} hours a night on average over ${weekSleep.length} logged nights.` : '',
+    goals ? `His goals: ${goals}. Mention one briefly.` : '',
     open.length ? `Still to do today: ${names(open)}.` : '',
   ].filter(Boolean).join('\n') : [
     slot === 'hello' ? (data.gwenWake ? 'It is his wake-up time and your text is his alarm. Wake him up, playfully.' : 'It is his morning. Send a good-morning text.')
@@ -202,6 +199,8 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
     slot === 'plan' ? '' : today.length ? `Today's tasks: ${names(today)}. Still to do: ${open.length ? names(open) : 'nothing'}.` : 'He has no tasks today.',
     slot === 'hello' && dream ? `How you slept last night (your dream): ${dream}` : '',
     slot === 'hello' && plans ? `His plans: ${plans.slice(0, 500)}` : '',
+    slot === 'hello' && lastNight != null ? `He logged ${lastNight.toFixed(1)} hours of sleep last night (${sleep[tod].bed} to ${sleep[tod].wake}).${lastNight < 6 ? ' That is short: be gentle about it.' : ''}` : '',
+    (slot === 'hello' || slot === 'evening') && goals ? `His goals: ${goals}. If one hasn't moved in 4+ days, you can ask about it lightly (not every time).` : '',
     weather ? `Weather where he is today: ${weather}. Mention it only if it matters (heat, rain, dust, cold).` : '',
     ...special.map(s => s.in === 0 ? `Today is ${s.what}! Celebrate it.` : slot === 'night' ? `Tomorrow is ${s.what}.` : `${s.what} is in ${s.in} day${s.in > 1 ? 's' : ''}.`),
     slot === 'plan' ? '' : away ? 'He has missed his tasks for 3 days in a row: ask how he is doing instead of bringing up tasks.'
@@ -233,10 +232,10 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
   return { text, taskId: one && one.id };
 }
 
-async function notify(webpush, subscription, body, notifStyle = 'default', taskId, title = '⏰ DayTrack') {
+async function notify(webpush, subscription, body, notifStyle = 'default', taskId, title = '⏰ DayTrack', extra = {}) {
   try {
     console.log('Sending push:', body, 'style:', notifStyle);
-    const msg = { title, body, notifStyle, taskId, gwen: title === '💜 Gwen' || undefined };
+    const msg = { title, body, notifStyle, taskId, gwen: title === '💜 Gwen' || undefined, ...extra };
     if (isNative(subscription)) return await queueNative(subscription, msg);
     const payload = JSON.stringify(msg);
     // High urgency so Android delivers it right away, even with the screen off
