@@ -2,15 +2,34 @@ package com.rayn16.daytrack;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.KeyguardManager;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.WallpaperManager;
+import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.hardware.biometrics.BiometricManager;
+import android.hardware.biometrics.BiometricPrompt;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.util.Base64;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -25,13 +44,23 @@ import androidx.webkit.WebViewAssetLoader;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 // DayTrack's own window: the web app from the APK's assets in a WebView, with the phone standing in
 // for what Chrome used to give it (notifications, speech, file picker, location). See the
-// window.DayTrackNative shim at the top of index.html for the other side.
+// window.DayTrackNative shim at the top of index.html for the other side. Also: self-update, the home-screen
+// widget's data, share-into-DayTrack, fingerprint lock and wallpaper.
 public class MainActivity extends Activity {
     private static final String START = "https://appassets.androidplatform.net/assets/web/index.html";
+    private static final String APK = "https://github.com/Rayn16/DayTrack/releases/download/app/DayTrack.apk";
     private static final int REQ_MIC = 1, REQ_NOTIF = 2, REQ_LOC = 3, REQ_FILE = 4;
 
     private WebView web;
@@ -41,6 +70,8 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
+    private volatile int installSession = -1;
+    private final AtomicReference<String> share = new AtomicReference<>(""); // waiting for takeShare()
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -89,6 +120,8 @@ public class MainActivity extends Activity {
         });
         setContentView(web);
         web.loadUrl(getIntent().getBooleanExtra("gwen", false) ? START + "?tab=gwen" : START);
+        // Not again after the activity is rebuilt or reopened from recents
+        if (saved == null && (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) handle(getIntent());
     }
 
     // A tap on Gwen's notification opens her chat
@@ -96,7 +129,124 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
         if (i.getBooleanExtra("gwen", false)) web.evaluateJavascript("switchTab('gwen');pullGwenInbox();", null);
+        handle(i);
     }
+
+    // Something shared into DayTrack, or word back from installing an update
+    private void handle(Intent i) {
+        if (Intent.ACTION_SEND.equals(i.getAction())) {
+            CharSequence text = i.getCharSequenceExtra(Intent.EXTRA_TEXT), subject = i.getCharSequenceExtra(Intent.EXTRA_SUBJECT);
+            Uri img = i.getType() != null && i.getType().startsWith("image/") ? (Uri) i.getParcelableExtra(Intent.EXTRA_STREAM) : null;
+            new Thread(() -> {
+                JSONObject o = new JSONObject();
+                try {
+                    if (text != null && text.length() > 0) o.put("text", text.toString());
+                    if (subject != null && subject.length() > 0) o.put("subject", subject.toString());
+                    String data = img == null ? null : sharedImage(img);
+                    if (data != null) o.put("image", data);
+                } catch (Exception ignored) { }
+                if (o.length() == 0) return;
+                share.set(o.toString());
+                js("window.dtShared&&dtShared()"); // a page that's still loading picks it up with takeShare() instead
+            }).start();
+        }
+        // Only our own install session's answer (the extra is its id), so no other app can use this
+        int sid = i.getIntExtra("install", -1);
+        if (sid != -1 && sid == installSession) {
+            int status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+            if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
+                try { if (confirm != null) startActivity(confirm); } catch (Exception e) { updateState("error", "Couldn't open the installer"); }
+            } else if (status == PackageInstaller.STATUS_FAILURE_ABORTED) updateState("error", "Update cancelled");
+            else if (status != PackageInstaller.STATUS_SUCCESS) {
+                String msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+                updateState("error", msg == null ? "Install failed" : "Install failed: " + msg);
+            }
+        }
+    }
+
+    // A shared picture as a small JPEG data: URL (at most 400px, turned upright)
+    private String sharedImage(Uri uri) throws Exception {
+        ContentResolver cr = getContentResolver();
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        try (InputStream in = cr.openInputStream(uri)) { BitmapFactory.decodeStream(in, null, o); }
+        o.inJustDecodeBounds = false;
+        o.inSampleSize = 1;
+        while (Math.max(o.outWidth, o.outHeight) / (o.inSampleSize * 2) >= 400) o.inSampleSize *= 2;
+        Bitmap b = null;
+        try (InputStream in = cr.openInputStream(uri)) { b = BitmapFactory.decodeStream(in, null, o); }
+        if (b == null) return null;
+        int turn = 0;
+        try (InputStream in = cr.openInputStream(uri)) {
+            int e = new ExifInterface(in).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+            turn = e == ExifInterface.ORIENTATION_ROTATE_90 ? 90 : e == ExifInterface.ORIENTATION_ROTATE_180 ? 180 : e == ExifInterface.ORIENTATION_ROTATE_270 ? 270 : 0;
+        } catch (Exception ignored) { } // not a JPEG, or no camera info
+        b = fit(b, 400);
+        if (turn != 0) {
+            Matrix m = new Matrix();
+            m.postRotate(turn);
+            b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        b.compress(Bitmap.CompressFormat.JPEG, 80, out);
+        return "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+    }
+
+    // Shrink so the longer side is at most max pixels
+    private static Bitmap fit(Bitmap b, int max) {
+        float k = (float) max / Math.max(b.getWidth(), b.getHeight());
+        if (k >= 1) return b;
+        return Bitmap.createScaledBitmap(b, Math.max(1, Math.round(b.getWidth() * k)), Math.max(1, Math.round(b.getHeight() * k)), true);
+    }
+
+    // Cut a square from the middle and make it round, for Gwen's face on the widget
+    private static Bitmap round(Bitmap b) {
+        int s = Math.min(b.getWidth(), b.getHeight());
+        Bitmap out = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        cv.drawCircle(s / 2f, s / 2f, s / 2f, p);
+        p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        cv.drawBitmap(b, (s - b.getWidth()) / 2f, (s - b.getHeight()) / 2f, p);
+        return out;
+    }
+
+    // Download the latest APK from the GitHub release and hand it to the system installer
+    private void downloadUpdate() {
+        PackageInstaller pi = getPackageManager().getPackageInstaller();
+        int sid = -1;
+        try {
+            updateState("downloading", null);
+            HttpURLConnection h = (HttpURLConnection) new URL(APK).openConnection(); // follows the redirect to GitHub's file host
+            h.setConnectTimeout(15000);
+            h.setReadTimeout(120000);
+            try {
+                if (h.getResponseCode() >= 400) throw new Exception("HTTP " + h.getResponseCode());
+                sid = pi.createSession(new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL));
+                try (PackageInstaller.Session s = pi.openSession(sid)) {
+                    try (InputStream in = h.getInputStream(); OutputStream out = s.openWrite("DayTrack.apk", 0, -1)) {
+                        byte[] buf = new byte[65536];
+                        for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+                        s.fsync(out);
+                    }
+                    updateState("installing", null);
+                    installSession = sid;
+                    // The system fills in the result, so this one has to be mutable
+                    Intent back = new Intent(this, MainActivity.class).putExtra("install", sid).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    s.commit(PendingIntent.getActivity(this, 3, back,
+                            PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0)).getIntentSender());
+                }
+            } finally { h.disconnect(); }
+        } catch (Exception e) {
+            if (sid != -1) try { pi.abandonSession(sid); } catch (Exception ignored) { }
+            updateState("error", "Couldn't download the update");
+        }
+    }
+
+    private void updateState(String state, String msg) { js("window.__dtUpdate&&__dtUpdate(" + JSONObject.quote(state) + "," + str(msg) + ")"); }
+
+    private void unlocked(boolean ok) { js("window.__dtUnlock&&__dtUnlock(" + ok + ")"); }
 
     @Override
     protected void onResume() {
@@ -137,8 +287,10 @@ public class MainActivity extends Activity {
     private void js(String code) { runOnUiThread(() -> web.evaluateJavascript(code, null)); }
 
     private void emit(String kind, String data) {
-        js("window.__dtSpeech&&__dtSpeech(" + JSONObject.quote(kind) + "," + (data == null ? "null" : JSONObject.quote(data)) + ")");
+        js("window.__dtSpeech&&__dtSpeech(" + JSONObject.quote(kind) + "," + str(data) + ")");
     }
+
+    private static String str(String s) { return s == null ? "null" : JSONObject.quote(s); }
 
     private void startListening() {
         if (speech == null) {
@@ -201,7 +353,7 @@ public class MainActivity extends Activity {
             else js("window.__dtPerm&&__dtPerm(" + notifOn() + ")");
         }
 
-        @JavascriptInterface public void show(String title, String body) { Poller.show(MainActivity.this, title, body, null, false); }
+        @JavascriptInterface public void show(String title, String body) { Poller.show(MainActivity.this, title, body, null, false, false, null); }
 
         @JavascriptInterface public String takeActions() {
             synchronized (ActionReceiver.class) {
@@ -226,6 +378,79 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface public void cancelListening() {
             runOnUiThread(() -> { if (speech != null) speech.cancel(); emit("end", null); });
+        }
+
+        // This app's build number (the GitHub run number), to compare with the latest release
+        @JavascriptInterface public int build() {
+            try {
+                PackageInfo p = getPackageManager().getPackageInfo(getPackageName(), 0);
+                return Build.VERSION.SDK_INT >= 28 ? (int) p.getLongVersionCode() : p.versionCode;
+            } catch (PackageManager.NameNotFoundException e) { return 0; }
+        }
+
+        // Progress goes to window.__dtUpdate(state, msg): "allow", "downloading", "installing" or "error"
+        @JavascriptInterface public void update() {
+            if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+                // Android first wants a yes to "install unknown apps" for DayTrack
+                runOnUiThread(() -> {
+                    try { startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))); }
+                    catch (Exception ignored) { }
+                });
+                updateState("allow", null);
+                return;
+            }
+            new Thread(MainActivity.this::downloadUpdate).start();
+        }
+
+        // All tasks for the home-screen widget, which picks today's itself
+        @JavascriptInterface public void widget(String json) {
+            Poller.prefs(MainActivity.this).edit().putString("widget", json).apply();
+            DayWidget.refresh(MainActivity.this);
+        }
+
+        // Gwen's face for the widget, as a data: URL ("" removes it)
+        @JavascriptInterface public void widgetFace(String dataUrl) {
+            File f = new File(getFilesDir(), "widget_face.png");
+            Bitmap b = dataUrl == null || dataUrl.isEmpty() ? null : Poller.bitmap(dataUrl);
+            if (b == null) f.delete();
+            else try (FileOutputStream o = new FileOutputStream(f)) { round(fit(b, 192)).compress(Bitmap.CompressFormat.PNG, 100, o); }
+            catch (Exception ignored) { }
+            DayWidget.refresh(MainActivity.this);
+        }
+
+        // What was shared into DayTrack as {"text","subject","image"}, once; "" when nothing
+        @JavascriptInterface public String takeShare() { return share.getAndSet(""); }
+
+        @JavascriptInterface public boolean canLock() {
+            if (Build.VERSION.SDK_INT >= 30) return getSystemService(BiometricManager.class).canAuthenticate(
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK | BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS;
+            return Build.VERSION.SDK_INT >= 28 && getSystemService(KeyguardManager.class).isDeviceSecure();
+        }
+
+        // Fingerprint (or the phone's PIN where Android allows it); the answer goes to window.__dtUnlock(ok)
+        @JavascriptInterface public void unlock() {
+            if (Build.VERSION.SDK_INT < 28) { unlocked(false); return; }
+            runOnUiThread(() -> {
+                try {
+                    BiometricPrompt.Builder b = new BiometricPrompt.Builder(MainActivity.this).setTitle("Unlock DayTrack").setSubtitle("Use your fingerprint");
+                    if (Build.VERSION.SDK_INT >= 30) b.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK | BiometricManager.Authenticators.DEVICE_CREDENTIAL);
+                    else if (Build.VERSION.SDK_INT == 29) b.setDeviceCredentialAllowed(true);
+                    else b.setNegativeButton("Cancel", getMainExecutor(), (d, w) -> unlocked(false));
+                    b.build().authenticate(new CancellationSignal(), getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
+                        @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult r) { unlocked(true); }
+                        @Override public void onAuthenticationError(int code, CharSequence msg) { unlocked(false); } // cancelled or locked out
+                    });
+                } catch (Exception e) { unlocked(false); }
+            });
+        }
+
+        @JavascriptInterface public boolean setWallpaper(String dataUrl) {
+            try {
+                Bitmap b = Poller.bitmap(dataUrl);
+                if (b == null) return false;
+                WallpaperManager.getInstance(MainActivity.this).setBitmap(b, null, true, WallpaperManager.FLAG_SYSTEM);
+                return true;
+            } catch (Exception e) { return false; }
         }
     }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's purple header, rounded only on top to sit inside the card -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/primary" />
+    <corners android:topLeftRadius="16dp" android:topRightRadius="16dp"
+        android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
+</shape>

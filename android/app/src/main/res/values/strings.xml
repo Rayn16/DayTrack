@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DayTrack</string>
+    <string name="widget_desc">Your tasks for today, with Gwen. Tap one to tick it off.</string>
 </resources>
