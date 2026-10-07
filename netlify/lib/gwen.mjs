@@ -1,4 +1,5 @@
 import { blobStore } from './fn.mjs';
+import { BORN, MILESTONES, dayAdd } from './house.mjs';
 
 // Her PC uploads her real persona, recent memories and notes (dream, plans, special dates) hourly;
 // until then a short default is used
@@ -28,6 +29,8 @@ export function specialDays(tod, days, extra = {}) {
     const d = new Date(tod + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
     const p = Object.fromEntries(fmt.formatToParts(d).map(x => [x.type, x.value]));
     for (const what of [fixed[d.toISOString().slice(5, 10)], HIJRI[`${p.month}-${p.day}`]]) if (what) out.push({ in: n, what: what.slice(0, 120) });
+    const ms = MILESTONES.find(m => dayAdd(BORN(), m) === d.toISOString().slice(0, 10));
+    if (ms) out.push({ in: n, what: `${ms} days since you (Gwen) were born, your milestone with Rayan (the house has a little surprise)` });
   }
   return out;
 }

@@ -9,7 +9,7 @@ const {pathToFileURL} = require('url');
 const PORT = 5053;
 const BRIDGE = 'http://127.0.0.1:5052';
 const OLD_SERVER = 'https://yasuomain.netlify.app'; // only to bring sync data over the first time
-const NAMES = ['sync', 'save-reminder', 'reminder-action', 'check-reminders', 'gwen', 'test-push', 'outbox'];
+const NAMES = ['sync', 'save-reminder', 'reminder-action', 'check-reminders', 'gwen', 'test-push', 'outbox', 'house', 'pc', 'backup'];
 const CORS = {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*'};
 
 // Netlify Blobs' get/setJSON/list, one JSON file per key
@@ -25,16 +25,33 @@ function fileStore(dir) {
 }
 
 // Keys: Documents\Gwen\daytrack.json, the file Gwen's bridge already keeps ({"key", "sync_code"}), plus "anthropicKey"
+// and optionally "gwenBorn" (YYYY-MM-DD, for her milestones)
 function loadKeys(file) {
   let k = {};
   try { k = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { console.warn('No keys file at', file); }
   if (k.gwenKey || k.key) process.env.GWEN_KEY = k.gwenKey || k.key;
   if (k.anthropicKey) process.env.ANTHROPIC_API_KEY = k.anthropicKey;
+  if (k.gwenBorn) process.env.GWEN_BORN = k.gwenBorn;
+  process.env.DT_GWEN_DIR = path.dirname(file); // Documents\Gwen: Start-Gwen.bat and the daily backup
 }
 
-async function start({dataDir, keysFile, fnDir}) {
+// Once a day: everything into Documents\Gwen\daytrack-backup\daytrack-YYYY-MM-DD.json, last 7 kept
+async function dailyBackup(dump) {
+  const dir = path.join(process.env.DT_GWEN_DIR, 'daytrack-backup'), d = new Date();
+  const file = path.join(dir, `daytrack-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`);
+  if (fs.existsSync(file)) return;
+  fs.mkdirSync(dir, {recursive: true});
+  fs.writeFileSync(file + '.tmp', JSON.stringify(await dump()));
+  fs.renameSync(file + '.tmp', file);
+  const old = fs.readdirSync(dir).filter(f => /^daytrack-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort().slice(0, -7);
+  for (const f of old) fs.rmSync(path.join(dir, f), {force: true});
+}
+
+// hooks (from main.js): {version, update(fromPhone), panel()} for the pc endpoint
+async function start({dataDir, keysFile, fnDir, hooks}) {
   loadKeys(keysFile);
   globalThis.dtStore = fileStore(dataDir);
+  globalThis.dtHooks = hooks || {};
   const fns = {};
   for (const n of NAMES) fns[n] = (await import(pathToFileURL(path.join(fnDir, n + '.mjs')).href)).default;
 
@@ -61,7 +78,7 @@ async function start({dataDir, keysFile, fnDir}) {
         const parts = []; req.on('data', c => parts.push(c)); req.on('end', () => ok(Buffer.concat(parts))); req.on('error', fail);
       });
       let r;
-      const fn = url.pathname.match(/^\/\.netlify\/functions\/([a-z-]+)$/);
+      const fn = url.pathname.match(/^\/(?:\.netlify\/functions|api)\/([a-z-]+)$/);
       if (fn && fns[fn[1]]) r = await fns[fn[1]](new Request('http://localhost' + url.pathname + url.search, {method: req.method, headers: {'Content-Type': req.headers['content-type'] || 'application/json'}, body}));
       else if (url.pathname.startsWith('/pc/')) {
         // Gwen's bridge, for the phone app (its web page can't call her directly)
@@ -83,6 +100,10 @@ async function start({dataDir, keysFile, fnDir}) {
   const tick = () => fns['check-reminders'](new Request('http://localhost/', {method: 'POST'})).catch(e => console.error('Reminders:', e.message));
   setInterval(tick, 60000);
   tick();
+  const {dump} = await import(pathToFileURL(path.join(fnDir, 'backup.mjs')).href);
+  const backup = () => dailyBackup(dump).catch(e => console.error('Backup:', e.message));
+  setInterval(backup, 3600e3);
+  setTimeout(backup, 60e3);
   return {fns, server};
 }
 
