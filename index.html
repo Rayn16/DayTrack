@@ -881,7 +881,7 @@ function startSync(){
   syncReady=true;pushSync();renderSyncUI();showToast('☁️ Cloud sync on!');
 }
 async function joinSync(){
-  const c=(prompt('Enter your sync code')||'').trim().toLowerCase();if(!c)return;
+  const c=(await ask('Enter your sync code','Paste the code from your other device')||'').trim().toLowerCase();if(!c)return;
   if(!/^[a-f0-9]{32}$/.test(c)){showToast('❌ That code doesn\'t look right');return;}
   try{
     const r=await fetch(SYNC_URL+'?code='+c);const d=r.ok?await r.json():null;
@@ -1601,7 +1601,8 @@ function applyGwenActions(text){
   return{clean,added,selfie:selfie&&!!g3.vrm,music};
 }
 function fetchT(url,opts,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{...opts,signal:c.signal}).finally(()=>clearTimeout(t));}
-const pcUrl=()=>gwenCfg.pc.trim().replace(/\/+$/,'');
+// The PC app talks to Gwen's bridge on the same PC directly, not round through Tailscale
+const pcUrl=()=>/Electron/.test(navigator.userAgent)?'http://127.0.0.1:5052':gwenCfg.pc.trim().replace(/\/+$/,'');
 async function pcAlive(){
   if(!gwenCfg.pc.trim())return false;
   try{return(await fetchT(pcUrl()+'/daytrack/ping',{},3000)).ok;}catch(e){return false;}
@@ -2657,6 +2658,13 @@ function renderSleepChart(){
 // A big goal split into steps: {id, name, steps: [{id, name, done: date|null}], createdAt}
 const sheet=html=>{document.getElementById('dt-ov-body').innerHTML=`<div style="width:36px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 14px;"></div>`+html;document.getElementById('dt-ov').classList.add('on');};
 const cardHead=(title,btn)=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">${title}</div>${btn}</div>`;
+// The PC app (Electron) has no prompt(), so questions get a sheet instead
+function ask(q,ph=''){return new Promise(res=>{
+  window._askRes=v=>{closeOv('dt-ov');res(v);};
+  sheet(`<div style="font-size:17px;font-weight:700;text-align:center;margin-bottom:12px;color:var(--txt);">${esc(q)}</div>
+    <div style="display:flex;gap:8px;"><input class="inp" id="ask-in" placeholder="${esc(ph)}" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();_askRes(this.value);}"><button onclick="_askRes(document.getElementById('ask-in').value)" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">OK</button></div>${closeBtn}`);
+  setTimeout(()=>document.getElementById('ask-in')?.focus(),50);
+});}
 const closeBtn='<button onclick="closeOv(\'dt-ov\')" style="width:100%;margin-top:12px;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Close</button>';
 function renderGoals(){
   const el=document.getElementById('goals-card');
@@ -2665,8 +2673,8 @@ function renderGoals(){
     return`<div class="row" onclick="openGoal('${g.id}')"><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t&&n===t?'🏆 ':''}${esc(g.name)}</div><div class="bar" style="margin-top:6px;"><i style="width:${t?n/t*100:0}%;${t&&n===t?'background:var(--grn);':''}"></i></div></div><span style="font-size:12px;color:var(--sub);">${n}/${t}</span></div>`;
   }).join(''):'<div style="font-size:12px;color:var(--sub);">Split something big (a course, a skill, a project) into steps. Gwen checks in on it.</div>');
 }
-function newGoal(){
-  const name=(prompt('What\'s the goal? (e.g. Finish my Python course)')||'').trim().slice(0,80);if(!name)return;
+async function newGoal(){
+  const name=(await ask('What\'s the goal?','e.g. Finish my Python course')||'').trim().slice(0,80);if(!name)return;
   const g={id:uid(),name,steps:[],createdAt:toDateStr(new Date())};goals.push(g);save();renderGoals();openGoal(g.id);
 }
 function openGoal(id){
