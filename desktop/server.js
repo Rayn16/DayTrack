@@ -24,11 +24,11 @@ function fileStore(dir) {
   };
 }
 
-// Keys: Documents\Gwen\daytrack.json {"gwenKey", "anthropicKey"}
+// Keys: Documents\Gwen\daytrack.json, the file Gwen's bridge already keeps ({"key", "sync_code"}), plus "anthropicKey"
 function loadKeys(file) {
   let k = {};
   try { k = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { console.warn('No keys file at', file); }
-  if (k.gwenKey) process.env.GWEN_KEY = k.gwenKey;
+  if (k.gwenKey || k.key) process.env.GWEN_KEY = k.gwenKey || k.key;
   if (k.anthropicKey) process.env.ANTHROPIC_API_KEY = k.anthropicKey;
 }
 
