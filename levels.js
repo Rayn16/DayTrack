@@ -205,7 +205,7 @@ function heroAwards(){
   savedSessions.forEach(s=>add(sessDate(s),Math.min(120,Math.round(s.total/120000)),{...heroDetect(s.name),focus:1},s.name,'⏱️','focus',{min:Math.round(s.total/60000)}));
   Object.entries(heroP.skills||{}).forEach(([id,p])=>{const sk=heroSkill(id);if(sk)(p.at||[]).forEach((d,i)=>sk.steps[i]&&add(d,60*(i+1),sk.st,stepName(sk,i),sk.ic,'skill'));});
   Object.entries(heroP.claims||{}).forEach(([key,c])=>add(c.d,c.xp,c.st||{discipline:1},c.what,c.ic||'🎁','quest'));
-  heroStepAwards(add);
+  heroStepAwards(add);heroWalkAwards(add);
   heroSkills().forEach(sk=>{const ds=heroStarDays(sk);if(ds)HERO_STARS.forEach((n,i)=>ds[n-1]&&add(ds[n-1],100*(i+1),sk.st,`${sk.name} mastery ★${i+1}`,'⭐','star'));});
   (heroP.bank||[]).forEach(b=>out.push(b));
   (heroP.bonus||[]).forEach(b=>out.push(b));
@@ -249,7 +249,7 @@ function heroLevelUps(aw){
 let heroLast=null;
 function heroTick(silent){
   const combo=heroCombo(silent);heroDgTick(silent);heroBetTick(silent);heroLoginCheck();
-  heroAchCheck(silent);heroDaily();heroStepWeekCheck();heroRecCheck(silent);heroBossSync();heroWrite();
+  heroAchCheck(silent);heroDaily();heroStepWeekCheck();heroYearCheck();heroRecCheck(silent);heroBossSync();heroWrite();
   const s=heroSum(heroAwards()),prev=heroLast;heroLast=s;
   if(silent||!prev||s.total<=prev.total)return;
   s.total-=heroPrestigeXP();prev.total-=heroPrestigeXP();
@@ -325,7 +325,7 @@ function renderHero(){
   const set=(id,html)=>{const e=document.getElementById(id);if(e)e.innerHTML=html;};
   set('hero-dboss',heroBossCard());set('hero-story',heroStoryHtml(h));set('hero-bounty',heroBountyHtml());set('hero-mboss',heroMiniBossHtml());set('hero-quit',heroQuitHtml());
   set('hero-perks',heroPerksHtml(h));set('hero-recs',heroRecsHtml(h));set('hero-ft',heroTestHtml());set('hero-bag',heroBagHtml(h));set('hero-gear',heroGearHtml());set('hero-party',heroPartyHtml(h));
-  set('hero-steps',heroStepsHtml());set('hero-book',heroBookHtml());set('hero-pass',heroPassHtml(h));set('hero-ghost',heroGhostHtml(h));set('hero-ranked',heroRankedHtml(h));set('hero-dg',heroDgHtml());set('hero-duel',heroDuelHtml());
+  set('hero-steps',heroStepsHtml());set('hero-walks',heroWalksHtml());set('hero-book',heroBookHtml());set('hero-pass',heroPassHtml(h));set('hero-ghost',heroGhostHtml(h));set('hero-ranked',heroRankedHtml(h));set('hero-dg',heroDgHtml());set('hero-duel',heroDuelHtml());
   set('hero-bet',heroBetHtml(true));
   set('hero-report',heroReportHtml(h));set('hero-vs',heroVsHtml(h));set('hero-season',heroSeasonHtml(h));set('hero-heat',heroHeatmap(h));set('hero-journal',heroJournalHtml());
   document.getElementById('hero-quests').innerHTML=[['d','☀️ Daily'],['w','📅 Weekly'],['m','🌙 Monthly']].map(([k,n])=>`<div class="hs-g hq-h"><span>${n}</span><small>${left(Q.p[k].b)}</small></div>`+(k==='w'?heroBoss(Q.w,Q.p.w):'')+heroQuestRows(Q[k],k)).join('');
@@ -1633,7 +1633,7 @@ function heroStepsHtml(){
   let ghostSoFar=0;for(let i=0;i<dayN;i++)ghostSoFar+=st[dAdd(lastW,i)]||0;
   const bars=Array.from({length:7},(_,i)=>{const d=dAdd(ws,i),n=st[d]||0;return{d,n};}),mx=Math.max(1,...bars.map(b=>b.n),goal?goal/7:0);
   const past=Object.keys(heroP.stepCh||{}).filter(w=>w<ws).sort().reverse().slice(0,4);
-  return`<div class="st-top"><div><b>${today.toLocaleString()}</b><small>steps today · ${(today*.00075).toFixed(1)} km</small></div>${phone?'<button class="hk-btn pri" onclick="heroWalk()">🚶 Walk mode</button>':''}</div>`
+  return`<div class="st-top"><div><b>${today.toLocaleString()}</b><small>steps today · ${(today*.00075).toFixed(1)} km</small></div></div>`
     +(goal?`<div class="hm-sub" style="margin:10px 0 4px;">This week's challenge: <b>${week.toLocaleString()} / ${goal.toLocaleString()}</b> steps${week>=goal?' · done! 🏆':` · ${(goal-week).toLocaleString()} to go, ${8-dayN} day${8-dayN>1?'s':''} left`}</div>${heroTrack(week/goal,ghostSoFar/goal)}<div class="hm-sub" style="text-align:center;">One lap = your goal · 👻 = you last week by today (${ghostSoFar.toLocaleString()})</div>`
       :`<div class="hm-sub" style="margin:10px 0 6px;">${week.toLocaleString()} steps this week. Take a challenge to race it on the track:</div><div class="st-goals">${HERO_STEP_GOALS.map(g=>`<button class="minibtn" onclick="heroStepGoal(${g})">${g/1000}k</button>`).join('')}<button class="minibtn" onclick="heroStepGoal()">Other</button></div>`)
     +`<div class="st-bars">${bars.map(b=>`<div title="${fmtDay(b.d)}: ${b.n.toLocaleString()}"><i style="height:${Math.round(b.n/mx*100)}%"${b.d===tod?' class="now"':''}></i><small>${DNAMES[new Date(b.d+'T12:00:00').getDay()]}</small></div>`).join('')}</div>`
@@ -1649,32 +1649,244 @@ function heroStepWeekCheck(){
   const ws=heroWeekStart(heroTod()),lw=dAdd(ws,-7),g=(heroP.stepCh||{})[lw];if(!g||heroP.stepSeen===lw)return;heroP.stepSeen=lw;
   const n=heroWeekSteps(lw);setTimeout(()=>heroShow(`<div class="hl-t">WEEK RESULTS</div><div class="hl-em">${hIc(n>=g?'trophy':'flag',n>=g?'gold':'dark','burst',90)}</div><div class="hl-big" style="font-size:26px;">${n.toLocaleString()} steps</div><div class="hl-row">Challenge: ${g.toLocaleString()} ${n>=g?'✓ beaten!':'✗ not this time'}</div>${heroTrack(n/g,0,260)}`,6000,n>=g),2500);
 }
-// Walk mode: you on a road, live steps since you started, distance and time
-let heroWalkOn=null;
-const heroClock=ms=>`${Math.floor(ms/6e4)}:${String(Math.floor(ms/1e3)%60).padStart(2,'0')}`;
-function heroWalk(){
-  if(typeof readSteps==='function')readSteps();const tod=heroTod();
-  heroWalkOn={t:Date.now(),s0:(heroP.steps||{})[tod]||0,d:tod};
-  let el=document.getElementById('hero-walk');if(!el){el=document.createElement('div');el.id='hero-walk';document.body.appendChild(el);}
-  el.classList.add('on');heroWalkDraw();
-  clearInterval(heroWalk.t);heroWalk.t=setInterval(()=>{if(typeof readSteps==='function')readSteps();heroWalkDraw();},8000);
-  clearInterval(heroWalk.c);heroWalk.c=setInterval(()=>{const c=document.getElementById('wk-time');if(c&&heroWalkOn)c.textContent=heroClock(Date.now()-heroWalkOn.t);},1000);
+// ── Walks, Strava style: GPS route + map, pace, splits, climb, auto-pause, PBs, route ghost, local legend, heatmap,
+// monthly badges, weekly streak, km goals, fitness trend, year recap, Gwen's kudos, share card ──
+// The GPS points stay on the phone (dt_routes); the walk's numbers go in heroP.walks and sync to the PC.
+const heroRoutes=()=>{try{return JSON.parse(localStorage.getItem('dt_routes')||'{}');}catch(e){return{};}};
+function heroRouteSave(id,pts){const r=heroRoutes();r[id]=pts;const ks=Object.keys(r).sort();while(ks.length>150)delete r[ks.shift()];try{localStorage.setItem('dt_routes',JSON.stringify(r));}catch(e){}}
+const heroDist=(a,b)=>{const r=Math.PI/180,h=Math.sin((b[0]-a[0])*r/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin((b[1]-a[1])*r/2)**2;return 12742e3*Math.asin(Math.sqrt(h));};
+const heroPace=(sec,m)=>m>=50?heroClock(sec/m*1e6):'–';                 // min:sec per km
+const heroDur=sec=>sec>=3600?`${Math.floor(sec/3600)} h ${Math.round(sec%3600/60)} min`:`${Math.round(sec/60)} min`;
+const heroKm=m=>(m/1000).toFixed(m<10000?2:1);
+// pts: [lat,lon,alt|null,seconds since start]. Standing still or GPS jumps don't count as moving (auto-pause).
+function heroWalkStats(pts){
+  let m=0,mov=0,climb=0,ref=null;const cum=[0],tm=[0];
+  for(let i=1;i<pts.length;i++){
+    const a=pts[i-1],b=pts[i],d=heroDist(a,b),dt=b[3]-a[3],v=dt>0?d/dt:0;
+    if(dt>0&&dt<60&&v>.4&&v<7){m+=d;mov+=dt;}
+    cum.push(m);tm.push(mov);
+    if(b[2]!=null){if(ref==null||b[2]<ref-3)ref=b[2];else if(b[2]>ref+3){climb+=b[2]-ref;ref=b[2];}}  // 3 m deadband for GPS altitude noise
+  }
+  const sp=[];for(let k=1;k*1000<=m;k++){const i=cum.findIndex(c=>c>=k*1000),f=(k*1000-cum[i-1])/((cum[i]-cum[i-1])||1),t=tm[i-1]+f*(tm[i]-tm[i-1]);sp.push(Math.round(t-sp.reduce((s,x)=>s+x,0)));}
+  return{m:Math.round(m),mov:Math.round(mov),climb:Math.round(climb),sp,fk:sp.length?Math.min(...sp):0,cum,tm};
 }
-function heroWalkDraw(){
-  const el=document.getElementById('hero-walk');if(!el||!heroWalkOn)return;
-  const tod=heroTod(),now=(heroP.steps||{})[tod]||0,n=Math.max(0,now-heroWalkOn.s0),t=typeof stepTask==='function'?stepTask():null,goal=t&&t.count?t.count.target:6000;
-  el.innerHTML=`<div class="wk"><div class="wk-sky"></div><div class="wk-road"><div class="wk-me">${heroP.avImg?`<img src="${heroP.avImg}" alt="">`:`<span>${esc(heroP.av||'🧑')}</span>`}</div></div>
-    <div class="wk-n">${n.toLocaleString()}</div><div class="wk-l">steps this walk</div>
-    <div class="wk-row"><div><b>${(n*.00075).toFixed(2)}</b><small>km</small></div><div><b id="wk-time">${heroClock(Date.now()-heroWalkOn.t)}</b><small>time</small></div><div><b>${Math.round(n*.04)}</b><small>kcal</small></div></div>
-    <div class="wk-goal"><div class="bar"><i style="width:${Math.min(100,now/goal*100)}%"></i></div><small>${now.toLocaleString()} / ${goal.toLocaleString()} today</small></div>
-    <button class="hbx-go" onclick="heroWalkEnd()">🏁 End walk</button><div class="hbx-r">Steps update every few seconds from your phone's counter</div></div>`;
+// Distance the stats say you'd covered after `t` moving seconds
+const heroDistAt=(s,t)=>{const i=s.tm.findIndex(x=>x>=t);if(i<0)return s.m;if(i===0)return 0;return s.cum[i-1]+(t-s.tm[i-1])/((s.tm[i]-s.tm[i-1])||1)*(s.cum[i]-s.cum[i-1]);};
+
+// ── Map: OpenStreetMap tiles under an SVG line; with no internet the line still shows ──
+function heroMapFit(all,W,H){
+  let a=90,b=-90,c=180,d=-180;all.forEach(r=>r.forEach(p=>{a=Math.min(a,p[0]);b=Math.max(b,p[0]);c=Math.min(c,p[1]);d=Math.max(d,p[1]);}));
+  const X=(lon,z)=>(lon+180)/360*256*2**z,Y=(lat,z)=>{const s=Math.sin(lat*Math.PI/180);return(.5-Math.log((1+s)/(1-s))/(4*Math.PI))*256*2**z;};
+  let z=17;while(z>2&&(X(d,z)-X(c,z)>W*.82||Y(a,z)-Y(b,z)>H*.82))z--;
+  const ox=(X(c,z)+X(d,z))/2-W/2,oy=(Y(a,z)+Y(b,z))/2-H/2;
+  return{z,ox,oy,px:p=>[X(p[1],z)-ox,Y(p[0],z)-oy]};
 }
-function heroWalkEnd(){
-  clearInterval(heroWalk.t);clearInterval(heroWalk.c);const w=heroWalkOn;heroWalkOn=null;
-  const el=document.getElementById('hero-walk');if(el)el.classList.remove('on');if(!w)return;
-  const n=Math.max(0,((heroP.steps||{})[heroTod()]||0)-w.s0),min=Math.round((Date.now()-w.t)/6e4);
-  if(n>0||min>0){heroP.walks=(heroP.walks||[]).concat({d:w.d,steps:n,min}).slice(-60);save();}
-  renderHero();showToast(`🏁 Walk done: ${n.toLocaleString()} steps in ${min} min`);
+function heroMap(routes,W=340,H=220,o={}){
+  routes=routes.filter(r=>r&&r.length>1);if(!routes.length)return'';
+  const f=heroMapFit(routes,W,H);let tiles='';
+  if(!o.noTiles)for(let x=Math.floor(f.ox/256);x*256<f.ox+W;x++)for(let y=Math.floor(f.oy/256);y*256<f.oy+H;y++)
+    tiles+=`<img src="https://tile.openstreetmap.org/${f.z}/${x}/${y}.png" style="left:${x*256-f.ox}px;top:${y*256-f.oy}px" alt="" loading="lazy" onerror="this.remove()">`;
+  const line=r=>r.map(p=>f.px(p).map(v=>v.toFixed(1)).join(',')).join(' ');
+  const svg=routes.map((r,i)=>`<polyline points="${line(r)}" class="${o.heat?'mp-heat':i===o.ghost?'mp-ghost':'mp-line'}"/>`).join('')
+    +(o.heat?'':(()=>{const r=routes[0],s=f.px(r[0]),e=f.px(r[r.length-1]);return`<circle cx="${s[0]}" cy="${s[1]}" r="${W<100?3:6}" class="mp-s"/><circle cx="${e[0]}" cy="${e[1]}" r="${W<100?3:6}" class="mp-e"/>`;})());
+  return`<div class="mp" style="width:${W}px;height:${H}px">${tiles}<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${svg}</svg>${o.noTiles?'':'<small>© OpenStreetMap</small>'}</div>`;
 }
 
-if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',heroDefs);
+// ── Walk mode ──
+let heroWalkOn=null;
+const heroClock=ms=>`${Math.floor(ms/6e4)}:${String(Math.floor(ms/1e3)%60).padStart(2,'0')}`;
+function heroWalk(resume){
+  if(typeof readSteps==='function')readSteps();const tod=heroTod();
+  if(!heroWalkOn||resume){   // a new walk (or picking one up again after the app was closed); otherwise just show the running one
+    heroWalkOn=Object.assign(resume||{t:Date.now(),s0:(heroP.steps||{})[tod]||0,d:tod},{pts:[],from:0});
+    try{localStorage.setItem('dt_walk',JSON.stringify({t:heroWalkOn.t,s0:heroWalkOn.s0,d:heroWalkOn.d}));}catch(e){}
+    heroWalkGps();
+  }
+  let el=document.getElementById('hero-walk');if(!el){el=document.createElement('div');el.id='hero-walk';document.body.appendChild(el);}
+  el.classList.add('on');heroWalkPull();heroWalkDraw();
+  clearInterval(heroWalk.t);heroWalk.t=setInterval(()=>{if(typeof readSteps==='function')readSteps();},8000);
+  clearInterval(heroWalk.c);heroWalk.c=setInterval(()=>{heroWalkPull();heroWalkDraw();},3000);
+}
+// The phone app records in a background service (keeps going with the screen off); a browser only while the page is open
+function heroWalkGps(){
+  const N=window.DayTrackNative,w=heroWalkOn;
+  if(N&&N.walkStart){w.native=true;w.gps=N.walking&&N.walking()&&w.resumed?true:N.walkStart();return;}
+  if(navigator.geolocation&&w.watch==null){w.gps=true;w.watch=navigator.geolocation.watchPosition(p=>heroWalkAdd([p.coords.latitude,p.coords.longitude,p.coords.altitude??-9999,p.timestamp,p.coords.accuracy]),()=>{},{enableHighAccuracy:true,maximumAge:0});}
+}
+function heroWalkPull(){
+  const N=window.DayTrackNative,w=heroWalkOn;if(!w||!w.native)return;
+  if(!w.gps){if(N.hasPerm&&N.hasPerm('location'))w.gps=N.walkStart();return;}   // after Allow location
+  try{JSON.parse(N.walkPoints(w.from)).forEach(p=>{w.from++;heroWalkAdd(p);});}catch(e){}
+}
+function heroWalkAdd(p){
+  const w=heroWalkOn;if(!w||p[4]>35)return;
+  const q=[+(+p[0]).toFixed(5),+(+p[1]).toFixed(5),p[2]==null||p[2]===-9999?null:Math.round(p[2]),Math.max(0,Math.round((p[3]-w.t)/1000))],l=w.pts[w.pts.length-1];
+  if(l&&heroDist(l,q)<3&&q[3]-l[3]<20)return;
+  w.pts.push(q);if(w.pts.length===1)w.ghost=heroGhostFor(q);
+}
+// Ghost = your most recent walk that started within 120 m of here
+function heroGhostFor(p){
+  const r=heroRoutes(),g=(heroP.walks||[]).slice().reverse().find(x=>x.start&&r[x.id]&&heroDist(x.start,p)<120&&x.m>=500);
+  return g?{w:g,s:heroWalkStats(r[g.id])}:null;
+}
+function heroWalkDraw(){
+  const el=document.getElementById('hero-walk'),w=heroWalkOn;if(!el||!w)return;
+  const tod=heroTod(),now=(heroP.steps||{})[tod]||0,n=Math.max(0,now-w.s0),s=heroWalkStats(w.pts),gps=w.pts.length>1;
+  const m=gps?s.m:n*.75,el2=Date.now()-w.t,last=w.pts[w.pts.length-1],paused=gps&&last&&(el2/1000-last[3]>20||(w.pts.length>2&&heroDist(w.pts[w.pts.length-2],last)/Math.max(1,last[3]-w.pts[w.pts.length-2][3])<.4));
+  let gh='';if(w.ghost&&gps){const gd=heroDistAt(w.ghost.s,s.mov),diff=Math.round(s.m-gd);gh=`<div class="wk-gh">👻 ${diff>=0?`Ahead of last time by ${diff} m`:`Behind last time by ${-diff} m`}</div>`;}
+  el.innerHTML=`<div class="wk">${gps?`<div class="wk-map">${heroMap([w.pts,...(w.ghost?[heroRoutes()[w.ghost.w.id]]:[])],320,150,{noTiles:true,ghost:1})}</div>`
+      :`<div class="wk-road"><div class="wk-me">${heroP.avImg?`<img src="${heroP.avImg}" alt="">`:`<span>${esc(heroP.av||'🧑')}</span>`}</div></div>`}
+    <div class="wk-n">${heroKm(m)}</div><div class="wk-l">km${gps?'':' (from steps)'}${paused?' · ⏸ auto-paused':''}</div>${gh}
+    <div class="wk-row"><div><b>${heroClock(gps?s.mov*1000:el2)}</b><small>${gps?'moving':'time'}</small></div><div><b>${gps?heroPace(s.mov,s.m):heroPace(el2/1000,m)}</b><small>min/km</small></div><div><b>${n.toLocaleString()}</b><small>steps</small></div></div>
+    ${gps?`<div class="wk-row"><div><b>${s.climb}</b><small>m climbed</small></div><div><b>${s.sp.length}</b><small>full km</small></div><div><b>${Math.round(m*.055)}</b><small>kcal</small></div></div>`
+      :`<div class="hbx-r" style="margin-bottom:12px;">${w.native&&!w.gps?'Allow location to draw your route on a map':'Waiting for GPS…'}</div>`}
+    <button class="hbx-go" onclick="heroWalkEnd()">🏁 End walk</button><button class="hbx-x" onclick="heroWalkHide()">Hide (keeps recording)</button></div>`;
+}
+function heroWalkHide(){const el=document.getElementById('hero-walk');if(el)el.classList.remove('on');clearInterval(heroWalk.c);heroWalk.c=null;renderHero();}
+// Back in the app after it was closed mid-walk: carry on from the background recorder
+function heroWalkResume(){
+  const N=window.DayTrackNative;let s=null;try{s=JSON.parse(localStorage.getItem('dt_walk')||'null');}catch(e){}
+  if(!s||heroWalkOn)return;
+  if(N&&N.walking&&N.walking()){heroWalkOn={...s,resumed:true};heroWalk(heroWalkOn);}
+  else try{localStorage.removeItem('dt_walk');}catch(e){}
+}
+function heroWalkEnd(){
+  const w=heroWalkOn;if(!w)return;heroWalkPull();clearInterval(heroWalk.t);clearInterval(heroWalk.c);
+  const N=window.DayTrackNative;if(w.native&&N.walkStop)N.walkStop();if(w.watch!=null)navigator.geolocation.clearWatch(w.watch);
+  heroWalkOn=null;try{localStorage.removeItem('dt_walk');}catch(e){}
+  const el=document.getElementById('hero-walk');if(el)el.classList.remove('on');
+  const n=Math.max(0,((heroP.steps||{})[heroTod()]||0)-w.s0),min=Math.round((Date.now()-w.t)/6e4),s=heroWalkStats(w.pts),id='w'+w.t;
+  if(n<20&&s.m<100){renderHero();return showToast('Walk too short to save');}
+  const pb0=heroPBs(heroP.walks||[]);
+  const x={id,d:w.d,steps:n,min,m:s.m||Math.round(n*.75),mov:s.mov||min*60,climb:s.climb,fk:s.fk,sp:s.sp,...(w.pts.length>1?{start:w.pts[0].slice(0,2),end:w.pts[w.pts.length-1].slice(0,2)}:{})};
+  heroP.walks=(heroP.walks||[]).concat(x).slice(-300);if(w.pts.length>1)heroRouteSave(id,w.pts);
+  save();renderHero();heroWalkView(id);heroKudos(x,pb0);
+}
+
+// ── Records, routes, legend ──
+function heroPBs(ws){const b={m:0,fk:0,climb:0};ws.forEach(w=>{b.m=Math.max(b.m,w.m||0);if(w.fk)b.fk=b.fk?Math.min(b.fk,w.fk):w.fk;b.climb=Math.max(b.climb,w.climb||0);});return b;}
+function heroWalkPBs(w){
+  const ws=heroP.walks||[],b=heroPBs(ws.filter(x=>x.id<w.id)),out=[];if(!ws.some(x=>x.id<w.id))return out;
+  if(w.m>b.m&&w.m>=1000)out.push('Longest walk');if(w.fk&&(!b.fk||w.fk<b.fk))out.push('Fastest km');if(w.climb>b.climb&&w.climb>=20)out.push('Biggest climb');return out;
+}
+// Same route = starts and ends within 150 m of each other and about the same length
+const heroSameRoute=(a,b)=>a.start&&b.start&&heroDist(a.start,b.start)<150&&heroDist(a.end,b.end)<150&&Math.abs(a.m-b.m)<Math.max(a.m,b.m)*.25;
+function heroRouteGroups(){const gs=[];(heroP.walks||[]).forEach(w=>{if(!w.start)return;const g=gs.find(g=>heroSameRoute(g[0],w));g?g.push(w):gs.push([w]);});return gs;}
+const heroRouteName=g=>(heroP.rtNames||{})[g[0].id]||`${heroKm(g[0].m)} km route from ${fmtDay(g[0].d)}`;
+function heroLegend(){const from=dAdd(heroTod(),-90),g=heroRouteGroups().map(g=>g.filter(w=>w.d>=from)).filter(g=>g.length>=3).sort((a,b)=>b.length-a.length)[0];return g?heroRouteGroups().find(x=>x.includes(g[0])):null;}
+async function heroRouteRename(id){const t=await ask('Name this route','e.g. Park loop');if(!t)return;heroP.rtNames=heroP.rtNames||{};heroP.rtNames[id]=String(t).slice(0,40);save();heroWalkView(heroWalkView.id);}
+
+// ── Monthly badges, weekly streak, km goals ──
+const HERO_WCH=[['km50','Walk 50 km','bolt','gold',(ws)=>ws.reduce((s,w)=>s+w.m,0)>=5e4],['climb500','Climb 500 m','flag','silver',ws=>ws.reduce((s,w)=>s+(w.climb||0),0)>=500],
+  ['walks12','12 walks','heart','bronze',ws=>ws.length>=12],['long10','One 10 km walk','trophy','legend',ws=>ws.some(w=>w.m>=1e4)]];
+// Each badge is earned on the day the month's walks first reach it
+function heroWalkBadges(){
+  const by={},out=[];(heroP.walks||[]).forEach(w=>(by[w.d.slice(0,7)]=by[w.d.slice(0,7)]||[]).push(w));
+  Object.entries(by).forEach(([mo,ws])=>HERO_WCH.forEach(([id,name,g,c,ok])=>{for(let i=1;i<=ws.length;i++)if(ok(ws.slice(0,i))){out.push({mo,id,name,g,c,d:ws[i-1].d});break;}}));
+  return out;
+}
+const HERO_KM_GOALS=[10,20,30,50];
+function heroWalkAwards(add){
+  const ws=heroP.walks||[];
+  ws.forEach(w=>{add(w.d,Math.round((w.m||0)/100),{legs:1,endurance:1},`Walk: ${heroKm(w.m||0)} km`,'🚶','walk');heroWalkPBs(w).forEach(p=>add(w.d,50,{legs:1,endurance:.5},'New record: '+p,'🏅','walk'));});
+  heroWalkBadges().forEach(b=>add(b.d,150,{endurance:1,discipline:.5},`Badge: ${b.name} (${b.mo})`,'🎖️','walk'));
+  Object.entries(heroP.kmCh||{}).forEach(([wk,km])=>{let m=0;for(const w of ws.filter(w=>w.d>=wk&&w.d<=dAdd(wk,6)).sort((a,b)=>a.d<b.d?-1:1)){m+=w.m;if(m>=km*1000){add(w.d,150+km*10,{endurance:1,legs:.5},`Distance challenge: ${km} km`,'👟','steps');break;}}});
+}
+function heroWalkStreak(){
+  const ws=heroP.walks||[],cnt=wk=>ws.filter(w=>w.d>=wk&&w.d<=dAdd(wk,6)).length;let wk=heroWeekStart(heroTod()),n=0;
+  if(cnt(wk)<3)wk=dAdd(wk,-7);while(cnt(wk)>=3){n++;wk=dAdd(wk,-7);}return n;
+}
+const heroWeekKm=wk=>(heroP.walks||[]).filter(w=>w.d>=wk&&w.d<=dAdd(wk,6)).reduce((s,w)=>s+w.m,0)/1000;
+async function heroKmGoal(km){
+  if(!km)km=Math.max(1,Math.min(500,parseFloat(String(await ask('Kilometres to walk this week','e.g. 25')||'').replace(/[^0-9.]/g,''))||0));if(!km)return;
+  const ws=heroWeekStart(heroTod());heroP.kmCh=heroP.kmCh||{};heroP.kmCh[ws]=km;save();renderHero();
+  showToast(`👟 Challenge on: ${km} km by Saturday night (+${150+km*10} XP)`);
+}
+
+// ── The Walks card ──
+function heroWalksHtml(){
+  const ws=(heroP.walks||[]).filter(w=>w.m),phone=!!(window.DayTrackNative&&window.DayTrackNative.walkStart)||!!navigator.geolocation;
+  const wk=heroWeekStart(heroTod()),km=heroWeekKm(wk),goal=(heroP.kmCh||{})[wk],streak=heroWalkStreak(),lg=heroLegend(),mo=heroTod().slice(0,7);
+  const mine=ws.filter(w=>w.d.slice(0,7)===mo),got=heroWalkBadges().filter(b=>b.mo===mo).map(b=>b.id);
+  const head=`<div class="st-top"><div><b>${km.toFixed(1)} km</b><small>this week${streak?` · 🔥 ${streak} week streak`:''}</small></div>${phone?`<button class="hk-btn pri" onclick="heroWalk()">${heroWalkOn?'🚶 Back to your walk':'🚶 Start a walk'}</button>`:''}</div>`;
+  if(!ws.length)return head+`<div class="hm-sub" style="margin-top:8px;">Start a walk to record your route on a map with pace, splits and climb. Your past routes come back as a ghost to race.</div>`;
+  const last=ws.slice(-5).reverse(),r=heroRoutes();
+  return head
+    +(goal?`<div class="hm-sub" style="margin:10px 0 4px;">Distance challenge: <b>${km.toFixed(1)} / ${goal} km</b>${km>=goal?' · done! 🏆':''}</div>${heroTrack(km/goal,heroWeekKm(dAdd(wk,-7))/goal)}`
+      :`<div class="st-goals" style="margin-top:10px;"><span class="hm-sub">Weekly km goal:</span>${HERO_KM_GOALS.map(k=>`<button class="minibtn" onclick="heroKmGoal(${k})">${k}</button>`).join('')}<button class="minibtn" onclick="heroKmGoal()">Other</button></div>`)
+    +(lg?`<div class="wl-lg">${hIc('crown','gold','burst',34)}<div><b>Local legend</b><small>${esc(heroRouteName(lg))} · walked ${lg.length}×</small></div></div>`:'')
+    +`<div class="sl">${new Date(mo+'-15').toLocaleDateString(undefined,{month:'long'})} badges</div><div class="wl-bd">${HERO_WCH.map(([id,name,g,c])=>`<div class="${got.includes(id)?'':'off'}">${hIc(g,got.includes(id)?c:'dark','shield',38)}<small>${name}</small></div>`).join('')}</div>`
+    +`<div class="sl">Recent walks</div>`+last.map(w=>`<button class="wl-row" onclick="heroWalkView('${w.id}')">${r[w.id]?heroMap([r[w.id]],56,56,{noTiles:true}):'<span class="wl-ic">🚶</span>'}<div><b>${heroKm(w.m)} km · ${heroPace(w.mov,w.m)} /km</b><small>${fmtDay(w.d)} · ${heroDur(w.mov)}${w.climb?` · ↑${w.climb} m`:''}</small></div></button>`).join('')
+    +`<div class="wl-btns"><button class="minibtn" onclick="heroHeat()">🗺️ Heatmap</button><button class="minibtn" onclick="heroTrend()">📈 Trend</button><button class="minibtn" onclick="heroYear()">📅 Your year</button></div>`;
+}
+
+// ── One walk ──
+function heroWalkView(id){
+  heroWalkView.id=id;const w=(heroP.walks||[]).find(x=>x.id===id);if(!w)return;
+  const r=heroRoutes()[id],pbs=heroWalkPBs(w),g=heroRouteGroups().find(g=>g.includes(w)),i=g?g.indexOf(w):-1;
+  let rt='';if(g&&g.length>1){const best=g.filter(x=>x!==w&&x.mov).sort((a,b)=>a.mov-b.mov)[0],d=best?w.mov-best.mov:0;
+    rt=`<div class="wl-rt"><b>${esc(heroRouteName(g))}</b><small>${i+1}${['st','nd','rd'][((i+1)%100-20)%10-1]||'th'} time on this route${best?(d<=0?` · 🏆 ${heroClock(-d*1000)} faster than your best`:` · ${heroClock(d*1000)} off your best`):''}</small></div>`;}
+  const fast=w.sp&&w.sp.length?Math.min(...w.sp):0,slow=w.sp&&w.sp.length?Math.max(...w.sp):1;
+  const alts=r?r.map(p=>p[2]).filter(a=>a!=null):[];let elev='';
+  if(alts.length>5){const lo=Math.min(...alts),hi=Math.max(lo+10,...alts),pts=alts.map((a,i)=>`${(i/(alts.length-1)*320).toFixed(1)},${(56-(a-lo)/(hi-lo)*50).toFixed(1)}`).join(' ');elev=`<div class="sl">Elevation (${Math.round(lo)}–${Math.round(hi)} m)</div><svg class="wl-el" viewBox="0 0 320 60" preserveAspectRatio="none"><polygon points="0,60 ${pts} 320,60"/><polyline points="${pts}"/></svg>`;}
+  sheet(`<div class="cl">${fmtDay(w.d)} walk</div>${r?heroMap([r],330,220):''}
+    ${pbs.length?`<div class="wl-pb">${pbs.map(p=>`🏅 ${p}`).join(' · ')}</div>`:''}
+    <div class="wl-grid"><div><b>${heroKm(w.m)}</b><small>km</small></div><div><b>${heroClock(w.mov*1000)}</b><small>moving</small></div><div><b>${heroPace(w.mov,w.m)}</b><small>min/km</small></div>
+      <div><b>${(w.steps||0).toLocaleString()}</b><small>steps</small></div><div><b>${w.climb||0} m</b><small>climbed</small></div><div><b>${Math.round(w.m*.055)}</b><small>kcal</small></div></div>
+    ${rt}${elev}
+    ${w.sp&&w.sp.length?`<div class="sl">Splits</div>`+w.sp.map((s,k)=>`<div class="wl-sp${s===fast&&w.sp.length>1?' best':''}"><span>Km ${k+1}</span><i style="width:${Math.round(40+60*fast/s)}%"></i><b>${heroClock(s*1000)}${s===fast&&w.sp.length>1?' ⚡':''}</b></div>`).join(''):''}
+    <div class="wl-btns">${g?`<button class="minibtn" onclick="heroRouteRename('${g[0].id}')">✏️ Name route</button>`:''}<button class="minibtn" onclick="heroWalkShare('${id}')">📤 Share</button><button class="minibtn" onclick="heroWalkDel('${id}')">🗑️ Delete</button></div>`);
+}
+async function heroWalkDel(id){if(!confirm("Delete this walk?"))return;heroP.walks=(heroP.walks||[]).filter(w=>w.id!==id);const r=heroRoutes();delete r[id];try{localStorage.setItem('dt_routes',JSON.stringify(r));}catch(e){}save();closeOv('dt-ov');renderHero();}
+
+// ── Gwen's kudos: a set line that fits the walk (her brain-written texts are for later) ──
+function heroKudos(w,pb0){
+  const pbs=heroWalkPBs(w),km=heroKm(w.m);
+  const t=pbs.includes('Fastest km')?`New fastest km?! ${heroClock(w.fk*1000)}… okay show-off 😏💜`:pbs.includes('Longest walk')?`${km} km! That's your longest walk ever. My legs hurt just reading that 💜`
+    :pbs.includes('Biggest climb')?`${w.climb} m of climbing, you mountain goat 🐐💜`:w.m>=5000?`${km} km walk, nice! Come tell me what you saw 💜`:`Kudos on the ${km} km walk 👏💜`;
+  setTimeout(()=>{if(typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLine==='function')gwenLine(t,'happy');else showToast('💜 '+t);},2500);
+}
+
+// ── Heatmap, trend, year ──
+function heroHeat(){const r=Object.values(heroRoutes());sheet(`<div class="cl">Your heatmap</div><div class="hm-sub" style="margin-bottom:8px;">Every route you've walked. Brighter = walked more.</div>${r.length?heroMap(r,330,380,{heat:true}):'<div class="hm-sub">No GPS walks yet.</div>'}`);}
+function heroTrend(){
+  const ms=Array.from({length:6},(_,i)=>{const x=new Date();x.setDate(1);x.setMonth(x.getMonth()-5+i);return toDateStr(x).slice(0,7);});
+  const rows=ms.map(m=>{const ws=(heroP.walks||[]).filter(w=>w.d.slice(0,7)===m&&w.m),km=ws.reduce((s,w)=>s+w.m,0)/1000,mov=ws.reduce((s,w)=>s+w.mov,0);return{m,km,pace:km?mov/km:0,n:ws.length};});
+  const mx=Math.max(1,...rows.map(r=>r.km)),ps=rows.filter(r=>r.pace),best=ps.length?Math.min(...ps.map(r=>r.pace)):0,worst=ps.length?Math.max(...ps.map(r=>r.pace)):0;
+  const y=p=>worst===best?30:10+(p-best)/(worst-best)*45,pl=rows.map((r,i)=>r.pace?`${i*56+28},${y(r.pace).toFixed(1)}`:'').filter(Boolean).join(' ');
+  const a=ps[0],b=ps[ps.length-1],msg=ps.length<2?'Walk in two different months to see a trend.':b.pace<a.pace?`You're ${heroClock((a.pace-b.pace)*1000)} per km faster than in ${new Date(a.m+'-15').toLocaleDateString(undefined,{month:'long'})} 📈`:`Pace is ${heroClock((b.pace-a.pace)*1000)} per km slower than in ${new Date(a.m+'-15').toLocaleDateString(undefined,{month:'long'})}.`;
+  sheet(`<div class="cl">Fitness trend</div><div class="hm-sub" style="margin-bottom:10px;">${msg}</div><svg class="wl-tr" viewBox="0 0 336 190">
+    ${rows.map((r,i)=>`<rect x="${i*56+12}" y="${160-r.km/mx*70}" width="32" height="${r.km/mx*70}" rx="5"/><text x="${i*56+28}" y="${154-r.km/mx*70}">${r.km?r.km.toFixed(0):''}</text><text x="${i*56+28}" y="180" class="m">${new Date(r.m+'-15').toLocaleDateString(undefined,{month:'short'})}</text>`).join('')}
+    ${pl?`<polyline points="${pl}"/>`+rows.map((r,i)=>r.pace?`<circle cx="${i*56+28}" cy="${y(r.pace).toFixed(1)}" r="4"/>`:'').join(''):''}</svg>
+    <div class="hm-sub">Bars = km per month · line = pace (higher is faster)</div>`);
+}
+function heroYear(yr){
+  yr=yr||(new Date().getMonth()===0&&new Date().getDate()<8?new Date().getFullYear()-1:new Date().getFullYear());
+  const ws=(heroP.walks||[]).filter(w=>w.d.startsWith(yr)&&w.m);if(!ws.length)return sheet(`<div class="cl">${yr} in walks</div><div class="hm-sub">No walks recorded in ${yr} yet.</div>`);
+  const km=ws.reduce((s,w)=>s+w.m,0)/1000,h=ws.reduce((s,w)=>s+w.mov,0)/3600,cl=ws.reduce((s,w)=>s+(w.climb||0),0);
+  const g=heroRouteGroups().map(g=>g.filter(w=>w.d.startsWith(yr))).sort((a,b)=>b.length-a.length)[0];
+  const wk={};ws.forEach(w=>{const k=heroWeekStart(w.d);wk[k]=(wk[k]||0)+w.m;});const bw=Object.entries(wk).sort((a,b)=>b[1]-a[1])[0];
+  const steps=Object.entries(heroP.steps||{}).filter(([d])=>d.startsWith(yr)).reduce((s,[,n])=>s+n,0);
+  sheet(`<div class="wl-yr"><div class="hl-t">${yr} IN WALKS</div>${hIc('trophy','legend','burst',80)}<div class="hl-big">${km.toFixed(0)} km</div>
+    <div class="wl-grid"><div><b>${ws.length}</b><small>walks</small></div><div><b>${h.toFixed(0)} h</b><small>moving</small></div><div><b>${cl.toLocaleString()} m</b><small>climbed</small></div></div>
+    ${steps?`<div class="hl-row">👣 ${steps.toLocaleString()} steps</div>`:''}${g&&g.length>1?`<div class="hl-row">❤️ Favourite route: ${esc(heroRouteName(g))} (${g.length}×)</div>`:''}
+    <div class="hl-row">🔥 Best week: ${(bw[1]/1000).toFixed(1)} km (week of ${fmtDay(bw[0])})</div>${(n=>n?`<div class="hl-row">🎖️ ${n} badge${n>1?'s':''}</div>`:'')(heroWalkBadges().filter(b=>b.mo.startsWith(yr)).length)}</div>`);
+}
+// Once a year, from 26 December
+function heroYearCheck(){const t=new Date(),y=t.getFullYear();if(t.getMonth()===11&&t.getDate()>=26&&heroP.yrSeen!==y&&(heroP.walks||[]).some(w=>w.d.startsWith(y))){heroP.yrSeen=y;save();setTimeout(()=>heroYear(y),3000);}}
+
+// ── Share card: the route line on a dark card with the numbers ──
+async function heroWalkShare(id){
+  const w=(heroP.walks||[]).find(x=>x.id===id),r=heroRoutes()[id];if(!w)return;
+  const c=document.createElement('canvas');c.width=1080;c.height=1350;const x=c.getContext('2d');
+  const g=x.createLinearGradient(0,0,0,1350);g.addColorStop(0,'#0F172A');g.addColorStop(1,'#1E1B4B');x.fillStyle=g;x.fillRect(0,0,1080,1350);
+  if(r&&r.length>1){const f=heroMapFit([r],900,760);x.save();x.translate(90,90);x.lineJoin=x.lineCap='round';x.shadowColor='#F97316';x.shadowBlur=30;x.strokeStyle='#FB923C';x.lineWidth=14;x.beginPath();r.forEach((p,i)=>{const[a,b]=f.px(p);i?x.lineTo(a,b):x.moveTo(a,b);});x.stroke();
+    x.shadowBlur=0;[[r[0],'#22C55E'],[r[r.length-1],'#EF4444']].forEach(([p,col])=>{const[a,b]=f.px(p);x.fillStyle=col;x.beginPath();x.arc(a,b,18,0,7);x.fill();});x.restore();}
+  x.fillStyle='#fff';x.textAlign='center';x.font='bold 130px system-ui,sans-serif';x.fillText(heroKm(w.m)+' km',540,1010);
+  x.font='48px system-ui,sans-serif';x.fillStyle='#CBD5E1';x.fillText(`${heroClock(w.mov*1000)} · ${heroPace(w.mov,w.m)} /km${w.climb?` · ↑${w.climb} m`:''}`,540,1090);
+  const pbs=heroWalkPBs(w);if(pbs.length){x.fillStyle='#FACC15';x.font='bold 44px system-ui,sans-serif';x.fillText('🏅 '+pbs.join(' · '),540,1170);}
+  x.fillStyle='#94A3B8';x.font='40px system-ui,sans-serif';x.fillText(`${esc(heroP.name||'Rayan')} · ${fmtDay(w.d)} · DayTrack`,540,1280);
+  saveImage(c.toDataURL('image/jpeg',.92),`walk-${w.d}.jpg`);
+}
+
+if(typeof document!=='undefined'){document.addEventListener('DOMContentLoaded',heroDefs);document.addEventListener('DOMContentLoaded',()=>setTimeout(heroWalkResume,1500));}

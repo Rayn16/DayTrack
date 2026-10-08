@@ -646,6 +646,17 @@
     'One lap = your goal': 'لفة واحدة = هدفك', 'Past challenges': 'التحديات السابقة', 'Steps goal for this week': 'هدف الخطوات لهذا الأسبوع', 'e.g. 60000': 'مثل: 60000',
     'steps this walk': 'خطوة في هذا المشي', 'km': 'كم', 'time': 'الوقت', 'kcal': 'سعرة', 'End walk': 'إنهاء المشي',
     "Steps update every few seconds from your phone's counter": 'تتحدّث الخطوات كل بضع ثوانٍ من عدّاد جوالك', 'WEEK RESULTS': 'نتائج الأسبوع',
+    // ── Walks ──
+    'Walks': 'المشي', 'Start a walk': 'ابدأ مشيًا', 'Back to your walk': 'العودة إلى مشيك', 'this week': 'هذا الأسبوع', 'Weekly km goal:': 'هدف الكيلومترات الأسبوعي:', 'Other': 'غير ذلك',
+    'Local legend': 'أسطورة المكان', 'Recent walks': 'آخر المشاوير', '🗺️ Heatmap': '🗺️ خريطة المشي', '📈 Trend': '📈 التطور', '📅 Your year': '📅 سنتك',
+    'Walk 50 km': 'امشِ 50 كم', 'Climb 500 m': 'اصعد 500 م', '12 walks': '12 مشوارًا', 'One 10 km walk': 'مشوار 10 كم',
+    'moving': 'حركة', 'min/km': 'د/كم', 'm climbed': 'م صعود', 'full km': 'كم كامل', 'climbed': 'صعود', 'walks': 'مشاوير',
+    'Hide (keeps recording)': 'إخفاء (يستمر التسجيل)', 'Splits': 'الأجزاء', '✏️ Name route': '✏️ سمِّ المسار', '📤 Share': '📤 مشاركة', '🗑️ Delete': '🗑️ حذف',
+    'Fitness trend': 'تطور لياقتك', 'Your heatmap': 'خريطة مشيك', "Every route you've walked. Brighter = walked more.": 'كل مسار مشيته. الأفتح = مشيته أكثر.',
+    'Bars = km per month · line = pace (higher is faster)': 'الأعمدة = كم في الشهر · الخط = السرعة (الأعلى أسرع)', 'Walk in two different months to see a trend.': 'امشِ في شهرين مختلفين لترى التطور.',
+    'Allow location to draw your route on a map': 'اسمح بالموقع لرسم مسارك على الخريطة', 'Waiting for GPS…': 'بانتظار GPS…', 'Walk too short to save': 'المشي قصير جدًا للحفظ',
+    'Name this route': 'سمِّ هذا المسار', 'e.g. Park loop': 'مثلًا: لفة الحديقة', 'Kilometres to walk this week': 'الكيلومترات التي ستمشيها هذا الأسبوع', 'e.g. 25': 'مثلًا 25',
+    'Start a walk to record your route on a map with pace, splits and climb. Your past routes come back as a ghost to race.': 'ابدأ مشيًا لتسجيل مسارك على الخريطة مع السرعة والأجزاء والصعود. مساراتك السابقة تعود كشبح تتسابق معه.',
   };
 
   // ── Patterns (numbers, names, dates) ───────────────────────────────────────
@@ -906,6 +917,17 @@
     [/^Challenge: ([\d,]+) (✓ beaten!|✗ not this time)$/, (_, n, r) => `التحدي: ${n} ${r[0] === '✓' ? '✓ تم التغلب عليه!' : '✗ ليس هذه المرة'}`],
     [/^Challenge on: ([\d,]+) steps by Saturday night \(\+(\d+) XP\)$/, 'بدأ التحدي: $1 خطوة قبل ليلة السبت (+$2 XP)'],
     [/^Walk done: ([\d,]+) steps in (\d+) min$/, 'انتهى المشي: $1 خطوة في $2 دقيقة'],
+    [/^Elevation \((\d+)–(\d+) m\)$/, 'الارتفاع ($1–$2 م)'],
+    [/^([A-Z][a-z]+) badges$/, (_, m) => MO[m] ? 'أوسمة ' + MO[m] : null],
+    [/^(\d+)(?:st|nd|rd|th) time on this route(.*)$/, (_, n, r) => `المرة ${n} على هذا المسار` + r.replace(/(\d+:\d+) faster than your best/, '$1 أسرع من أفضل وقت لك').replace(/(\d+:\d+) off your best/, '$1 أبطأ من أفضل وقت لك')],
+    [/^walked (\d+)×$/, 'مشيته $1×'],
+    [/^Walk: ([\d.]+) km$/, 'مشي: $1 كم'],
+    [/^New record: (Longest walk|Fastest km|Biggest climb)$/, (_, x) => 'رقم جديد: ' + ({'Longest walk': 'أطول مشي', 'Fastest km': 'أسرع كيلو', 'Biggest climb': 'أكبر صعود'})[x]],
+    [/^🏅 (.+)$/, (_, x) => '🏅 ' + x.replace('Longest walk', 'أطول مشي').replace('Fastest km', 'أسرع كيلو').replace('Biggest climb', 'أكبر صعود')],
+    [/^Distance challenge: ([\d.]+) km$/, 'تحدي المسافة: $1 كم'],
+    [/^Km (\d+)$/, 'كم $1'],
+    [/^([\d.]+) km route from (.+)$/, (_, k, d) => `مسار ${k} كم من ${T(d)}`],
+    [/^(.+) walk$/, (_, d) => /^[A-Z][a-z]{2}, /.test(d) ? 'مشي ' + T(d) : null],
     [/^Step challenge: ([\d,]+) steps$/, 'تحدي الخطوات: $1 خطوة'],
     // What earned XP (log, stat sheet, day sheet): user text kept as is
     [/^Mini boss slain: ([\s\S]+?)(?: \(waited (\d+) days?\))?$/, (_, x, n) => `هزمت الزعيم الصغير: ${x}${n ? ` (انتظرت ${days(n)})` : ''}`],
