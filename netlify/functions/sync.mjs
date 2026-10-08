@@ -41,6 +41,7 @@ const handler = async (event) => {
       const code = (event.queryStringParameters || {}).code || '';
       if (!CODE.test(code)) return { statusCode: 400, body: 'Bad code' };
       if ((event.queryStringParameters || {}).inbox) return json((await store.get('inbox-' + code, { type: 'json' })) || []);
+      if ((event.queryStringParameters || {}).ver) return json({ updatedAt: ((await store.get(code, { type: 'json' })) || {}).updatedAt || 0 });  // cheap check, polled every few seconds
       return json(await store.get(code, { type: 'json' }));
     }
     if (event.httpMethod === 'POST') {

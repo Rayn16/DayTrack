@@ -929,7 +929,12 @@ function load(){
 // ponytail: last write wins per device, merge per task if two phones edit offline at once
 const SYNC_URL='/.netlify/functions/sync';
 let syncCode=null,syncReady=false,syncTimer,localUpdated=0;
-function queueSync(){if(!syncCode)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncReady?pushSync():pullSync(),1500);}
+function queueSync(){if(!syncCode)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncReady?pushSync():pullSync(),500);}
+// Live sync: while the app is on screen, ask every 3 s whether the other device saved something, and pull it if so
+setInterval(async()=>{
+  if(!syncCode||!syncReady||document.hidden)return;
+  try{const r=await fetch(SYNC_URL+'?ver=1&code='+syncCode);const v=r.ok&&(await r.json()).updatedAt;if(v&&v!==syncBase&&v!==localUpdated)pullSync();}catch(e){}
+},3000);
 // syncBase = the server copy this device last synced with. The server merges what changed on each side since then,
 // so the phone and the PC can both change things without one copy wiping the other.
 let syncBase=+(localStorage.getItem('dt_sync_base')||0)||null;
@@ -967,6 +972,7 @@ function applyData(d){
   goals=d.goals||[];lists=d.lists||[];sleepLog=d.sleep||{};if(d.player)heroP=d.player;if(d.life&&window.lifeApply)lifeApply(d.life);
   localUpdated=d.updatedAt;writeLocal();syncReminders();heroTick(true);
   renderTaskList();renderMood();renderCal();renderSummary();renderPastSessions();
+  renderGoals();renderLists();if(document.body.dataset.tab==='hero')renderHero();else if(typeof renderHeroMini==='function')renderHeroMini();
 }
 function startSync(){
   syncCode=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
