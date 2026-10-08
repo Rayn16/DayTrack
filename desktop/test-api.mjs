@@ -165,6 +165,36 @@ await call('/.netlify/functions/save-reminder', {subscription: sub, tasks: [task
 await fetch(url + '/.netlify/functions/check-reminders', {method: 'POST'});
 assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r => r.json())).some(m => m.title === '🌅 Morning adhkar'));
 
+
+// Sync: the phone and the PC both change things between syncs; the server merges instead of the newest copy winning
+{
+  const code = 'c'.repeat(32), push = (base, data) => call('/.netlify/functions/sync', {code, base, data});
+  const v0 = {tasks: [{id: 'a', name: 'Water', done: ['2026-10-01']}, {id: 'b', name: 'Old task', done: []}], player: {av: '🧑', walks: []}, updatedAt: 100};
+  let r = await push(null, v0); assert.equal(r.data.updatedAt, 100);
+  // Phone (base 100): ticks Water today, adds a walk, new photo, deletes "Old task"
+  const phone = {tasks: [{id: 'a', name: 'Water', done: ['2026-10-01', '2026-10-08']}], player: {av: '🧑', avImg: 'data:img', walks: [{id: 'w1', m: 3000}]}, updatedAt: 200};
+  r = await push(100, phone); assert.equal(r.data.updatedAt, 200);
+  // PC (still on base 100): renames Water, adds a task, gets a login bonus
+  const pc = {tasks: [{id: 'a', name: 'Water 2L', done: ['2026-10-01']}, {id: 'b', name: 'Old task', done: []}, {id: 'c', name: 'Read', done: []}], player: {av: '🧑', walks: [], bonus: [{d: '2026-10-08', xp: 10}]}, updatedAt: 300};
+  r = await push(100, pc);
+  const m = r.data;
+  assert.equal(m.updatedAt, 301);
+  assert.deepEqual(m.tasks.map(t => t.id), ['a', 'c'], 'deleted task stays deleted, new task kept');
+  assert.equal(m.tasks[0].name, 'Water 2L');
+  assert.deepEqual(m.tasks[0].done, ['2026-10-01', '2026-10-08'], 'tick from the phone kept');
+  assert.equal(m.player.avImg, 'data:img');
+  assert.equal(m.player.walks.length, 1);
+  assert.equal(m.player.bonus.length, 1);
+  assert.deepEqual((await call('/.netlify/functions/sync?code=' + code)).tasks.map(t => t.id), ['a', 'c']);
+  // An older app with no base: nothing is dropped
+  r = await push(undefined, {tasks: [{id: 'z', name: 'Old phone', done: []}], player: {}, updatedAt: 50});
+  assert.deepEqual(r.data.tasks.map(t => t.id).sort(), ['a', 'c', 'z']);
+  assert.equal(r.data.player.avImg, 'data:img');
+  // Same base as what's stored: a plain save, deletions included
+  r = await push(r.data.updatedAt, {tasks: [{id: 'a', name: 'Water 2L', done: []}], player: {}, updatedAt: 400});
+  assert.deepEqual(r.data.tasks.map(t => t.id), ['a']);
+}
+
 http.close();
 console.log('All API checks passed');
 process.exit(0);

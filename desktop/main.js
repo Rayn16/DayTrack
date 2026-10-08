@@ -61,14 +61,31 @@ async function checkUpdate() {
   } catch (e) { console.warn('Update check failed:', e.message); }
 }
 async function update(hidden) {
-  const r = await fetch(`${RELEASE}/download/desktop/DayTrack-Setup.exe`);
-  if (!r.ok) throw new Error('Download failed: ' + r.status);
-  const setup = path.join(app.getPath('temp'), 'DayTrack-Setup.exe'), q = s => `'${s.replace(/'/g, "''")}'`;
-  fs.writeFileSync(setup, Buffer.from(await r.arrayBuffer()));
-  // PowerShell waits for this app to close, installs over it silently, then starts the new one
-  spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command',
-    `Start-Sleep 2; Start-Process -Wait -FilePath ${q(setup)} -ArgumentList '/S'; Start-Process -FilePath ${q(process.execPath)}${hidden ? " -ArgumentList '--hidden'" : ''}`],
-  {detached: true, windowsHide: true, stdio: 'ignore'}).unref();
+  let setup;
+  try {
+    const r = await fetch(`${RELEASE}/download/desktop/DayTrack-Setup.exe`);
+    if (!r.ok) throw new Error('download failed: ' + r.status);
+    setup = path.join(app.getPath('temp'), 'DayTrack-Setup.exe');
+    fs.writeFileSync(setup, Buffer.from(await r.arrayBuffer()));
+  } catch (e) {
+    new Notification({title: 'DayTrack update failed', body: `Couldn't download the update (${e.message}). Try again from the tray menu.`}).show();
+    throw e;
+  }
+  const q = s => `'${s.replace(/'/g, "''")}'`, log = q(path.join(app.getPath('userData'), 'update.log'));
+  // PowerShell waits (up to 20 s) for this app to fully close, installs over it silently, then starts the new one. It waits for the
+  // installer process only (Start-Process -Wait also waits for anything the installer leaves running, which could
+  // hang it forever), starts DayTrack only if the installer didn't, and logs each step to update.log.
+  const ps = [
+    `"$(Get-Date) update started" | Out-File ${log}`,
+    `$i = 0; while ((Get-Process DayTrack -ErrorAction SilentlyContinue) -and $i -lt 40) { Start-Sleep -Milliseconds 500; $i++ }`,  // until this app has fully closed
+    `$p = Start-Process -FilePath ${q(setup)} -ArgumentList '/S' -PassThru; $p.WaitForExit(); "$(Get-Date) installer exit $($p.ExitCode)" | Out-File ${log} -Append`,
+    `Start-Sleep 2`,
+    `$exe = ${q(process.execPath)}; if (-not (Test-Path $exe)) { $exe = "$env:LOCALAPPDATA\\Programs\\DayTrack\\DayTrack.exe" }`,
+    `if (-not (Get-Process DayTrack -ErrorAction SilentlyContinue)) { Start-Process -FilePath $exe${hidden ? " -ArgumentList '--hidden'" : ''}; "$(Get-Date) started $exe" | Out-File ${log} -Append }`,
+  ].join('\n');
+  // -EncodedCommand (UTF-16 base64) so the quotes in the script survive the trip through the command line
+  spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')],
+    {detached: true, windowsHide: true, stdio: 'ignore'}).unref();
   quitting = true;
   app.quit();
 }
