@@ -25,6 +25,9 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- "Hey Gwen": listens for her name with the screen locked, and opens her over other apps -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <queries>
@@ -69,6 +72,7 @@
         <receiver android:name=".BossAlarm" android:exported="false" />
         <receiver android:name=".PlaceReceiver" android:exported="false" />
         <service android:name=".WalkService" android:exported="false" android:foregroundServiceType="location" />
+        <service android:name=".WakeService" android:exported="false" android:foregroundServiceType="microphone" />
         <receiver android:name=".DayWidget" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
