@@ -292,3 +292,5 @@
 .wl-tr{width:100%;}.wl-tr rect{fill:var(--pril);}.wl-tr text{font-size:11px;fill:var(--sub);text-anchor:middle;}.wl-tr polyline{fill:none;stroke:#F97316;stroke-width:2.5;}.wl-tr circle{fill:#F97316;}
 .wl-yr{text-align:center;}.wl-yr .hl-t{color:var(--pri);}.wl-yr .hl-big{font-size:44px;font-weight:800;}.wl-yr .hl-row{margin:4px 0;}
 .wl-rt{padding:8px 10px;border-radius:12px;background:var(--pril);margin-bottom:6px;}.wl-rt b{display:block;font-size:14px;}.wl-rt small{font-size:12px;color:var(--sub);}
+/* PC app: no scrollbars (the mouse wheel and touchpad still scroll) */
+html.app *{scrollbar-width:none;}html.app ::-webkit-scrollbar{display:none;}
