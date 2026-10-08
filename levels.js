@@ -1383,7 +1383,7 @@ function heroBagHtml(h){
 function heroGearHtml(){
   const eq=heroP.gear||{},ach=heroAchievements();
   return`<div class="hm-sub" style="margin-bottom:8px;">Achievements unlock gear. Equip one piece per slot: +${Math.round(heroGearFx()*100)}% XP now.</div>`+Object.entries(HERO_SLOTS).map(([sl,nm])=>`<div class="hs-g">${nm}</div><div class="gear-row">${HERO_GEAR.filter(g=>g[1]===sl).map(g=>{const ok=heroGearOk(g),on=eq[sl]===g[0],a=ach.find(x=>x.id===g[6]);
-    return`<button class="gear${on?' on':''}${ok?'':' lock'}" ${ok?`onclick="heroEquip('${g[0]}')"`:''} title="${ok?'':'Unlocks with '+esc(a?a.name:'')}">${hIc(ok?g[3]:'lock',ok?g[4]:'dark','shield',34)}<b>${g[2]}</b><small>${ok?`+${Math.round(g[5]*100)+((heroP.ench||{})[g[0]]||0)}% XP${(heroP.ench||{})[g[0]]?` ✦${heroP.ench[g[0]]}`:''}${on?' · on':''}`:heroGearLost()?'🔒 Lost in hardcore':g[6]==='fg'?'🔒 Forge it in World':`🔒 ${esc(a?a.desc:'')}`}</small></button>`;}).join('')}</div>`).join('');
+    return`<button class="gear${on?' on':''}${ok?'':' lock'}" ${ok?`onclick="heroEquip('${g[0]}')"`:''} title="${ok||!a?'':'Unlocks with '+esc(a.name)}">${hIc(ok?g[3]:'lock',ok?g[4]:'dark','shield',34)}<b>${g[2]}</b><small>${ok?`+${Math.round(g[5]*100)+((heroP.ench||{})[g[0]]||0)}% XP${(heroP.ench||{})[g[0]]?` ✦${heroP.ench[g[0]]}`:''}${on?' · on':''}`:heroGearLost()?'🔒 Lost in hardcore':g[6]==='fg'?'🔒 Forge it in World':`🔒 ${esc(a?a.desc:'')}`}</small></button>`;}).join('')}</div>`).join('');
 }
 // Task sheet: hardcore and mini boss switches
 function heroFlagsInit(t){const a=document.getElementById('hero-flag-hard'),b=document.getElementById('hero-flag-boss');if(a)a.checked=!!(t&&t.hard);if(b)b.checked=!!(t&&t.boss);}
