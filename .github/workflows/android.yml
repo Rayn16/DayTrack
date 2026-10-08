@@ -5,9 +5,9 @@ name: Android app
 on:
   push:
     branches: [main]
-    paths: ['android/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', '.github/workflows/android.yml']
+    paths: ['android/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', 'life.js', 'ar.js', '.github/workflows/android.yml']
   pull_request:
-    paths: ['android/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', '.github/workflows/android.yml']
+    paths: ['android/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', 'life.js', 'ar.js', '.github/workflows/android.yml']
   workflow_dispatch:
 
 permissions:

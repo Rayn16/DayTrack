@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">DayTrack</string>
     <string name="widget_desc">Your tasks for today, with Gwen. Tap one to tick it off.</string>
+    <string name="tile_add">Add task</string>
+    <string name="tile_gwen">Talk to Gwen</string>
 </resources>
