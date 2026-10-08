@@ -240,6 +240,7 @@
       <div class="dcol">
       <div class="card" id="gwen-hi" onclick="switchTab('gwen')"></div>
       <div class="card" id="hero-mini" onclick="switchTab('hero')"></div>
+      <div class="card" id="hero-quests-mini"></div>
       <div class="card" id="dt-update" style="display:none;"></div>
       <div class="card" id="sleep-card" style="display:none;"></div>
       <div class="card" style="margin-bottom:12px;">
@@ -264,14 +265,15 @@
 
     <!-- LEVEL TAB: you as a game character (levels.js) -->
     <div id="tab-hero" class="tab" data-seg="stats">
-      <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
+      <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="quests" onclick="heroSetSeg('quests')">⚔️ Quests</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
       <div class="dcol">
         <div class="card" id="hero-card"></div>
+        <div class="card hseg-stats" id="hero-body-card"><div class="cl">Your body · tap a part</div><div id="hero-body"></div></div>
         <div class="card hseg-stats"><div class="cl">Your shape</div><div id="hero-radar"></div></div>
         <div class="card hseg-stats"><div class="cl">Stats · tap one to see what trained it</div><div id="hero-stats"></div></div>
       </div>
-      <div class="dcol"><div class="card hseg-skills"><div class="cl">Skills · learn something new</div><div id="hero-skills"></div></div></div>
-      <div class="dcol"><div class="card hseg-log"><div class="cl">Your story</div><div id="hero-log"></div></div></div>
+      <div class="dcol"><div class="card hseg-skills"><div class="cl">Skill tree · tap a node</div><div id="hero-skills"></div></div></div>
+      <div class="dcol"><div class="card hseg-quests"><div class="cl">Quests · claim rewards when done</div><div id="hero-quests"></div></div><div class="card hseg-log"><div class="cl">Your story</div><div id="hero-log"></div></div></div>
     </div>
 
     <!-- TIMER TAB -->
@@ -673,7 +675,7 @@
     <!-- Level -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">⭐ Level</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">You're a game character. Every task you tick gives XP, and the words in its name decide which stats grow: push-ups train <b style="color:var(--txt);">Arms</b> and <b style="color:var(--txt);">Chest</b>, Quran trains <b style="color:var(--txt);">Faith</b>, studying trains <b style="color:var(--txt);">Intellect</b>. Pick the stats yourself under <b style="color:var(--txt);">Levels up</b> when you add a task. Finishing every task, goal steps and timer sessions give XP too. Tap a stat to see what trained it. <b style="color:var(--txt);">Skills</b> has step-by-step paths (calisthenics, cooking, money, Quran…): start one and its practice task joins your list, tap <b style="color:var(--txt);">I can do it</b> when you master a step. <b style="color:var(--txt);">Story</b> shows every level-up and where the XP came from.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">You're a game character. Every task you tick gives XP, and the words in its name decide which stats grow: push-ups train <b style="color:var(--txt);">Arms</b> and <b style="color:var(--txt);">Chest</b>, Quran trains <b style="color:var(--txt);">Faith</b>, studying trains <b style="color:var(--txt);">Intellect</b>. Pick the stats yourself under <b style="color:var(--txt);">Levels up</b> when you add a task. Finishing every task, goal steps and timer sessions give XP too. Tap a stat to see what trained it. <b style="color:var(--txt);">Your body</b> lights up each part (arms, chest, back, core, legs, heart) by its level. <b style="color:var(--txt);">Skills</b> is a skill tree: each branch is a path (calisthenics, cooking, money, Quran…), some unlock others, start one and its practice task joins your list, tap <b style="color:var(--txt);">I can do it</b> when you master a step. <b style="color:var(--txt);">Quests</b> give daily, weekly and monthly goals; claim the reward when one is done (Gwen's quest from her house is in there too). <b style="color:var(--txt);">Buffs</b> raise your XP (a streak, 7 h of sleep, a good mood, a weekly quest) and <b style="color:var(--txt);">debuffs</b> lower it (too little sleep, overdue tasks, a broken streak). <b style="color:var(--txt);">Story</b> shows every level-up and where the XP came from.</div>
     </div>
 
     <!-- Summary -->
