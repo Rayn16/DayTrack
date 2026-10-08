@@ -17,7 +17,9 @@ protocol.registerSchemesAsPrivileged([{scheme: 'app', privileges: {standard: tru
 
 function show() {
   if (!win) {
-    win = new BrowserWindow({width: 480, height: 900, title: 'DayTrack', icon: path.join(WEB, 'icon.png'), autoHideMenuBar: true});
+    const {workArea: wa} = screen.getPrimaryDisplay();
+    // Wide enough for the dashboard (sidebar and columns); narrower windows get the phone layout
+    win = new BrowserWindow({width: Math.min(1360, wa.width), height: Math.min(860, wa.height), minWidth: 380, title: 'DayTrack', icon: path.join(WEB, 'icon.png'), autoHideMenuBar: true});
     win.webContents.setWindowOpenHandler(({url}) => { shell.openExternal(url); return {action: 'deny'}; });
     // Closing only hides it: the phone still needs the server
     win.on('close', e => { if (!quitting) { e.preventDefault(); win.hide(); } });
@@ -90,7 +92,7 @@ app.whenReady().then(async () => {
     if (pathname === '/__dt/panel' && req.method === 'POST') { if (panel) panel.hide(); return Response.json({ok: true}); }
     const file = path.join(WEB, decodeURIComponent(pathname === '/' ? '/index.html' : pathname));
     if (!file.startsWith(WEB + path.sep) || !fs.existsSync(file)) return new Response('Not found', {status: 404});
-    const type = {'.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png'}[path.extname(file)];
+    const type = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png'}[path.extname(file)];
     return new Response(fs.readFileSync(file), {headers: {'Content-Type': type || 'application/octet-stream'}});
   });
 

@@ -25,4 +25,12 @@ assert.deepEqual(p('study in the morning at 7'), {name: 'Study', date: null, tim
 // Umm al-Qura times for Riyadh, checked against the adhan library (within a minute)
 assert.deepEqual(prayerTimes('2026-10-07', 24.7, 46.7), {Fajr: '04:30', Sunrise: '05:48', Dhuhr: '11:41', Asr: '15:03', Maghrib: '17:34', Isha: '19:04'});
 assert.equal(prayerTimes('2027-02-20', 24.7, 46.7).Isha, '19:50'); // Ramadan: Isha two hours after Maghrib
+// Levels: what a task trains, and the level curve (levels.js)
+const lv = new Function(fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nreturn {heroDetect, heroLvl, heroAt};')();
+assert.deepEqual(lv.heroDetect('Push-ups'), {chest: 1, arms: 1, core: .3});
+assert.deepEqual(lv.heroDetect('Read Quran'), {faith: 1, discipline: .3});
+assert.deepEqual(lv.heroDetect('Read a book'), {intellect: 1, focus: .3});
+assert.deepEqual(lv.heroDetect('Buy a lamp'), {});
+assert.equal(lv.heroLvl(0, 50), 1); assert.equal(lv.heroLvl(99, 50), 1); assert.equal(lv.heroLvl(100, 50), 2);
+for (const L of [2, 7, 30]) { assert.equal(lv.heroLvl(lv.heroAt(L, 50), 50), L); assert.equal(lv.heroLvl(lv.heroAt(L, 50) - 1, 50), L - 1); }
 console.log('All app checks passed');
