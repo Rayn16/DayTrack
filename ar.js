@@ -657,6 +657,30 @@
     'Allow location to draw your route on a map': 'اسمح بالموقع لرسم مسارك على الخريطة', 'Waiting for GPS…': 'بانتظار GPS…', 'Walk too short to save': 'المشي قصير جدًا للحفظ',
     'Name this route': 'سمِّ هذا المسار', 'e.g. Park loop': 'مثلًا: لفة الحديقة', 'Kilometres to walk this week': 'الكيلومترات التي ستمشيها هذا الأسبوع', 'e.g. 25': 'مثلًا 25',
     'Start a walk to record your route on a map with pace, splits and climb. Your past routes come back as a ghost to race.': 'ابدأ مشيًا لتسجيل مسارك على الخريطة مع السرعة والأجزاء والصعود. مساراتك السابقة تعود كشبح تتسابق معه.',
+    // app ideas round
+    'Water': 'الماء', 'How many glasses a day?': 'كم كوبًا في اليوم؟', 'Glasses a day': 'أكواب في اليوم',
+    'Focus lock': 'قفل التركيز', 'Focus lock on: Gwen watches while a timer runs': 'قفل التركيز يعمل: غوين تراقب ما دام المؤقت يعمل',
+    'While a timer runs, opening TikTok, YouTube, Instagram, Snapchat or a game gets you told off. Stay focused for bonus XP': 'أثناء عمل المؤقت، فتح تيك توك أو يوتيوب أو إنستغرام أو سناب شات أو لعبة يجعل غوين توبّخك. ابقَ مركّزًا لتكسب XP إضافية',
+    'Spread my unfinished tasks': 'وزّع مهامي غير المنجزة', 'Gwen spreads them over the next days so none gets too full. Tap one to keep it today.': 'توزّعها غوين على الأيام القادمة كي لا يزدحم يوم. اضغط على مهمة لتبقيها اليوم.',
+    'Move them': 'انقلها', 'Nothing left to move 💜': 'لا شيء لنقله 💜', 'Let Gwen spread them over the next days?': 'هل تدع غوين توزّعها على الأيام القادمة؟',
+    'Spread unfinished tasks': 'وزّع المهام غير المنجزة', "Gwen moves what's left over the next days (she also offers it at night)": 'غوين تنقل ما تبقّى إلى الأيام القادمة (وتعرض ذلك ليلًا أيضًا)', 'Spread': 'توزيع',
+    'Habit chains': 'سلاسل العادات', 'Edit chain': 'تعديل السلسلة', 'New chain': 'سلسلة جديدة', 'Tap your habits in order': 'اضغط على عاداتك بالترتيب', 'Delete chain': 'حذف السلسلة',
+    'Link habits so one leads into the next, like wake up › water › pray › gym. Finish the whole chain for bonus XP.': 'اربط عاداتك لتقود كل واحدة إلى التالية، مثل الاستيقاظ › الماء › الصلاة › النادي. أكمل السلسلة كاملة لتكسب XP إضافية.',
+    'Add a few repeating habits first.': 'أضف بعض العادات المتكررة أولًا.', 'Give it a name and pick at least two habits': 'سمّها واختر عادتين على الأقل',
+    'Car and bills': 'السيارة والفواتير', 'What': 'ماذا', 'Oil change, insurance, phone bill…': 'تغيير الزيت، التأمين، فاتورة الجوال…', 'Repeats every': 'يتكرر كل',
+    "days (from when it's done)": 'أيام (من يوم إنجازه)', 'months (same date)': 'أشهر (نفس التاريخ)', 'Next due': 'الموعد القادم', 'Warn me this many days before': 'نبّهني قبلها بهذا العدد من الأيام',
+    'Due today': 'مستحق اليوم', 'Give it a name and a due date': 'سمّه وحدد موعده', 'Oil change, insurance, phone bill: a heads-up a few days before': 'تغيير الزيت، التأمين، فاتورة الجوال: تنبيه قبلها بأيام',
+    'Progress photos': 'صور التقدّم', 'Compare': 'مقارنة', 'Room': 'الغرفة', 'Kept on this device only.': 'محفوظة على هذا الجهاز فقط.', 'Saved on this device': 'حُفظت على هذا الجهاز',
+    "Couldn't save that photo": 'تعذّر حفظ الصورة', 'Delete photo': 'حذف الصورة', 'Before and after': 'قبل وبعد', 'Take at least two photos to compare': 'التقط صورتين على الأقل للمقارنة',
+    'A weekly photo of your body or room, kept on this device only': 'صورة أسبوعية لجسمك أو غرفتك، محفوظة على هذا الجهاز فقط', 'Weekly photo reminder': 'تذكير الصورة الأسبوعية', 'Same day each week': 'نفس اليوم كل أسبوع',
+    'Friends board': 'لوحة الأصدقاء', 'Start a board': 'ابدأ لوحة', 'Loading the board…': 'جارٍ تحميل اللوحة…', 'This board was closed.': 'أُغلقت هذه اللوحة.',
+    "Couldn't reach the board right now (is the host's PC on?).": 'تعذّر الوصول إلى اللوحة الآن (هل كمبيوتر المضيف يعمل؟).', 'Invite a friend to start the race.': 'ادعُ صديقًا ليبدأ السباق.',
+    'Your name on the board': 'اسمك في اللوحة', 'Paste the board link your friend sent': 'الصق رابط اللوحة الذي أرسله صديقك', "That doesn't look like a board link": 'هذا لا يبدو رابط لوحة',
+    'Your PC needs to be on to start a board': 'يجب أن يكون كمبيوترك يعمل لبدء لوحة',
+    "A board with friends who use DayTrack: everyone's level, this week's XP, and a 👑 for each week someone wins, kept for good. Your PC hosts it, like a shared list.": 'لوحة مع أصدقاء يستخدمون DayTrack: مستوى كل واحد، وXP هذا الأسبوع، و👑 لكل أسبوع يفوز به أحدهم، محفوظة دائمًا. كمبيوترك يستضيفها مثل القائمة المشتركة.',
+    "Gwen's top 3 for today": 'أهم 3 مهام لليوم من غوين', 'Your top 3 today': 'أهم 3 مهام لك اليوم', "Gwen's top 3": 'أهم 3 من غوين', 'Pin': 'تثبيت', 'overdue': 'متأخرة', 'high priority': 'أولوية عالية',
+    'Each morning she picks the 3 tasks to do first, the ones you usually skip': 'كل صباح تختار أول 3 مهام تبدأ بها، وهي التي تتركها عادةً',
+    'Daily helpers': 'مساعدات يومية', 'One tap per glass; Gwen nudges you if you fall behind': 'ضغطة لكل كوب، وغوين تذكّرك إن تأخرت',
   };
 
   // ── Patterns (numbers, names, dates) ───────────────────────────────────────
@@ -945,6 +969,19 @@
     [/^([A-Z][a-z]+) (\d{1,2})$/, (_, m, d) => MO[m] ? `${d} ${MO[m]}` : null],
     [/^([A-Z][a-z]+) (\d{4})$/, (_, m, y) => MO[m] ? `${MO[m]} ${y}` : null],
     [/^(\d{1,2}:\d{2})\s(AM|PM)$/, (_, t, p) => `${t} ${ampm(p)}`],
+    // app ideas round
+    [/^Glass (\d+)$/, 'الكوب $1'],
+    [/^Moved (\d+) tasks?$/, (_, n) => n === '1' ? 'نُقلت مهمة واحدة' : `نُقلت ${n} مهام`],
+    [/^(\d+) tasks? still open$/, (_, n) => n === '1' ? 'ما زالت مهمة واحدة مفتوحة' : `ما زالت ${n} مهام مفتوحة`],
+    [/^Next: ([\s\S]+)$/, 'التالي: $1'],
+    [/^([\s\S]+) chain done! Bonus XP$/, 'اكتملت سلسلة $1! XP إضافية'],
+    [/^Overdue (\d+)d$/, (_, n) => `متأخر ${days(n)}`],
+    [/^Due in (\d+)d$/, (_, n) => `بعد ${days(n)}`],
+    [/^([\s\S]+): next on (.+)$/, (_, x, d) => `${x}: الموعد القادم ${T(d)}`],
+    [/^(\d+) days apart$/, (_, n) => `بينهما ${days(n)}`],
+    [/^Last week: ([\s\S]+)$/, 'الأسبوع الماضي: $1'],
+    [/^([\s\S]+) \(you\)$/, '$1 (أنت)'],
+    [/^you skip it (\d+)% of the time$/, 'تتركها $1% من المرات'],
   ];
 
   // The "How DayTrack Works" sheet: whole paragraphs, keyed by their heading

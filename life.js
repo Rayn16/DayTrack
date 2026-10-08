@@ -4,8 +4,9 @@
 // Loaded after index.html's own script, so it uses its globals (tasks, lists, gwenCfg, save, sheet, ask, toDateStr…).
 
 // Synced with the rest (sync data `life`); per-phone settings stay in dt_life_dev
-let life={spend:[],quran:null,fasts:[],routines:[],places:[],adhkar:{on:false,done:{}},games:{won:0,lost:0,draw:0},yearShown:false};
-let lifeDev={steps:false,cal:false,screen:''};
+let life={spend:[],quran:null,fasts:[],routines:[],places:[],adhkar:{on:false,done:{}},games:{won:0,lost:0,draw:0},yearShown:false,
+  water:{on:false,goal:8,remind:true,log:{}},chains:[],bills:[],friends:null,top3On:false,top3:null};
+let lifeDev={steps:false,cal:false,screen:'',focus:false,photos:false,photoRemind:false,photoLast:''};
 try{life={...life,...JSON.parse(localStorage.getItem('dt_life')||'{}')};lifeDev={...lifeDev,...JSON.parse(localStorage.getItem('dt_life_dev')||'{}')};}catch(e){}
 const N=()=>window.DayTrackNative||null,has=f=>!!(N()&&N()[f]);
 const lifeStore=()=>{try{localStorage.setItem('dt_life',JSON.stringify(life));}catch(e){}};
@@ -484,7 +485,7 @@ function lifeQuestCheck(kind,extra){
 function questGo(q){
   return{where:{phone:'📱 here',house:'🏠 in her house',pc:'💻 on your PC'}[q.where]||'',go:q.done?'':q.kind==='connect4'||q.kind==='anygame'?'gwenGames()':q.kind==='adhkar'?`openAdhkar('${adhkarNow()||'m'}')`:''};
 }
-window.lifeTaskDone=()=>lifeQuestCheck('task');
+window.lifeTaskDone=id=>{lifeQuestCheck('task');chainTick(id);top3Cheer();};
 window.lifeGame=(name,r)=>{life.games[r]=(life.games[r]||0)+1;life.games.by={...(life.games.by||{}),[name]:{...((life.games.by||{})[name]||{}),[r]:(((life.games.by||{})[name]||{})[r]||0)+1}};lifeSave();if(r==='won')lifeQuestCheck('game',name);};
 // Idea 4: a fresh photo of what she's doing in the house right now
 async function peekHouse(){
@@ -550,13 +551,315 @@ async function openYear(){
     <div style="text-align:center;font-size:15px;margin:14px 0 4px;">Happy first birthday, Gwen 🎂 Here's to the next one 💜</div>${closeBtn}`);
 }
 
+// ── App ideas round (2026-10-08): water, focus lock, smart reschedule, habit chains, car and bills, progress photos,
+// friends board, Gwen's top 3. (Ticking from the home-screen widget: DayWidget → ActionReceiver → takeActions → applyPendingDone.)
+const tod0=()=>toDateStr(new Date());
+const PRI_W={high:3,medium:2,low:1};
+const dayDiff=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
+const lifeHex=()=>[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const minibtns=(...b)=>`<span style="display:flex;gap:6px;">${b.join('')}</span>`;
+
+// Idea 4: water, one tap per glass
+const waterN=ds=>(life.water.log||{})[ds||tod0()]||0;
+function waterSet(n){
+  const w=life.water,tod=tod0(),was=waterN();n=Math.max(0,Math.min(30,n));
+  w.log=Object.fromEntries(Object.entries({...w.log,[tod]:n}).filter(([d])=>d>=addDays(tod,-120)));lifeSave();renderLife();
+  if(navigator.vibrate)navigator.vibrate(8);
+  if(was<w.goal&&n>=w.goal&&gwenCfg.key)gwenLine(`${n} glasses today 💧 Fully hydrated, I'm proud of you 💜`,'happy');
+}
+function waterCard(){
+  const w=life.water;if(!w.on)return'';const n=waterN();
+  return`<div class="card life-card">${cardHead(`💧 Water · ${n}/${w.goal}`,n?`<button class="minibtn" onclick="waterSet(${n-1})" aria-label="One less">−</button>`:'')}
+    <div class="water">${[...Array(Math.max(w.goal,n+1))].map((_,i)=>`<button class="${i<n?'on':''}" onclick="waterSet(${i<n?i:n+1})" aria-label="Glass ${i+1}">💧</button>`).join('')}</div></div>`;
+}
+async function toggleWater(){
+  const w=life.water;
+  if(!w.on){const g=parseInt(await ask('How many glasses a day?','8'),10);if(!g)return;w.goal=Math.max(1,Math.min(20,g));}
+  w.on=!w.on;lifeSave();renderLifeSettings();renderLife();
+}
+
+// Idea 5: focus lock. While a timer runs the phone app watches for distracting apps (FocusService.java); slips go in the session.
+const FOCUS_LINES=['Hey! You\'re supposed to be focusing 😤 Close that and get back to it.','Caught you 👀 The timer is still running. Back to work!','Really? Right now? 😒 Put it down, you can scroll after.','I saw that 👀 Focus first, fun later 💜'];
+let focusOn=false,focusSlips=0,focusUsed=false,focusSeen=0;
+const timerRunning=()=>(typeof sesItems!=='undefined'&&sesItems.some(i=>i.running))||!!gwenCfg.study;
+function focusCheck(){
+  if(!has('focusStart'))return;
+  const run=lifeDev.focus&&timerRunning();
+  if(run&&!focusOn){focusOn=focusUsed=true;focusSeen=0;try{N().focusStart(JSON.stringify({lines:FOCUS_LINES}));}catch(e){}}
+  else if(!run&&focusOn){focusOn=false;try{focusSlips+=N().focusStop();}catch(e){}}
+}
+// Called by index.html as a session is saved: {focus: {slips}} when focus lock watched it (levels.js gives the bonus XP)
+window.lifeFocusEnd=()=>{focusCheck();if(!focusUsed)return{};const r={focus:{slips:focusSlips}};focusUsed=false;focusSlips=0;return r;};
+function focusBack(){
+  if(!focusOn)return;let n=0;try{n=N().focusSlips();}catch(e){}
+  if(n>focusSeen){focusSeen=n;gwenLine(FOCUS_LINES[Math.floor(Math.random()*FOCUS_LINES.length)],'pout');}
+}
+async function toggleFocus(){
+  if(lifeDev.focus){lifeDev.focus=false;lifeDevStore();focusCheck();return renderLifeSettings();}
+  if(!N().hasPerm('usage')){window.__dtPerm2=(w,ok)=>{if(w==='usage'&&ok)toggleFocus();};showToast('Turn on "Usage access" for DayTrack, then come back');N().askPerm('usage');return;}
+  lifeDev.focus=true;lifeDevStore();renderLifeSettings();focusCheck();showToast('🎯 Focus lock on: Gwen watches while a timer runs');
+}
+
+// Idea 10: smart reschedule. Unfinished one-time tasks (today and overdue) spread over the next 4 days, lightest day first.
+// ponytail: greedy by priority with a small "sooner is better" bias; good enough for a few dozen tasks
+function spreadPlan(){
+  const tod=tod0(),days=[1,2,3,4].map(i=>addDays(tod,i)),w=t=>1+(PRI_W[t.priority]||0)/3;
+  const load=Object.fromEntries(days.map(d=>{const dow=new Date(d+'T12:00:00').getDay();return[d,tasks.filter(t=>t.recurring?isTodayTask(t,d,dow):!t.done.length&&t.date===d).reduce((n,t)=>n+w(t),0)];}));
+  return tasks.filter(t=>!t.recurring&&!t.done.length&&(!t.date||t.date<=tod)).sort((a,b)=>(PRI_W[b.priority]||0)-(PRI_W[a.priority]||0)||(a.date||tod).localeCompare(b.date||tod))
+    .map(t=>{const d=days.reduce((best,d,i)=>load[d]+i*.5<load[best]+days.indexOf(best)*.5?d:best,days[0]);load[d]+=w(t);return{t,d,on:true};});
+}
+let spreadSel=[];
+function openSpread(){spreadSel=spreadPlan();if(!spreadSel.length)return showToast('Nothing left to move 💜');renderSpread();}
+function renderSpread(){
+  sheet(head('🗓 Spread my unfinished tasks')+`<div style="font-size:13px;color:var(--sub);text-align:center;margin-bottom:10px;">Gwen spreads them over the next days so none gets too full. Tap one to keep it today.</div>
+    ${spreadSel.map((x,i)=>`<div class="sub-row" style="padding:8px 0;border-bottom:1px solid var(--brd);cursor:pointer;" onclick="spreadSel[${i}].on=!spreadSel[${i}].on;renderSpread()"><div class="chk${x.on?' on':''}">${x.on?'✓':''}</div><span style="flex:1;font-size:14px;">${esc(x.t.name)}</span><span style="font-size:12px;color:var(--sub);">${x.on?fmtDay(x.d):'Today'}</span></div>`).join('')}
+    <button onclick="applySpread()" style="width:100%;margin-top:12px;background:var(--pri);color:white;${btnS}">Move them</button>${closeBtn}`);
+}
+function applySpread(){
+  let n=0;spreadSel.forEach(x=>{if(x.on&&tasks.includes(x.t)&&!x.t.done.length){x.t.date=x.d;n++;}});
+  try{localStorage.setItem('dt_spread',tod0());}catch(e){}
+  closeOv('dt-ov');if(!n)return renderLife();save();renderTaskList();showToast(`🗓 Moved ${n} task${n>1?'s':''}`);
+}
+function spreadCard(){
+  let seen='';try{seen=localStorage.getItem('dt_spread')||'';}catch(e){}
+  if(new Date().getHours()<20||seen===tod0())return'';const n=spreadPlan().length;if(!n)return'';
+  return`<div class="card life-card" style="display:flex;align-items:center;gap:10px;"><span style="font-size:24px;">🗓</span><div style="flex:1;cursor:pointer;" onclick="openSpread()"><div style="font-size:14px;font-weight:700;">${n} task${n>1?'s':''} still open</div><div style="font-size:12px;color:var(--sub);">Let Gwen spread them over the next days?</div></div><button class="minibtn" onclick="try{localStorage.setItem('dt_spread',tod0())}catch(e){};renderLife()" aria-label="Dismiss">✕</button></div>`;
+}
+
+// Idea 11: habit chains. Done days are worked out from the tasks themselves.
+const chainTasks=c=>c.ids.map(id=>tasks.find(t=>t.id===id)).filter(Boolean);
+// Every day a whole chain was done (from the day it was made): [{d, name, n}], for the Level tab's bonus XP
+function chainDoneDays(){
+  const out=[];
+  for(const c of life.chains){const ts=chainTasks(c);if(ts.length<2)continue;for(const d of new Set(ts[0].done))if(d>=(c.at||'')&&ts.every(t=>t.done.includes(d)))out.push({d,name:c.name,n:ts.length});}
+  return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+}
+function chainsCard(){
+  const tod=tod0();
+  return`<div class="card life-card">${cardHead('🔗 Habit chains','<button class="minibtn" onclick="editChain()">+ New</button>')}
+    ${life.chains.length?life.chains.map(c=>{const ts=chainTasks(c),nx=ts.find(t=>!t.done.includes(tod));
+      return`<div class="chain"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><b style="flex:1;font-size:14px;">${esc(c.name)}${nx?'':' ✅'}</b><button class="minibtn" onclick="editChain('${c.id}')" aria-label="Edit ${esc(c.name)}">⋯</button></div>
+        <div class="chain-steps">${ts.map(t=>`<button class="${t.done.includes(tod)?'on':t===nx?'nx':''}" onclick="checkTask('${t.id}',1)">${esc(t.name)}</button>`).join('<i>›</i>')}</div></div>`;}).join('')
+      :'<div style="font-size:12px;color:var(--sub);">Link habits so one leads into the next, like wake up › water › pray › gym. Finish the whole chain for bonus XP.</div>'}</div>`;
+}
+let chainSel=[];
+function editChain(id){
+  const c=life.chains.find(x=>x.id===id)||{id:null,name:'',ids:[]};chainSel=c.ids.filter(i=>tasks.some(t=>t.id===i));
+  sheet(head(c.id?'🔗 Edit chain':'🔗 New chain')+`<div class="sl" style="margin-top:0;">Name</div><input class="inp" id="ch-name" maxlength="30" placeholder="Morning" value="${esc(c.name)}">
+    <div class="sl">Tap your habits in order</div><div id="ch-pick"></div>
+    <button onclick="saveChain(${c.id?`'${c.id}'`:'null'})" style="width:100%;margin-top:12px;background:var(--pri);color:white;${btnS}">Save</button>
+    ${c.id?`<button class="mi" style="color:#EF4444;margin-top:4px;" onclick="if(confirm('Delete this chain?')){life.chains=life.chains.filter(x=>x.id!=='${c.id}');lifeSave();renderLife();closeOv('dt-ov');}">🗑️ Delete chain</button>`:''}${closeBtn}`);
+  chainPickRender();
+}
+function chainPickRender(){
+  const el=document.getElementById('ch-pick'),hs=tasks.filter(t=>t.recurring);if(!el)return;
+  el.innerHTML=hs.length?`<div class="chain-steps">${hs.map(t=>{const k=chainSel.indexOf(t.id);return`<button class="${k>=0?'on':''}" onclick="chainPick('${t.id}')">${k>=0?k+1+'. ':''}${esc(t.name)}</button>`;}).join('')}</div>`:'<div style="font-size:12px;color:var(--sub);">Add a few repeating habits first.</div>';
+}
+function chainPick(id){chainSel=chainSel.includes(id)?chainSel.filter(x=>x!==id):[...chainSel,id];chainPickRender();}
+function saveChain(id){
+  const name=document.getElementById('ch-name').value.trim().slice(0,30);
+  if(!name||chainSel.length<2)return showToast('Give it a name and pick at least two habits');
+  const c=life.chains.find(x=>x.id===id);if(c){c.name=name;c.ids=chainSel;}else life.chains.push({id:uid(),name,ids:chainSel,at:tod0()});
+  lifeSave();renderLife();closeOv('dt-ov');
+}
+// After a tick: nudge to the next link, cheer a finished chain
+function chainTick(id){
+  const tod=tod0(),t=tasks.find(x=>x.id===id);if(!t||!t.done.includes(tod))return;
+  for(const c of life.chains.filter(c=>c.ids.includes(id))){
+    const nx=chainTasks(c).find(x=>!x.done.includes(tod));
+    if(nx){showToast(`🔗 Next: ${nx.name}`);continue;}
+    confetti();if(gwenCfg.key)gwenLine(`Whole ${c.name} chain done 🔗 Bonus XP for you 💜`,'happy');else showToast(`🔗 ${c.name} chain done! Bonus XP`);
+  }
+}
+function chainHighlight(){
+  document.querySelectorAll('.task-item.chain-next').forEach(e=>e.classList.remove('chain-next'));
+  const tod=tod0();
+  for(const c of life.chains){const ts=chainTasks(c),k=ts.findIndex(t=>!t.done.includes(tod));if(k>0){const el=document.querySelector(`.task-item[data-id="${ts[k].id}"]`);if(el)el.classList.add('chain-next');}}
+}
+
+// Idea 12: car and bills, repeating every N days or months, with a heads-up a few days early
+const addMonths=(ds,n)=>{const d=new Date(ds+'T12:00:00'),day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+n);d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));return toDateStr(d);};
+function billsCard(){
+  if(!life.bills.length)return'';const tod=tod0();
+  return`<div class="card life-card">${cardHead('🚗 Car and bills','<button class="minibtn" onclick="editBill()">+ Add</button>')}
+    ${[...life.bills].sort((a,b)=>a.due<b.due?-1:1).map(b=>{const k=dayDiff(tod,b.due),soon=k<=b.warn;
+      return`<div class="row"><div style="flex:1;min-width:0;" onclick="editBill('${b.id}')"><div style="font-size:14px;font-weight:600;">${esc(b.name)}</div><div style="font-size:12px;color:${k<0?'#EF4444':soon?'#F97316':'var(--sub)'};">${k<0?`Overdue ${-k}d`:k===0?'Due today':`Due in ${k}d`} · ${fmtDay(b.due)}</div></div><button class="minibtn" onclick="billDone('${b.id}')">✓ Done</button></div>`;}).join('')}</div>`;
+}
+function editBill(id){
+  const b=life.bills.find(x=>x.id===id)||{id:null,name:'',every:1,unit:'m',due:addMonths(tod0(),1),warn:3};
+  sheet(head(b.id?'🚗 Edit':'🚗 Car and bills')+`<div class="sl" style="margin-top:0;">What</div><input class="inp" id="bl-name" maxlength="40" placeholder="Oil change, insurance, phone bill…" value="${esc(b.name)}">
+    <div class="sl">Repeats every</div><div style="display:flex;gap:8px;"><input class="inp" id="bl-every" type="number" min="1" max="999" value="${b.every}" style="width:90px;"><select class="inp" id="bl-unit" style="flex:1;"><option value="d"${b.unit==='d'?' selected':''}>days (from when it's done)</option><option value="m"${b.unit==='m'?' selected':''}>months (same date)</option></select></div>
+    <div class="sl">Next due</div><input class="inp" id="bl-due" type="date" value="${b.due}">
+    <div class="sl">Warn me this many days before</div><input class="inp" id="bl-warn" type="number" min="0" max="60" value="${b.warn}">
+    <button onclick="saveBill(${b.id?`'${b.id}'`:'null'})" style="width:100%;margin-top:12px;background:var(--pri);color:white;${btnS}">Save</button>
+    ${b.id?`<button class="mi" style="color:#EF4444;margin-top:4px;" onclick="if(confirm('Delete this?')){life.bills=life.bills.filter(x=>x.id!=='${b.id}');lifeSave();renderLife();closeOv('dt-ov');}">🗑️ Delete</button>`:''}${closeBtn}`);
+}
+function saveBill(id){
+  const v=k=>document.getElementById('bl-'+k).value,name=v('name').trim().slice(0,40),every=Math.max(1,Math.min(999,parseInt(v('every'),10)||1)),due=v('due');
+  if(!name||!/^\d{4}-\d{2}-\d{2}$/.test(due))return showToast('Give it a name and a due date');
+  const b={id:id||uid(),name,every,unit:v('unit')==='d'?'d':'m',due,warn:Math.max(0,Math.min(60,parseInt(v('warn'),10)||0))};
+  const old=life.bills.find(x=>x.id===id);if(old)Object.assign(old,b);else life.bills.push({...b,log:[]});
+  lifeSave();renderLife();renderLifeSettings();closeOv('dt-ov');
+}
+function billDone(id){
+  const b=life.bills.find(x=>x.id===id),tod=tod0();if(!b)return;
+  if(b.unit==='d')b.due=addDays(tod,b.every);else{do b.due=addMonths(b.due,b.every);while(b.due<=tod);}
+  b.log=[...(b.log||[]),tod].slice(-24);lifeSave();renderLife();showToast(`✅ ${b.name}: next on ${fmtDay(b.due)}`);
+}
+
+// Idea 16: progress photos, kept on this device only (IndexedDB, ~512 px JPEG), never synced
+const photoDb=()=>new Promise((ok,no)=>{const r=indexedDB.open('dt_photos',1);r.onupgradeneeded=()=>r.result.createObjectStore('p',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});
+async function photoTx(fn,mode){const db=await photoDb();return new Promise((ok,no)=>{const tx=db.transaction('p',mode||'readonly'),r=fn(tx.objectStore('p'));tx.oncomplete=()=>ok(r.result);tx.onerror=()=>no(tx.error);});}
+let photos=null,photosLoading=false;
+async function loadPhotos(){if(photosLoading)return;photosLoading=true;try{photos=((await photoTx(s=>s.getAll()))||[]).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);}catch(e){photos=[];}renderLife();}
+const PKIND={body:'Body',room:'Room'};
+function photosCard(){
+  if(!lifeDev.photos)return'';if(!photos){loadPhotos();return'';}
+  return`<div class="card life-card">${cardHead('📸 Progress photos',photos.length>1?'<button class="minibtn" onclick="photoCompare()">Compare</button>':'')}
+    ${Object.entries(PKIND).map(([k,l])=>`<div class="sl" style="margin-top:4px;">${l}</div><div class="pstrip">${photos.filter(p=>p.kind===k).slice(-5).map(p=>`<img src="${p.img}" alt="${fmtDay(p.d)}" onclick="photoOpen('${p.id}')">`).join('')}<button onclick="photoAdd('${k}')" aria-label="Add a photo">＋</button></div>`).join('')}
+    <div style="font-size:11px;color:var(--sub);margin-top:6px;">Kept on this device only.</div></div>`;
+}
+function photoAdd(kind){
+  const i=document.createElement('input');i.type='file';i.accept='image/*';
+  i.onchange=async()=>{
+    const f=i.files[0];if(!f)return;
+    try{
+      const img=await createImageBitmap(f),k=Math.min(1,512/Math.max(img.width,img.height)),c=document.createElement('canvas');
+      c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      const p={id:uid(),d:tod0(),kind,img:c.toDataURL('image/jpeg',.8)};
+      await photoTx(s=>s.put(p),'readwrite');(photos=photos||[]).push(p);lifeDev.photoLast=p.d;lifeDevStore();renderLife();if(lifeDev.photoRemind)syncReminders();showToast('📸 Saved on this device');
+    }catch(e){showToast('❌ Couldn\'t save that photo');}
+  };
+  i.click();
+}
+function photoOpen(id){
+  const p=(photos||[]).find(x=>x.id===id);if(!p)return;
+  sheet(head(`📸 ${PKIND[p.kind]} · ${fmtDay(p.d)}`)+`<img src="${p.img}" alt="" style="width:100%;border-radius:14px;display:block;">
+    <button class="mi" style="color:#EF4444;margin-top:8px;" onclick="photoDel('${id}')">🗑️ Delete photo</button>${closeBtn}`);
+}
+async function photoDel(id){
+  if(!confirm('Delete this photo?'))return;
+  try{await photoTx(s=>s.delete(id),'readwrite');}catch(e){}
+  photos=(photos||[]).filter(p=>p.id!==id);closeOv('dt-ov');renderLife();
+}
+function photoCompare(kind,a,b){
+  kind=kind||'body';const l=(photos||[]).filter(p=>p.kind===kind);
+  if(l.length<2){if(kind==='body'&&(photos||[]).filter(p=>p.kind==='room').length>1)return photoCompare('room');return showToast('Take at least two photos to compare');}
+  a=a||l[0].id;b=b||l[l.length-1].id;
+  const im=id=>l.find(p=>p.id===id)||l[0],opt=s=>l.map(p=>`<option value="${p.id}"${p.id===s?' selected':''}>${fmtDay(p.d)}</option>`).join('');
+  sheet(head('📸 Before and after')+`<div style="display:flex;gap:6px;justify-content:center;margin-bottom:10px;">${Object.entries(PKIND).map(([k,n])=>`<button class="rb${k===kind?' on':''}" onclick="photoCompare('${k}')">${n}</button>`).join('')}</div>
+    <div class="pcmp"><div><img src="${im(a).img}" alt=""><select class="inp" onchange="photoCompare('${kind}',this.value,'${b}')">${opt(a)}</select></div><div><img src="${im(b).img}" alt=""><select class="inp" onchange="photoCompare('${kind}','${a}',this.value)">${opt(b)}</select></div></div>
+    <div style="text-align:center;font-size:13px;color:var(--sub);margin-top:8px;">${Math.abs(dayDiff(im(a).d,im(b).d))} days apart</div>${closeBtn}`);
+}
+
+// Idea 17: friends board. Everyone's level, this week's XP and a 👑 per week won, kept for good. Same /s/ transport as
+// shared lists and the friend duel: one share code, one item per player, text "name|level|week XP|week start|last week XP|last week start".
+let friendsData=null,friendsAt=0;
+function friendText(){
+  if(typeof heroState!=='function')return'';
+  const h=heroState(),tod=tod0(),ws=heroWeekStart(tod),lw=addDays(ws,-7),sum=(a,b)=>h.aw.filter(x=>x.d>=a&&x.d<=b).reduce((n,x)=>n+x.xp,0);
+  return[(life.friends.name||'Rayan').replace(/\|/g,''),h.L,sum(ws,tod),ws,sum(lw,addDays(ws,-1)),lw].join('|');
+}
+function friendsPlayers(){
+  const F=life.friends,ws=heroWeekStart(tod0()),lw=addDays(ws,-7);
+  return((friendsData&&friendsData.items)||[]).map(i=>{const[n,L,x,w,lx,lww]=String(i.text).split('|');return{me:i.id===F.me,n:n||'?',L:+L||1,x:w===ws?+x||0:0,last:w===lw?+x||0:lww===lw?+lx||0:0};});
+}
+async function friendsPush(force){
+  const F=life.friends;if(!F||(!force&&Date.now()-friendsAt<6e4))return;friendsAt=Date.now();
+  const opts={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{id:F.me,text:friendText(),done:false,at:Date.now()}]})};
+  try{const r=F.host?await lifeApi('share?code='+F.code,opts):await fetch(F.url+'/data',opts);
+    friendsData=r.status===404?{gone:1}:r.ok?{items:((await r.json()).items||[]).filter(i=>!i.del)}:{err:1};}catch(e){friendsData={err:1};}
+  // Last week's winner gets a crown for good. ponytail: decided on the first look this week; a friend who never opened DayTrack late last week may be short a few XP
+  const lw=addDays(heroWeekStart(tod0()),-7),win=friendsData.items?friendsPlayers().filter(p=>p.last>0).sort((a,b)=>b.last-a.last)[0]:null;
+  if(win&&life.friends&&!(life.friends.crowns||{})[lw]){life.friends.crowns={...(life.friends.crowns||{}),[lw]:win.n};lifeSave();}
+  renderFriends();
+}
+function friendsHtml(){
+  const F=life.friends;
+  if(!F)return`<div class="hm-sub" style="margin-bottom:8px;">A board with friends who use DayTrack: everyone's level, this week's XP, and a 👑 for each week someone wins, kept for good. Your PC hosts it, like a shared list.</div><div style="display:flex;gap:8px;"><button class="minibtn" onclick="friendsNew()">🏆 Start a board</button><button class="minibtn" onclick="friendsJoin()">🔗 Join one</button></div>`;
+  if(!friendsData){if(Date.now()-friendsAt>15e3)setTimeout(()=>friendsPush(true),0);return'<div class="hm-sub">Loading the board…</div>';}
+  if(friendsData.gone)return`<div class="hm-sub" style="margin-bottom:8px;">This board was closed.</div><button class="minibtn" onclick="life.friends=null;friendsData=null;lifeSave();renderFriends();">OK</button>`;
+  const cr=Object.values(F.crowns||{}),lastW=(F.crowns||{})[addDays(heroWeekStart(tod0()),-7)],ps=friendsPlayers().sort((a,b)=>b.x-a.x||b.L-a.L),mx=Math.max(1,...ps.map(p=>p.x));
+  return(friendsData.err?'<div class="hm-sub" style="margin-bottom:6px;">Couldn\'t reach the board right now (is the host\'s PC on?).</div>':'')
+    +ps.map(p=>{const c=cr.filter(n=>n===p.n).length;return`<div class="duel${p.me?' me':''}"><b>${esc(p.n)}${p.me?' (you)':''}</b><small style="font-size:11px;color:var(--sub);white-space:nowrap;">Lv ${p.L}${c?` · 👑${c}`:''}</small><div class="bar"><i style="width:${p.x/mx*100}%"></i></div><span>${p.x.toLocaleString('en-US')}</span></div>`;}).join('')
+    +(lastW?`<div class="hm-sub" style="margin-top:6px;">👑 Last week: ${esc(lastW)}</div>`:'')
+    +(ps.length<2&&!friendsData.err?'<div class="hm-sub" style="margin:6px 0;">Invite a friend to start the race.</div>':'')
+    +`<div style="display:flex;gap:8px;margin-top:8px;">${F.host?'<button class="minibtn" onclick="friendsShare()">📤 Invite</button>':''}<button class="minibtn" onclick="friendsPush(true)">↻ Refresh</button><button class="minibtn" onclick="friendsLeave()">Leave</button></div>`;
+}
+const renderFriends=()=>{const el=document.getElementById('life-friends');if(el)el.innerHTML=friendsHtml();};
+async function friendsNew(){
+  if(!gwenCfg.key||!shareLink('x'))return showToast('Add your PC address (https://…ts.net) and Gwen key in Settings first');
+  const name=((await ask('Your name on the board','e.g. Rayan'))||'').trim().replace(/\|/g,'').slice(0,20);if(!name)return;
+  const code=lifeHex();
+  try{const r=await lifeApi('share?code='+code,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'🏆 DayTrack friends',items:[]})});if(!r.ok)throw 0;}
+  catch(e){return showToast('❌ Your PC needs to be on to start a board');}
+  life.friends={code,url:shareLink(code),me:'f'+uid(),host:true,name,crowns:{}};friendsData=null;lifeSave();await friendsPush(true);friendsShare();
+}
+function friendsShare(){
+  const F=life.friends;if(!F)return;const msg=`Join my DayTrack friends board: levels, weekly XP and a crown for each week's winner. In DayTrack go to Level → Story → Friends board → Join one, and paste this link: ${F.url}`;
+  if(navigator.share)navigator.share({title:'DayTrack friends',text:msg}).catch(()=>{});else navigator.clipboard.writeText(msg).then(()=>showToast('📋 Invite copied'),()=>sheet(head('📤 Invite')+`<div style="font-size:13px;user-select:all;word-break:break-all;">${esc(msg)}</div>`+closeBtn));
+}
+async function friendsJoin(){
+  const m=((await ask('Paste the board link your friend sent','https://…/s/…'))||'').trim().match(/https:\/\/[^\s]+?\/s\/([a-f0-9]{32})/);
+  if(!m)return showToast('That doesn\'t look like a board link');
+  const name=((await ask('Your name on the board','e.g. Sami'))||'').trim().replace(/\|/g,'').slice(0,20);if(!name)return;
+  life.friends={code:m[1],url:m[0],me:'f'+uid(),name,crowns:{}};friendsData=null;lifeSave();await friendsPush(true);
+}
+function friendsLeave(){if(!confirm('Leave this board?'))return;life.friends=null;friendsData=null;lifeSave();renderFriends();}
+
+// Idea 18: Gwen sets your day. Top 3 = what you usually skip (last 4 weeks), high priority and overdue first.
+function skipRate(t,ds){
+  if(!t.recurring)return 0;let s=0,d=0;
+  for(let i=1;i<=28;i++){const x=addDays(ds,-i);if(x<(t.createdAt||''))break;if(isTodayTask(t,x,new Date(x+'T12:00:00').getDay())){s++;if(t.done.includes(x))d++;}}
+  return s>=3?1-d/s:0;
+}
+function top3Picks(ds){
+  const dow=new Date(ds+'T12:00:00').getDay();
+  return tasks.filter(t=>isTodayTask(t,ds,dow)&&!t.done.includes(ds)&&!t.steps).map(t=>{const sk=skipRate(t,ds),late=!t.recurring&&!!t.date&&t.date<ds;return{t,sk,late,score:sk*4+(PRI_W[t.priority]||0)+(late?2.5:0)};})
+    .sort((a,b)=>b.score-a.score).slice(0,3);
+}
+const top3Why=p=>[p.late&&'overdue',p.sk>=.3&&`you skip it ${Math.round(p.sk*100)}% of the time`,p.t.priority==='high'&&'high priority'].filter(Boolean).join(' · ');
+const top3Today=()=>{const s=life.top3&&life.top3.d===tod0()?life.top3:null;return s&&s.pinned?s.ids.map(id=>tasks.find(t=>t.id===id)).filter(Boolean).map(t=>({t})):top3Picks(tod0());};
+function top3Card(){
+  const tod=tod0(),s=life.top3&&life.top3.d===tod?life.top3:null;if(!life.top3On||(s&&s.hide))return'';
+  const list=top3Today();if(!list.length)return'';const pin=s&&s.pinned;
+  return`<div class="card life-card">${cardHead(pin?'💜 Your top 3 today':'💜 Gwen\'s top 3 for today',pin?'':minibtns('<button class="minibtn" onclick="top3Set(\'pin\')">📌 Pin</button>','<button class="minibtn" onclick="top3Set(\'hide\')" aria-label="Dismiss">✕</button>'))}
+    ${list.map(p=>{const d=p.t.done.includes(tod),why=p.sk!=null&&top3Why(p);return`<div class="sub-row" style="padding:6px 0;"><div class="chk${d?' on':''}" onclick="checkTask('${p.t.id}',1)">${d?'✓':''}</div><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;${d?'text-decoration:line-through;color:var(--sub);':''}">${esc(p.t.name)}</div>${why?`<div style="font-size:11px;color:var(--sub);">${why}</div>`:''}</div></div>`;}).join('')}</div>`;
+}
+function top3Set(k){
+  const tod=tod0();life.top3=k==='pin'?{d:tod,pinned:true,ids:top3Picks(tod).map(p=>p.t.id)}:{d:tod,hide:true};lifeSave();renderLife();
+  if(k==='pin'&&gwenCfg.key)gwenLine('Deal. Those three first, then the rest 💜','nod');
+}
+function top3Cheer(){
+  const s=life.top3,tod=tod0();if(!s||s.d!==tod||!s.pinned||s.cheered)return;
+  if(!s.ids.every(id=>{const t=tasks.find(x=>x.id===id);return!t||t.done.includes(tod);}))return;
+  s.cheered=true;lifeSave();if(gwenCfg.key)gwenLine('Your top 3 are done! The hard part is over 💜','happy');
+}
+
+// Reminders the server fires on the minute (check-reminders "nudges"): water when behind, bills due, top 3, the weekly photo.
+// The PC app sends none, so it never pops anything over a game.
+function lifeNudges(){
+  if(/Electron/.test(navigator.userAgent))return[];
+  const out=[],tod=tod0(),w=life.water,wake=gwenCfg.wake||'08:00';
+  for(const ds of[tod,addDays(tod,1)]){
+    const n=ds===tod?waterN():0;
+    if(w.on&&w.remind!==false)[['15:00',.5],['19:00',.83]].forEach(([at,f])=>{if(n<Math.floor(w.goal*f))out.push({id:'water'+at,date:ds,at,title:'💧 Water',text:`You're at ${n} of ${w.goal} glasses. Drink some water for me? 💜`});});
+    for(const b of life.bills){const k=dayDiff(ds,b.due);if(k<=b.warn)out.push({id:'bill'+b.id,date:ds,at:'10:00',title:'🚗 '+b.name,text:k>0?`${b.name} is due in ${k} day${k>1?'s':''} (${fmtDay(b.due)}).`:k===0?`${b.name} is due today.`:`${b.name} was due ${fmtDay(b.due)}. Tap ✓ Done in DayTrack once it's sorted.`});}
+    const s=life.top3&&life.top3.d===ds?life.top3:null,p=life.top3On&&!s?top3Picks(ds):[];
+    if(p.length)out.push({id:'top3',date:ds,at:wake,title:'💜 Your top 3 today',text:`${p.map(x=>x.t.name).join(', ')}. Do these first and the day is yours 💜`});
+    if(lifeDev.photos&&lifeDev.photoRemind&&(!lifeDev.photoLast||dayDiff(lifeDev.photoLast,ds)>=7)&&new Date(ds+'T12:00:00').getDay()===(lifeDev.photoLast?new Date(lifeDev.photoLast+'T12:00:00').getDay():5))
+      out.push({id:'photo',date:ds,at:'18:00',title:'📸 Progress photo',text:'Time for this week\'s progress photo 📸'});
+  }
+  return out.slice(0,20);
+}
+
 // ── Cards, settings, Gwen's context ───────────────────────────────────────────
 function renderLife(){
   const top=document.getElementById('life-top'),bot=document.getElementById('life-bottom');if(!top)return;
-  top.innerHTML=ramadanCard()+adhkarCard()+sundayCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
+  top.innerHTML=top3Card()+waterCard()+ramadanCard()+adhkarCard()+sundayCard()+spreadCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
   renderHeroMini();
-  bot.innerHTML=routinesCard();
-  renderSpend();
+  bot.innerHTML=chainsCard()+billsCard()+photosCard()+routinesCard();
+  renderSpend();chainHighlight();renderFriends();
 }
 function renderLifeSettings(){
   const el=document.getElementById('life-settings');if(!el)return;
@@ -566,6 +869,16 @@ function renderLifeSettings(){
       ${row('🤲 Adhkar reminders','After Fajr and Asr (needs prayer times on)',tog(life.adhkar.on,'toggleAdhkar()'))}
       <div style="display:flex;gap:8px;margin-top:6px;"><button class="minibtn" style="flex:1;" onclick="openAdhkar('m')">🌅 Morning</button><button class="minibtn" style="flex:1;" onclick="openAdhkar('e')">🌇 Evening</button><button class="minibtn" style="flex:1;" onclick="openTasbih()">📿 Tasbih</button></div>
       ${row('📖 Quran plan',life.quran?`Page ${life.quran.page} · ${life.quran.mode==='daily'?life.quran.perDay+' a day':'khatma by '+fmtDay(life.quran.by)}`:'A page a day, or a khatma by a date',`<button class="minibtn" onclick="quranSetup()">${life.quran?'Edit':'Set up'}</button>`)}
+    </div>
+    <div class="card"><div class="cl">Daily helpers</div>
+      ${row('💧 Water','One tap per glass; Gwen nudges you if you fall behind',tog(life.water.on,'toggleWater()'))}
+      ${life.water.on?`<div style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap;">Glasses a day <input type="number" class="inp" style="width:80px;" min="1" max="20" value="${life.water.goal}" onchange="life.water.goal=Math.max(1,Math.min(20,parseInt(this.value,10)||8));lifeSave();renderLife();"><button class="rb${life.water.remind!==false?' on':''}" onclick="life.water.remind=life.water.remind===false;lifeSave();renderLifeSettings();">🔔 Reminders</button></div>`:''}
+      ${row('💜 Gwen\'s top 3','Each morning she picks the 3 tasks to do first, the ones you usually skip',tog(life.top3On,'life.top3On=!life.top3On;lifeSave();renderLifeSettings();renderLife();'))}
+      ${row('🗓 Spread unfinished tasks','Gwen moves what\'s left over the next days (she also offers it at night)','<button class="minibtn" onclick="openSpread()">Spread</button>')}
+      ${row('🚗 Car and bills','Oil change, insurance, phone bill: a heads-up a few days before',`<button class="minibtn" onclick="editBill()">+ Add</button>`)}
+      ${row('📸 Progress photos','A weekly photo of your body or room, kept on this device only',tog(lifeDev.photos,'lifeDev.photos=!lifeDev.photos;lifeDevStore();renderLifeSettings();renderLife();'))}
+      ${lifeDev.photos?row('📅 Weekly photo reminder','Same day each week',tog(lifeDev.photoRemind,'lifeDev.photoRemind=!lifeDev.photoRemind;lifeDevStore();renderLifeSettings();save();')):''}
+      ${has('focusStart')?row('🎯 Focus lock','While a timer runs, opening TikTok, YouTube, Instagram, Snapchat or a game gets you told off. Stay focused for bonus XP',tog(lifeDev.focus,'toggleFocus()')):''}
     </div>
     ${placesSection()}
     ${N()&&N().hasPerm?`<div class="card"><div class="cl">From your phone</div>
@@ -593,13 +906,17 @@ window.lifeContext=()=>{
     stepsToday!=null?`He has walked ${stepsToday} steps today.`:'',
     ev.length?`His phone calendar (next 3 days): ${ev.slice(0,12).map(e=>`${fmtDay(toDateStr(new Date(e.start)))} ${evTime(e)} ${e.title}`).join('; ')}. Plan tasks around these.`:'',
     spendLines(),
+    life.water.on?`Water today: ${waterN()} of ${life.water.goal} glasses.`:'',
+    life.top3On&&top3Today().length?`Your top 3 picks for him today (do these first): ${top3Today().map(p=>p.t.name+(p.t.done.includes(tod)?' (done)':'')).join(', ')}.`:'',
+    life.chains.length?`His habit chains (one leads into the next): ${life.chains.map(c=>`${c.name}: ${chainTasks(c).map(t=>t.name+(t.done.includes(tod)?' ✓':'')).join(' → ')}`).join('; ')}.`:'',
+    life.bills.filter(b=>dayDiff(tod,b.due)<=b.warn).map(b=>`${b.name} is due ${fmtDay(b.due)}.`).join(' '),
     planCtx,
   ].filter(Boolean).join('\n\n');
 };
 // Her action lines this file adds: SPEND
 window.lifeActions=text=>text.replace(/^[ \t*-]*SPEND:\s*(.+)$/gim,(_,spec)=>{const[what,amt]=spec.split('|').map(x=>(x||'').trim());const e=addSpend(`${what} ${amt}`,true);if(e)showToast(`💰 Logged ${e.label} · ${e.amt} SAR`);return'';});
 // What the server needs for reminders and Gwen's texts
-window.lifeReminders=()=>({adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`}))});
+window.lifeReminders=()=>({nudges:lifeNudges(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`}))});
 window.lifeSaved=()=>{syncPlaces();queueShare();};
 
 (function lifeBoot(){
@@ -616,6 +933,15 @@ window.lifeSaved=()=>{syncPlaces();queueShare();};
     .wk-chip.ev{background:var(--badge);color:var(--sub);}
     .yr-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}.yr-stat{background:var(--pril);border-radius:14px;padding:12px;text-align:center;}
     .yr-stat b{display:block;font-size:22px;color:var(--pri);}.yr-stat span{font-size:12px;color:var(--sub);}
+    .water{display:flex;flex-wrap:wrap;gap:4px;}.water button{width:34px;height:34px;border-radius:10px;border:none;background:var(--inp);font-size:18px;cursor:pointer;opacity:.35;padding:0;}.water button.on{background:var(--pril);opacity:1;}
+    .chain{padding:6px 0;border-bottom:1px solid var(--brd);}.chain:last-child{border-bottom:none;}
+    .chain-steps{display:flex;flex-wrap:wrap;align-items:center;gap:4px;}.chain-steps i{color:var(--sub);font-style:normal;}
+    .chain-steps button{background:var(--inp);color:var(--txt);border:1.5px solid transparent;border-radius:14px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+    .chain-steps button.on{background:var(--pril);color:var(--pri);}.chain-steps button.nx{border-color:var(--pri);}
+    .task-item.chain-next .task-main{border-inline-start:3px solid var(--pri);padding-inline-start:8px;}
+    .pstrip{display:flex;gap:6px;overflow-x:auto;}.pstrip img,.pstrip button{width:64px;height:64px;border-radius:10px;object-fit:cover;flex-shrink:0;cursor:pointer;}
+    .pstrip button{border:1.5px dashed var(--brd);background:none;color:var(--pri);font-size:22px;}
+    .pcmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;}.pcmp img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block;margin-bottom:6px;}
   </style>`);
   renderLife();renderLifeSettings();
   if(new Date().toISOString()>=YEAR_DAY&&toDateStr(new Date())>=YEAR_DAY){
@@ -623,8 +949,10 @@ window.lifeSaved=()=>{syncPlaces();queueShare();};
     if(!life.yearShown)setTimeout(openYear,2500);
   }
   pullHouse();syncShares();readSteps();syncPlaces();
+  setInterval(focusCheck,2000);document.addEventListener('click',()=>setTimeout(focusCheck,0),true);
+  setInterval(()=>{if(!document.hidden&&window.__dtResume)__dtResume();},30e3); // ticks from the home-screen widget
   setInterval(()=>{if(document.hidden)return;renderLife();},60e3);
-  setInterval(()=>{if(document.hidden)return;pullHouse();readSteps();},5*60e3);
+  setInterval(()=>{if(document.hidden)return;pullHouse();readSteps();friendsPush();},5*60e3);
   setInterval(()=>{if(!document.hidden&&document.getElementById('dt-ov').classList.contains('on'))syncShares();},20e3);
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;pullHouse();syncShares();readSteps();renderLifeSettings();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;pullHouse();syncShares();readSteps();renderLifeSettings();focusBack();});
 })();

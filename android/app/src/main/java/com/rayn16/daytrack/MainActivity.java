@@ -626,6 +626,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String walkPoints(int from) { return WalkService.since(from); }
         @JavascriptInterface public boolean walking() { return WalkService.running; }
 
+        // Focus lock while a timer runs ({"lines": [...]}, what Gwen says); focusStop returns how many times he slipped
+        @JavascriptInterface public void focusStart(String json) { FocusService.start(MainActivity.this, json == null ? "{}" : json); }
+        @JavascriptInterface public int focusStop() { return FocusService.stop(MainActivity.this); }
+        @JavascriptInterface public int focusSlips() { return FocusService.slips; }
+
         @JavascriptInterface public boolean setWallpaper(String dataUrl) {
             try {
                 Bitmap b = Poller.bitmap(dataUrl);
