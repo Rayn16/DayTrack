@@ -68,6 +68,8 @@ public class DayWidget extends AppWidgetProvider {
         if (face != null) v.setImageViewBitmap(R.id.face, face);
         else v.setImageViewResource(R.id.face, R.mipmap.ic_launcher);
 
+        level(c, v, open);
+
         // Today's tasks, undone first
         String today = Poller.day(0);
         int dow = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1; // 0 = Sunday, like the page
@@ -116,6 +118,31 @@ public class DayWidget extends AppWidgetProvider {
             }
         }
         return v;
+    }
+
+    // Level, HP and today's boss. The boss state is worked out here from its times, so it flips when the boss arrives.
+    private static void level(Context c, RemoteViews v, PendingIntent open) {
+        JSONObject h = null;
+        try { h = new JSONObject(Poller.prefs(c).getString("widget", "{}")).optJSONObject("hero"); } catch (Exception ignored) { }
+        if (h == null) { v.setViewVisibility(R.id.lvl, View.GONE); return; }
+        v.setViewVisibility(R.id.lvl, View.VISIBLE);
+        v.setOnClickPendingIntent(R.id.lvl, open);
+        int hp = h.optInt("hp", -1);
+        v.setTextViewText(R.id.lvl_text, "⭐ Lv " + h.optInt("L", 1) + " · " + h.optInt("left") + " XP to next"
+                + (h.optBoolean("down") ? " · 💀 Fallen" : hp >= 0 ? " · ❤️ " + hp : ""));
+        v.setProgressBar(R.id.lvl_bar, 100, h.optInt("pct"), false);
+        JSONObject b = h.optJSONObject("boss");
+        String s = "";
+        if (b != null) {
+            long now = System.currentTimeMillis(), at = b.optLong("at"), until = b.optLong("until");
+            String name = b.optString("name");
+            if (b.optBoolean("won")) s = "🏆 " + name + " beaten";
+            else if (now < at) s = "⚔️ A boss is lurking…";
+            else if (now < until) s = "⚔️ " + name + " is here! " + Math.max(1, (until - now) / 60000) + " min left";
+            else s = "💀 " + name + " escaped" + (b.optBoolean("cursed") ? " (−10% XP today)" : "");
+        }
+        v.setViewVisibility(R.id.boss_text, s.isEmpty() ? View.GONE : View.VISIBLE);
+        v.setTextViewText(R.id.boss_text, s);
     }
 
     private static boolean has(JSONArray a, String s) {

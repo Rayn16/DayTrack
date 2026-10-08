@@ -64,6 +64,7 @@ public class BossAlarm extends BroadcastReceiver {
             Poller.prefs(app).edit().putLong("bossRung", b.optLong("at")).apply();
             ring(app, b);
         }
+        DayWidget.refresh(app); // the widget's boss line flips to "here"
         schedule(app);
     }
 

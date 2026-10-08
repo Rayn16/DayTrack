@@ -396,6 +396,7 @@ let stepsToday=null;
 function readSteps(){
   if(!lifeDev.steps||!has('steps'))return;
   let s=null;try{s=JSON.parse(N().steps()||'null');}catch(e){}
+  if(typeof heroStepsIn==='function')heroStepsIn(s); // every day's real count, for the Level tab
   const t=stepTask();if(!s||!t||!t.count)return;
   stepsToday=s.today;
   const tod=toDateStr(new Date());let changed=false;const wasDone=t.done.includes(tod);
