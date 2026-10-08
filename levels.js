@@ -193,7 +193,7 @@ function heroTaskAwards(t,m=()=>1){
   if(t.count)Object.entries(t.counts||{}).forEach(([d,n])=>{if(!t.done.includes(d))add(d,base*hb(d)*n/t.count.target,`${t.name} (${n}/${t.count.target})`,'count');});
   // Hardcore: a scheduled day missed costs what it would have earned
   if(t.hard&&t.recurring&&t.hardFrom){const y=dAdd(toDateStr(new Date()),-1),a=[t.hardFrom,t.createdAt||'',dAdd(y,-365)].sort().pop();for(let d=a;d<=y;d=dAdd(d,1))
-    if(isTodayTask(t,d,new Date(d+'T12:00:00').getDay())&&!t.done.includes(d))out.push({d,xp:-base,sx:sx(-base,st),what:`💀 Missed hardcore: ${t.name}`,ic:'💀',k:'hard'});}
+    if(isTodayTask(t,d,new Date(d+'T12:00:00').getDay())&&!t.done.includes(d))out.push({d,xp:-base,sx:sx(-base,st),what:`Missed hardcore: ${t.name}`,ic:'💀',k:'hard'});}
   (t.subtasks||[]).forEach(s=>(s.done||[]).forEach(d=>add(d,5,s.name,'sub')));
   return out;
 }
@@ -1636,7 +1636,7 @@ function heroStepsHtml(){
   return`<div class="st-top"><div><b>${today.toLocaleString()}</b><small>steps today · ${(today*.00075).toFixed(1)} km</small></div>${phone?'<button class="hk-btn pri" onclick="heroWalk()">🚶 Walk mode</button>':''}</div>`
     +(goal?`<div class="hm-sub" style="margin:10px 0 4px;">This week's challenge: <b>${week.toLocaleString()} / ${goal.toLocaleString()}</b> steps${week>=goal?' · done! 🏆':` · ${(goal-week).toLocaleString()} to go, ${8-dayN} day${8-dayN>1?'s':''} left`}</div>${heroTrack(week/goal,ghostSoFar/goal)}<div class="hm-sub" style="text-align:center;">One lap = your goal · 👻 = you last week by today (${ghostSoFar.toLocaleString()})</div>`
       :`<div class="hm-sub" style="margin:10px 0 6px;">${week.toLocaleString()} steps this week. Take a challenge to race it on the track:</div><div class="st-goals">${HERO_STEP_GOALS.map(g=>`<button class="minibtn" onclick="heroStepGoal(${g})">${g/1000}k</button>`).join('')}<button class="minibtn" onclick="heroStepGoal()">Other</button></div>`)
-    +`<div class="st-bars">${bars.map(b=>`<div title="${fmtDay(b.d)}: ${b.n.toLocaleString()}"><i style="height:${Math.round(b.n/mx*100)}%"${b.d===tod?' class="now"':''}></i><small>${'SMTWTFS'[new Date(b.d+'T12:00:00').getDay()]}</small></div>`).join('')}</div>`
+    +`<div class="st-bars">${bars.map(b=>`<div title="${fmtDay(b.d)}: ${b.n.toLocaleString()}"><i style="height:${Math.round(b.n/mx*100)}%"${b.d===tod?' class="now"':''}></i><small>${DNAMES[new Date(b.d+'T12:00:00').getDay()]}</small></div>`).join('')}</div>`
     +(past.length?`<div class="sl">Past challenges</div>`+past.map(w=>{const n=heroWeekSteps(w),g=heroP.stepCh[w];return`<div class="hl-g" style="padding:5px 0;"><span>${n>=g?'🏆':'❌'} Week of ${fmtDay(w)}</span><b>${n.toLocaleString()} / ${g.toLocaleString()}</b></div>`;}).join(''):'');
 }
 async function heroStepGoal(g){
