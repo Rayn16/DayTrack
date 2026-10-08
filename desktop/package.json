@@ -6,7 +6,7 @@
   "main": "main.js",
   "private": true,
   "scripts": {
-    "web": "node -e \"const fs=require('fs');for(const d of ['web','server'])fs.rmSync(d,{recursive:true,force:true});for(const f of ['index.html','gwen-games.js','levels.js','levels.css','icon.svg','manifest.json'])fs.cpSync('../'+f,'web/'+f);fs.cpSync('icon.png','web/icon.png');fs.cpSync('../netlify/functions','server/functions',{recursive:true});fs.cpSync('../netlify/lib','server/lib',{recursive:true})\"",
+    "web": "node -e \"const fs=require('fs');for(const d of ['web','server'])fs.rmSync(d,{recursive:true,force:true});for(const f of ['index.html','gwen-games.js','levels.js','levels.css','life.js','ar.js','icon.svg','manifest.json'])fs.cpSync('../'+f,'web/'+f);fs.cpSync('icon.png','web/icon.png');fs.cpSync('../netlify/functions','server/functions',{recursive:true});fs.cpSync('../netlify/lib','server/lib',{recursive:true})\"",
     "start": "npm run web && electron .",
     "dist": "npm run web && electron-builder --win nsis --publish never"
   },
