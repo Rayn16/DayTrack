@@ -205,6 +205,8 @@ function heroAwards(){
   savedSessions.forEach(s=>add(sessDate(s),Math.min(120,Math.round(s.total/120000)),{...heroDetect(s.name),focus:1},s.name,'⏱️','focus',{min:Math.round(s.total/60000)}));
   Object.entries(heroP.skills||{}).forEach(([id,p])=>{const sk=heroSkill(id);if(sk)(p.at||[]).forEach((d,i)=>sk.steps[i]&&add(d,60*(i+1),sk.st,stepName(sk,i),sk.ic,'skill'));});
   Object.entries(heroP.claims||{}).forEach(([key,c])=>add(c.d,c.xp,c.st||{discipline:1},c.what,c.ic||'🎁','quest'));
+  heroStepAwards(add);
+  heroSkills().forEach(sk=>{const ds=heroStarDays(sk);if(ds)HERO_STARS.forEach((n,i)=>ds[n-1]&&add(ds[n-1],100*(i+1),sk.st,`${sk.name} mastery ★${i+1}`,'⭐','star'));});
   (heroP.bank||[]).forEach(b=>out.push(b));
   (heroP.bonus||[]).forEach(b=>out.push(b));
   Object.entries(heroP.journal||{}).forEach(([d,t])=>t&&add(d,10,{intellect:1},'Journal: '+String(t).slice(0,40),'📝','journal'));
@@ -246,8 +248,8 @@ function heroLevelUps(aw){
 // ── After every save: show what just went up ──
 let heroLast=null;
 function heroTick(silent){
-  const combo=heroCombo(silent);heroLoginCheck();
-  heroAchCheck(silent);heroDaily();heroRecCheck(silent);heroBossSync();heroWrite();
+  const combo=heroCombo(silent);heroDgTick(silent);heroBetTick(silent);heroLoginCheck();
+  heroAchCheck(silent);heroDaily();heroStepWeekCheck();heroRecCheck(silent);heroBossSync();heroWrite();
   const s=heroSum(heroAwards()),prev=heroLast;heroLast=s;
   if(silent||!prev||s.total<=prev.total)return;
   s.total-=heroPrestigeXP();prev.total-=heroPrestigeXP();
@@ -261,12 +263,12 @@ function heroTick(silent){
 function heroPop(xp,gains,m=1,combo=0){
   const el=document.getElementById('hero-pop');if(!el)return;
   el.innerHTML=`<b>+${xp} XP</b>${combo>1?`<span class="hp-combo">COMBO ×${combo}</span>`:''}${m!==1?`<span>${m>1?'⚡':'🔻'} ×${m.toFixed(2).replace(/0$/,'')}</span>`:''}${gains.slice(0,4).map(g=>`<span>${g.ic} ${g.name} +${g.add}</span>`).join('')}`;
-  el.classList.remove('on');void el.offsetWidth;el.classList.add('on');
+  el.classList.remove('on');void el.offsetWidth;el.classList.add('on');heroSfx('coin');
   clearTimeout(heroPop.t);heroPop.t=setTimeout(()=>el.classList.remove('on'),2800);
 }
 function heroLevelUp(L,ups){
   heroShow(`<div class="hl-t">LEVEL UP!</div>${L?`<div class="hl-em">${heroRankIc(L,96)}</div><div class="hl-big">Level ${L}</div><div class="hl-rank">${HERO_RANKS.find(r=>L>=r[0])[1]}</div>`:''}${ups.map(g=>`<div class="hl-row">${hIc(g.gl,g.col,'circle',22)} ${g.name} <b>Lv ${g.L0} → ${g.L}</b></div>`).join('')}`,4500,true);
-  if(navigator.vibrate)navigator.vibrate([30,60,30]);
+  if(navigator.vibrate)navigator.vibrate([30,60,30]);heroSfx('fanfare');
   if(L&&typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLine==='function')gwenLine(`Level ${L}! Look at you getting stronger every day 💜`,'happy');
 }
 // Deleting a task keeps the XP it earned
@@ -297,10 +299,10 @@ function renderHeroMini(){
   const el=document.getElementById('hero-mini');if(!el)return;heroDefs();
   const b=heroBar(h.xp,HERO_B);
   const top=HERO_STATS.map(x=>({...x,L:heroLvl(h.s.st[x.id],HERO_SB)})).filter(x=>h.s.st[x.id]).sort((a,c)=>c.L-a.L||h.s.st[c.id]-h.s.st[a.id]).slice(0,4);
-  el.innerHTML=`<div class="hm-top"><div class="hm-av ${heroFrame(h)}">${heroAvHtml()}</div><div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div>${heroRankIc(h.L,40)}</div>`
+  el.innerHTML=`<div class="hm-top"><div class="hm-av ${heroFrame(h)}">${heroAvHtml()}</div>${heroP.pet?`<span class="hm-pet">${heroPetSvg(heroP.pet.kind,heroPetInfo(h).st,heroPetInfo(h).mood,34)}</span>`:''}<div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div>${heroRankIc(h.L,40)}</div>`
     +(top.length?`<div class="hm-stats">${top.map(x=>`<span>${x.ic} ${x.name} <b>${x.L}</b></span>`).join('')}</div>`:'<div class="hm-sub" style="margin-top:8px;">Tick a task to earn your first XP.</div>')
-    +heroBuffChips(toDateStr(new Date()))+heroExtrasLine();
-  const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=heroBossCard(true)+`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d')
+    +heroHPHtml()+heroBuffChips(toDateStr(new Date()))+heroExtrasLine()+heroPinHtml(h);
+  const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=heroBossCard(true)+heroBetHtml()+`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d')
     +(new Date().getHours()>=18&&!(heroP.journal||{})[heroTod()]?`<div class="cl" style="margin:12px 0 6px;">📝 Tonight's line</div>`+heroJournalHtml(true):'');
 }
 let heroSeg='stats';
@@ -310,10 +312,10 @@ function renderHero(){
   tab.dataset.seg=heroSeg;renderHeroChip(h);
   document.getElementById('hero-card').innerHTML=`
     <div class="hc-top"><button class="hc-av ${heroFrame(h)}" onclick="heroAvatar()" title="Change">${heroAvHtml()}</button>
-      <div style="flex:1;min-width:0;"><div class="hc-name">Rayan</div><div class="hc-cls">${heroTitle(heroAchievements(h))?`<b class="hc-title">「${esc(heroTitle(heroAchievements(h)))}」</b> `:''}${h.rank} ${h.cls}</div></div>
+      <div style="flex:1;min-width:0;"><div class="hc-name">${esc(heroP.name||'Rayan')}</div><div class="hc-cls">${heroTitle(heroAchievements(h))?`<b class="hc-title">「${esc(heroTitle(heroAchievements(h)))}」</b> `:''}${h.rank} ${h.cls}</div></div>
       <div class="hc-rk">${heroRankIc(h.L,58)}<div class="hc-lv"><small>LEVEL</small>${h.L}</div></div></div>
     <div class="bar hc-bar"><i style="width:${b.pct}%"></i></div>
-    <div class="hc-xp"><span>${h.s.total.toLocaleString()} XP</span><span>${b.left} to level ${h.L+1}</span></div>
+    <div class="hc-xp"><span>${h.s.total.toLocaleString()} XP</span><span>${b.left} to level ${h.L+1}</span></div>${heroHPHtml()}
     <div class="hc-today">${h.today?`+${h.today} XP today`:'No XP yet today'}${h.P?` · ${'★'.repeat(Math.min(10,h.P))}`:''}</div>${heroExtrasLine()}
     <div class="hc-btns"><button onclick="heroShare()">📤 Share card</button><span>🪙 ${heroCoins(h).toLocaleString()}</span></div>`;
   document.getElementById('hero-card').insertAdjacentHTML('beforeend',heroBuffChips(toDateStr(new Date()),true));
@@ -323,6 +325,8 @@ function renderHero(){
   const set=(id,html)=>{const e=document.getElementById(id);if(e)e.innerHTML=html;};
   set('hero-dboss',heroBossCard());set('hero-story',heroStoryHtml(h));set('hero-bounty',heroBountyHtml());set('hero-mboss',heroMiniBossHtml());set('hero-quit',heroQuitHtml());
   set('hero-perks',heroPerksHtml(h));set('hero-recs',heroRecsHtml(h));set('hero-ft',heroTestHtml());set('hero-bag',heroBagHtml(h));set('hero-gear',heroGearHtml());set('hero-party',heroPartyHtml(h));
+  set('hero-steps',heroStepsHtml());set('hero-book',heroBookHtml());set('hero-pass',heroPassHtml(h));set('hero-ghost',heroGhostHtml(h));set('hero-ranked',heroRankedHtml(h));set('hero-dg',heroDgHtml());set('hero-duel',heroDuelHtml());
+  set('hero-bet',heroBetHtml(true));
   set('hero-report',heroReportHtml(h));set('hero-vs',heroVsHtml(h));set('hero-season',heroSeasonHtml(h));set('hero-heat',heroHeatmap(h));set('hero-journal',heroJournalHtml());
   document.getElementById('hero-quests').innerHTML=[['d','☀️ Daily'],['w','📅 Weekly'],['m','🌙 Monthly']].map(([k,n])=>`<div class="hs-g hq-h"><span>${n}</span><small>${left(Q.p[k].b)}</small></div>`+(k==='w'?heroBoss(Q.w,Q.p.w):'')+heroQuestRows(Q[k],k)).join('');
   document.getElementById('hero-stats').innerHTML=Object.keys(HERO_GROUPS).map(g=>`<div class="hs-g">${g}</div>`+HERO_STATS.filter(x=>x.g===g).map(x=>{const sb=heroBar(h.s.st[x.id],HERO_SB);return`<div class="hs-row" onclick="heroStat('${x.id}')"><span class="hs-ic">${sIc(x,24,'hex')}</span><span class="hs-n">${x.name}</span><div class="bar"><i style="width:${sb.pct}%"></i></div><span class="hs-l">Lv ${sb.L}</span></div>`;}).join('')).join('');
@@ -382,7 +386,7 @@ function heroOpenSkill(id){
     <div class="hm-sub" style="text-align:center;margin:2px 0 10px;">Trains ${st} · ${n}/${s.steps.length} mastered</div>
     ${s.steps.map((x,i)=>{const[nm,goal,how]=Array.isArray(x)?x:[x.name||x,'',''];const state=i<n?'done':i===n?'now':'lock';
       return`<div class="hk-step ${state}"><div class="hk-dot">${i<n?'✓':i+1}</div><div style="flex:1;min-width:0;"><b>${esc(nm)}</b>${goal?`<div class="hk-goal">🎯 ${esc(goal)}</div>`:''}${state==='now'&&how?`<div class="hk-how">${esc(how)}</div>`:''}${i<n&&p.at[i]?`<div class="hm-sub">Mastered ${p.at[i]===tod?'today':fmtDay(p.at[i])} · +${60*(i+1)} XP</div>`:state!=='done'?`<div class="hm-sub">+${60*(i+1)} XP</div>`:''}</div></div>`;}).join('')}
-    ${heroLocked(s)?`<div class="hk-lock">🔒 Unlocks when you master <b>${esc(stepName(heroSkill(s.req[0]),s.req[1]-1))}</b> in ${esc(heroSkill(s.req[0]).name)}</div>`:n<s.steps.length?`<div style="display:flex;gap:8px;margin-top:12px;">${p.on?'':`<button class="hk-btn" onclick="heroLearn('${id}')">▶ Start learning</button>`}<button class="hk-btn pri" onclick="heroMaster('${id}')">✓ I can do it</button></div>`:'<div style="text-align:center;font-size:15px;font-weight:700;color:var(--grntxt);margin-top:12px;">🏆 Skill mastered!</div>'}
+    ${heroLocked(s)?`<div class="hk-lock">🔒 Unlocks when you master <b>${esc(stepName(heroSkill(s.req[0]),s.req[1]-1))}</b> in ${esc(heroSkill(s.req[0]).name)}</div>`:n<s.steps.length?`<div style="display:flex;gap:8px;margin-top:12px;">${p.on?'':`<button class="hk-btn" onclick="heroLearn('${id}')">▶ Start learning</button>`}<button class="hk-btn pri" onclick="heroMaster('${id}')">✓ I can do it</button></div>`:heroStarsHtml(s)}
     ${n<s.steps.length&&typeof gwenCfg!=='undefined'&&gwenCfg.key?`<button class="hk-btn" style="width:100%;margin-top:8px;" onclick="heroAskGwen('${id}')">💜 Ask Gwen to coach me</button>`:''}
     ${n?`<button class="mi" style="color:var(--sub);justify-content:center;" onclick="heroUndo('${id}')">↺ Undo last step</button>`:''}
     ${s.custom?`<button class="mi" style="color:#EF4444;justify-content:center;" onclick="heroDelSkill('${id}')">🗑️ Delete this skill</button>`:''}${closeBtn}`);
@@ -462,6 +466,8 @@ function heroBuffs(d){
   if(heroP.evolved&&heroP.evolved.d<=d)fx('🦋','Evolved',.05,`${heroP.evolved.cls} class`);
   const dl=(heroP.daily||{})[d]||{};if(dl.party)fx('💜','Party: Gwen',dl.party,'Your bond with Gwen');if(dl.gear)fx('🛡️','Gear',dl.gear,'What you have equipped');
   if(((heroP.used||{}).potion||[]).includes(d))fx('🧪','XP potion',1,'Double XP today');
+  if(((heroP.used||{}).mega||[]).includes(d))fx('🧪','Mega potion',2,'Triple XP today');
+  const hp=heroHP();if(hp&&hp.fall[d])fx('💀','Fallen',-.5,'Your HP hit 0. Finish 3 tasks in a day to revive');
   const ev=heroEvent(d);if(ev&&ev.id==='golden')fx('🌟','Golden day',.5,'A rare event: +50% XP all day');
   const b=heroDBoss(d);if(b&&b.state==='gone')fx('💀','Boss curse',-.1,`${b.name} escaped`);
   if((heroP.quits||[]).some(q=>(q.slips||[]).includes(d)))fx('🩹','Slipped',-.05,'A slip on a habit you\'re quitting. Back on track tomorrow');
@@ -564,7 +570,7 @@ function heroTree(h){
       nodes+=`<g class="tn ${st}${on&&st==='now'?' on':''}" style="--c:${col}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})" onclick="heroOpenSkill('${s.id}')"><title>${esc(s.name)}: ${esc(stepName(s,i))}</title><circle r="${i?14:18}"/>${i?`<text>${st==='done'?'✓':st==='lock'&&lock?'🔒':i+1}</text>`:`<g transform="translate(-10.8 -10.8) scale(.9)">${hGlyph(lock?'lock':skGl(s))}</g>`}</g>`;
     });
     const[lx,ly,a]=pt(k,s.steps.length-1),c=Math.cos(a),r=R0+(s.steps.length-1)*G+26,tx=r*c,ty=r*Math.sin(a);
-    labels+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" class="tl" text-anchor="${c>.3?'start':c<-.3?'end':'middle'}" onclick="heroOpenSkill('${s.id}')">${esc(s.name)} ${n}/${s.steps.length}</text>`;
+    labels+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" class="tl" text-anchor="${c>.3?'start':c<-.3?'end':'middle'}" onclick="heroOpenSkill('${s.id}')">${esc(s.name)} ${n}/${s.steps.length}${(heroStars(s)||{}).n?' '+'★'.repeat(heroStars(s).n):''}</text>`;
   });
   const S=R0+7*G+150;
   return`<svg viewBox="${-S} ${-S} ${2*S} ${2*S}" id="hero-tree-svg">${edges}${nodes}${labels}<g class="tc" onclick="heroSetSeg('stats')"><circle r="44"/>${heroP.avImg?`<clipPath id="tc-clip"><circle cy="-8" r="26"/></clipPath><image href="${heroP.avImg}" x="-26" y="-34" width="52" height="52" clip-path="url(#tc-clip)"/>`:`<text y="-8" class="tc-av">${esc(heroP.av)}</text>`}<text y="22" class="tc-lv">Lv ${h.L}</text></g></svg>`;
@@ -634,6 +640,7 @@ function heroAchievements(h=heroState()){
     ['pet','🐾','Tamer','Raise your pet to Adult',heroP.pet?heroPetInfo(h).st:0,3,'Tamer'],['pr','★','Reborn','Prestige once',h.P,1,'Reborn'],
     ...HERO_STATS.map(x=>['st-'+x.id,x.ic,HERO_TITLES[x.id],`${x.name} level 10`,heroLvl(h.s.st[x.id],HERO_SB),10,HERO_TITLES[x.id]]),
     ...mastered.map(s=>['m-'+s.id,s.ic,`Master of ${s.name}`,'Mastered every step',1,1,`${s.name} Master`]),
+    ...Object.entries(heroP.pass||{}).filter(([,p])=>(p.got||[]).includes(30)).map(([m])=>['pass-'+m,'👑',heroPassTitle(m),'Finished a monthly pass',1,1,heroPassTitle(m)]),
   ];
   const AG={first:['check','green'],t100:['check','silver'],t500:['check','gold'],s7:['flame','orange'],s30:['flame','red'],l10:['star','silver'],l25:['star','gold'],l50:['crown','gold'],q10:['swords','blue'],qm:['moon','purple'],
     sk:['trophy','gold'],bal:['gem','teal'],db1:['skull','bronze'],db10:['skull','silver'],db50:['skull','gold'],cb5:['bolt','orange'],jr30:['pen','blue'],ch3:['scroll','purple'],quit30:['shield','teal'],pet:['paw','orange'],pr:['star','legend']};
@@ -806,7 +813,7 @@ function heroLoginCheck(){
 }
 
 // ── Items and loot ──
-const HERO_ITEMS={freeze:['Streak freeze','Saves a missed day so your streak lives on','snow','teal',150],potion:['XP potion','Double XP for everything today','flask','purple',120],reroll:['Quest reroll','Swap a daily quest for a new one','dice','blue',60]};
+const HERO_ITEMS={freeze:['Streak freeze','Saves a missed day so your streak lives on','snow','teal',150],potion:['XP potion','Double XP for everything today','flask','purple',120],reroll:['Quest reroll','Swap a daily quest for a new one','dice','blue',60],mega:['Mega potion','Triple XP for everything today (crafted only)','flask','legend',0]};
 const heroItemLine=k=>`<div class="hl-row">${hIc(HERO_ITEMS[k][2],HERO_ITEMS[k][3],'hex',26)} <b>${HERO_ITEMS[k][0]}</b> found!</div>`;
 function heroLoot(d=heroTod()){
   const n=(heroPerk('lucky')?2:1)+((heroEvent(d)||{}).id==='meteor'?1:0),inv=heroInv(),got=[];
@@ -815,7 +822,7 @@ function heroLoot(d=heroTod()){
 }
 function heroUse(k){
   const inv=heroInv(),used=heroP.used=heroP.used||{},tod=heroTod();if(!(inv[k]>0))return;
-  if(k==='potion'){if((used.potion||[]).includes(tod))return showToast('🧪 A potion is already working today');used.potion=(used.potion||[]).concat(tod);}
+  if(k==='potion'||k==='mega'){if([...(used.potion||[]),...(used.mega||[])].includes(tod))return showToast('🧪 A potion is already working today');used[k]=(used[k]||[]).concat(tod);}
   else if(k==='freeze'){
     const dn=heroDoneDays();let d=null;for(let i=1;i<=14;i++){const x=dAdd(tod,-i);if(!dn.has(x)&&dn.has(dAdd(x,-1))){d=x;break;}}
     if(!d)return showToast('🧊 No broken streak to save right now');
@@ -872,32 +879,61 @@ function heroPrestige(){
   heroShow(`<div class="hl-t">PRESTIGE ${h.P+1}</div><div class="hl-em">${hIc('star','legend','burst',96)}</div><div class="hl-big">Reborn</div>`,5000,true);
 }
 
-// ── Daily boss: appears at a random time, rings the phone, and has to be beaten within 30 minutes ──
+// ── Bosses: a daily one at a random time (sometimes an elite), a world boss on Friday nights and a rare nightmare
+// late at night. Each rings the phone and has to be beaten in time. Saved per key: date (daily), date+'w', date+'n'. ──
 const HERO_DB_MIN=30;
-const HERO_DBOSS=[['Sloth Golem','skull','dark','Do 25 push-ups','chest'],['Plank Wraith','flame','red','Hold a plank for 90 seconds','core'],
-  ['Squat Goblin','bolt','green','Do 40 squats','legs'],['Clutter Hydra','swords','purple','Tidy your room or desk for 10 minutes','discipline'],
-  ['Thirst Djinn','leaf','teal','Drink 2 glasses of water','vitality'],['Scroll Specter','book','blue','Read 10 pages of a book','intellect'],
-  ['Phantom of Silence','chat','pink','Text or call a friend or someone in your family','charisma'],['Doomscroll Dragon','target','orange','Put your phone face down for 15 minutes','focus'],
-  ['Dust Titan','shield','bronze','Do 20 burpees','endurance'],['Wallet Leech','gem','gold','Skip one thing you were going to buy today','wealth'],
-  ['Shade of Heedlessness','moon','purple','Read a page of Quran or say your adhkar','faith'],['Blank Page Imp','spark','pink','Draw, write or make something for 10 minutes','creativity'],
-  ['Stiff Ogre','heart','red','Stretch for 5 minutes','vitality'],['Pull-up Harpy','wings','blue','Do as many pull-ups or rows as you can, 3 sets','back']];
+// [name, symbol, colour, challenge, stat, elite challenge]
+const HERO_DBOSS=[['Sloth Golem','skull','dark','Do 25 push-ups','chest','Do 60 push-ups, any sets'],['Plank Wraith','flame','red','Hold a plank for 90 seconds','core','Hold a plank for 3 minutes, breaks allowed'],
+  ['Squat Goblin','bolt','green','Do 40 squats','legs','Do 100 squats'],['Clutter Hydra','swords','purple','Tidy your room or desk for 10 minutes','discipline','Clean your whole room, floor included'],
+  ['Thirst Djinn','leaf','teal','Drink 2 glasses of water','vitality','Drink 3 glasses of water and eat a piece of fruit'],['Scroll Specter','book','blue','Read 10 pages of a book','intellect','Read 20 pages of a book'],
+  ['Phantom of Silence','chat','pink','Text or call a friend or someone in your family','charisma','Call someone you haven\'t talked to in a while'],['Doomscroll Dragon','target','orange','Put your phone face down for 15 minutes','focus','Phone in another room for 18 minutes, then come back and strike'],
+  ['Dust Titan','shield','bronze','Do 20 burpees','endurance','Do 50 burpees'],['Wallet Leech','gem','gold','Skip one thing you were going to buy today','wealth','Write down every riyal you spent this week'],
+  ['Shade of Heedlessness','moon','purple','Read a page of Quran or say your adhkar','faith','Read 2 pages of Quran and say your adhkar'],['Blank Page Imp','spark','pink','Draw, write or make something for 10 minutes','creativity','Draw, write or make something for 18 minutes'],
+  ['Stiff Ogre','heart','red','Stretch for 5 minutes','vitality','Stretch for 12 minutes, whole body'],['Pull-up Harpy','wings','blue','Do as many pull-ups or rows as you can, 3 sets','back','5 sets of pull-ups or rows, as many as you can']];
+const HERO_WBOSS=[['The World Eater','skull','legend'],['Titan of Tomorrow','shield','red'],['The Endless Scroll','target','purple'],['Colossus of Comfort','crown','orange']];
+const HERO_NBOSS=[['Insomnia Lich','moon','purple','Phone on charge across the room and lights off'],['The Midnight Scroller','target','dark','Close every app and put the phone face down for 20 minutes'],
+  ['Bedtime Banshee','skull','red','Brush your teeth, wash your face and set tomorrow\'s alarm'],['Shade of Tomorrow','scroll','blue','Write tomorrow\'s top 3 tasks in DayTrack'],['Restless Revenant','heart','teal','Stretch or breathe slowly for 5 minutes']];
 function heroBossCfg(){const c=heroP.bossCfg=heroP.bossCfg||{};if(c.on===undefined)c.on=true;if(!c.onAt)c.onAt=Date.now();c.from=c.from||'10:00';c.to=c.to||'22:00';if(!c.seed)c.seed=Math.random().toString(36).slice(2,10);return c;}
+const heroHM=s=>{const[h,m]=s.split(':').map(Number);return h*60+m;};
+// Shared tail: when, how long (plus Gwen's extra minutes), state
+function heroBossAt(b,d,min,len){
+  const rec=(heroP.bosses||{})[b.key]||{},t=new Date(d+'T00:00:00');t.setMinutes(min);
+  const at=t.getTime(),until=at+(len+(rec.ext||0))*6e4,now=Date.now(),won=rec.won;
+  if(at<heroBossCfg().onAt&&!won)return null; // no boss (and no curse) before bosses were switched on
+  return{...b,d,at,until,won,ext:rec.ext||0,hits:rec.hits||[],state:won?'won':now<at?'soon':now<until?'on':'gone'};
+}
 function heroDBoss(d){
   const c=heroBossCfg();if(!c.on)return null;
-  const r=heroRng(c.seed+d),[fh,fm]=c.from.split(':').map(Number),[th,tm]=c.to.split(':').map(Number),a=fh*60+fm,b=Math.max(a+31,th*60+tm)-HERO_DB_MIN;
-  const min=a+Math.floor(r()*(b-a)),[name,g,col,task,stat]=HERO_DBOSS[Math.floor(r()*HERO_DBOSS.length)];
-  const t=new Date(d+'T00:00:00');t.setMinutes(min);
-  const at=t.getTime(),until=at+HERO_DB_MIN*6e4,now=Date.now(),won=((heroP.bosses||{})[d]||{}).won;
-  if(at<c.onAt&&!won)return null; // no boss (and no curse) before bosses were switched on
-  return{d,at,until,name,g,col,task,stat,won,state:won?'won':now<at?'soon':now<until?'on':'gone'};
+  const r=heroRng(c.seed+d),a=heroHM(c.from),b=Math.max(a+31,heroHM(c.to))-HERO_DB_MIN;
+  const min=a+Math.floor(r()*(b-a)),[name,g,col,task,stat,etask]=HERO_DBOSS[Math.floor(r()*HERO_DBOSS.length)],elite=r()<.15;
+  return heroBossAt({key:d,kind:'d',name:elite?'Elite '+name:name,base:name,g,col:elite?'legend':col,task:elite?etask:task,stat,elite},d,min,elite?20:HERO_DB_MIN);
 }
+// World boss: every Friday at 9 PM (earlier if your boss hours end sooner), an hour to land three strikes
+function heroWBoss(d){
+  const c=heroBossCfg();if(!c.on||new Date(d+'T12:00:00').getDay()!==5)return null;
+  const r=heroRng(c.seed+d+'w'),[name,g,col]=HERO_WBOSS[Math.floor(r()*HERO_WBOSS.length)],pool=[...HERO_DBOSS],tasks=[];
+  while(tasks.length<3)tasks.push(pool.splice(Math.floor(r()*pool.length),1)[0][3]);
+  const min=Math.max(heroHM(c.from),Math.min(21*60,heroHM(c.to)-60));
+  return heroBossAt({key:d+'w',kind:'w',name,base:name,g,col,task:tasks.join(' · '),tasks,stat:'discipline'},d,min,60);
+}
+// Nightmare: on about one night in seven, late (after 10 PM, inside your boss hours); no curse, double loot
+function heroNBoss(d){
+  const c=heroBossCfg();if(!c.on||c.night===false)return null;
+  const r=heroRng(c.seed+d+'n');if(r()>.15)return null;
+  const a=Math.max(22*60,heroHM(c.from)),b=heroHM(c.to)-HERO_DB_MIN;if(b<a)return null;
+  const min=a+Math.floor(r()*(b-a+1)),[name,g,col,task]=HERO_NBOSS[Math.floor(r()*HERO_NBOSS.length)];
+  return heroBossAt({key:d+'n',kind:'n',name,base:name,g,col,task,stat:'vitality'},d,min,HERO_DB_MIN);
+}
+const heroBossList=d=>[heroDBoss(d),heroWBoss(d),heroNBoss(d)].filter(Boolean);
+const heroBossGet=key=>({d:heroDBoss,w:heroWBoss,n:heroNBoss}[key[10]||'d'])(key.slice(0,10));
 const heroBossWins=()=>Object.values(heroP.bosses||{}).filter(b=>b.won).length;
-const heroBossXP=(d,L)=>Math.round((80+5*L)*(heroPerk('hunter',d)?1.5:1));
+const heroBossXP=(b,L)=>Math.round((80+5*L)*(heroPerk('hunter',b.d)?1.5:1)*(b.kind==='w'?3:b.kind==='n'?1.5:b.elite?2:1));
+const heroBossLoot=b=>b.kind==='w'?3:b.kind==='n'||b.elite?2:1;
 let heroBossSent='',heroBossTest=0;
 function heroBossSync(){
   const N=window.DayTrackNative;if(!N||!N.bosses)return;
-  const now=Date.now(),list=[0,1,2].map(i=>heroDBoss(dAdd(heroTod(),i))).filter(b=>b&&!b.won&&b.until>now&&b.d!==heroBossShown)
-    .map(b=>({at:b.at,until:b.until,title:`⚔️ ${b.name} appeared!`,body:`${b.task}. You have ${HERO_DB_MIN} minutes to beat it. Open DayTrack to fight!`}));
+  const now=Date.now(),list=[0,1,2].flatMap(i=>heroBossList(dAdd(heroTod(),i))).filter(b=>!b.won&&b.until>now&&b.key!==heroBossShown)
+    .map(b=>({at:b.at,until:b.until,title:`${b.kind==='w'?'🌍 World boss':b.kind==='n'?'🌙 Nightmare':'⚔️'} ${b.name} appeared!`,body:`${b.task}. You have ${Math.round((b.until-b.at)/6e4)} minutes. Open DayTrack to fight!`}));
   if(heroBossTest>now)list.unshift({at:heroBossTest-25*6e4,until:heroBossTest,title:'⚔️ Test boss appeared!',body:'This is how a daily boss rings. Open DayTrack to stop it.'});
   const j=JSON.stringify(list);if(j!==heroBossSent){heroBossSent=j;try{N.bosses(j);}catch(e){}}
 }
@@ -908,28 +944,41 @@ function heroBossTestRing(){
 }
 let heroBossShown='',heroAlarm=null;
 function heroBossWatch(){
-  const b=heroDBoss(heroTod());if(!b||b.state!=='on'||heroBossShown===b.d)return;
-  if(document.visibilityState==='visible')heroBossOpen(true);
-  else if(!window.DayTrackNative&&window.Notification&&Notification.permission==='granted'&&heroBossShown!=='n'+b.d){heroBossShown='n'+b.d;try{new Notification(`⚔️ ${b.name} appeared!`,{body:`${b.task}. ${HERO_DB_MIN} minutes to beat it!`});}catch(e){}}
+  const b=heroBossList(heroTod()).find(x=>x.state==='on'&&heroBossShown!==x.key);if(!b)return;
+  if(document.visibilityState==='visible')heroBossOpen(true,b.key);
+  else if(!window.DayTrackNative&&window.Notification&&Notification.permission==='granted'&&heroBossShown!=='n'+b.key){heroBossShown='n'+b.key;try{new Notification(`⚔️ ${b.name} appeared!`,{body:`${b.task}. Beat it in time!`});}catch(e){}}
 }
 if(typeof document!=='undefined'){
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(heroBossWatch,500);});
   setInterval(()=>{try{heroBossWatch();}catch(e){}},15000);
 }
-function heroBossOpen(alarm){
+function heroBossOpen(alarm,key){
   const N=window.DayTrackNative;if(N&&N.stopBoss)try{N.stopBoss();}catch(e){}
-  const b=heroDBoss(heroTod());if(typeof switchTab==='function'&&document.body.dataset.tab!=='hero'){heroSeg='quests';switchTab('hero');}else heroSetSeg('quests');
+  const list=heroBossList(heroTod()),b=key?list.find(x=>x.key===key):list.find(x=>x.state==='on');
+  if(typeof switchTab==='function'&&document.body.dataset.tab!=='hero'){heroSeg='quests';switchTab('hero');}else heroSetSeg('quests');
   if(!b||b.state!=='on')return;
-  heroBossShown=b.d;heroBossSync();heroDefs(); // seen in the app: the phone doesn't need to ring for it
+  const fresh=heroBossShown!==b.key;heroBossShown=b.key;heroBossSync();heroDefs(); // seen in the app: the phone doesn't need to ring for it
   let el=document.getElementById('hero-boss');if(!el){el=document.createElement('div');el.id='hero-boss';document.body.appendChild(el);}
-  el.innerHTML=`<div class="hbx"><div class="hbx-t">⚠ A BOSS APPEARED ⚠</div><div class="hbx-em">${hIc(b.g,b.col,'burst',120)}</div><div class="hbx-n">${esc(b.name)}</div>
-    <div class="boss-hp hbx-hp"><i id="hbx-hp" style="width:100%"></i></div><div class="hbx-task">${esc(b.task)}</div><div class="hbx-time" id="hbx-time"></div>
-    <button class="hbx-go" onclick="heroBossWin()">⚔️ I did it! Strike!</button><button class="hbx-later" onclick="heroBossClose()">Not yet</button>
-    <div class="hbx-r">Win: +${heroBossXP(b.d,heroState().L)} XP and loot · Run out of time: −10% XP today</div></div>`;
+  const help=typeof gwenCfg!=='undefined'&&gwenCfg.key&&heroP.gwenHelp!==heroTod(),line=heroBossLine(b,'taunt');
+  const strike=b.kind==='w'?`<div class="hbx-ws">${b.tasks.map((t,i)=>b.hits.includes(i)?`<div class="hbx-w got">✓ ${esc(t)}</div>`:`<button class="hbx-w" onclick="heroBossWin('${b.key}',${i})">⚔️ ${esc(t)}</button>`).join('')}</div>`
+    :`<div class="hbx-task">${esc(b.task)}</div>`;
+  el.innerHTML=`<div class="hbx${b.kind==='n'?' night':b.kind==='w'?' world':b.elite?' elite':''}"><div class="hbx-t">${b.kind==='w'?'🌍 WORLD BOSS 🌍':b.kind==='n'?'🌙 A NIGHTMARE CRAWLS IN 🌙':b.elite?'⚠ AN ELITE BOSS APPEARED ⚠':'⚠ A BOSS APPEARED ⚠'}</div><div class="hbx-em">${hIc(b.g,b.col,'burst',120)}</div><div class="hbx-n">${esc(b.name)}</div>
+    <div class="hbx-q">“${esc(line)}”</div>
+    <div class="boss-hp hbx-hp"><i id="hbx-hp" style="width:${b.kind==='w'?100-b.hits.length/3*100:100}%"></i></div>${strike}<div class="hbx-time" id="hbx-time"></div>
+    ${b.kind==='w'?'':`<button class="hbx-go" onclick="heroBossWin('${b.key}')">⚔️ I did it! Strike!</button>`}${help?`<button class="hbx-later hbx-gwen" onclick="heroGwenHelp('${b.key}')">💜 Gwen, help! (+5 minutes, once a day)</button>`:''}<button class="hbx-later" onclick="heroBossClose()">Not yet</button>
+    <div class="hbx-r">Win: +${heroBossXP(b,heroState().L)} XP and ${heroBossLoot(b)>1?heroBossLoot(b)+' loot':'loot'}${b.kind==='d'?` · Run out of time: −10% XP today`:' · No curse if it gets away'}</div></div>`;
   el.classList.add('on');
   const tick=()=>{const t=document.getElementById('hbx-time');if(!t)return clearInterval(heroBossOpen.t);const ms=b.until-Date.now();if(ms<=0){heroBossClose();renderHero();return;}t.textContent=`${Math.floor(ms/6e4)}:${String(Math.floor(ms/1e3)%60).padStart(2,'0')} left`;};
   clearInterval(heroBossOpen.t);heroBossOpen.t=setInterval(tick,1000);tick();
   if(alarm)heroAlarmOn();
+  if(fresh){heroSfx('roar');setTimeout(()=>heroSay(line),900);}
+}
+// Gwen buys you five more minutes, once a day
+function heroGwenHelp(key){
+  const tod=heroTod();if(heroP.gwenHelp===tod)return;const b=heroBossGet(key);if(!b||b.state!=='on')return;
+  heroP.bosses=heroP.bosses||{};const rec=heroP.bosses[key]=heroP.bosses[key]||{};rec.ext=(rec.ext||0)+5;heroP.gwenHelp=tod;
+  if(typeof gwenBond==='function')gwenBond(2);save();heroBossSent='';heroBossSync();heroBossOpen(false,key);
+  showToast('💜 Gwen: I bought you 5 more minutes. Go go go!');
 }
 // A siren from the app itself (the phone app also rings like an alarm)
 function heroAlarmOn(){
@@ -947,24 +996,44 @@ function heroSiren(){const ctx=typeof gwenAudioCtx==='function'?gwenAudioCtx():n
 }
 function heroAlarmOff(){if(!heroAlarm)return;if(heroAlarm.a)heroAlarm.a.pause();clearInterval(heroAlarm.iv);try{heroAlarm.o&&heroAlarm.o.stop();}catch(e){}heroAlarm=null;if(navigator.vibrate)navigator.vibrate(0);}
 function heroBossClose(){heroAlarmOff();clearInterval(heroBossOpen.t);const el=document.getElementById('hero-boss');if(el)el.classList.remove('on');}
-function heroBossWin(){
-  const b=heroDBoss(heroTod());if(!b||b.state!=='on')return heroBossClose();
-  heroAlarmOff();const L=heroState().L,xp=heroBossXP(b.d,L);
-  heroP.bosses=heroP.bosses||{};heroP.bosses[b.d]={won:Date.now(),name:b.name};
+function heroBossWin(key,hit){
+  const b=key?heroBossGet(key):heroBossList(heroTod()).find(x=>x.state==='on');if(!b||b.state!=='on')return heroBossClose();
+  heroAlarmOff();heroSfx('hit');heroP.bosses=heroP.bosses||{};const rec=heroP.bosses[b.key]=heroP.bosses[b.key]||{};
+  if(b.kind==='w'){rec.hits=[...new Set([...(rec.hits||[]),hit])];if(rec.hits.length<3){save();heroBossOpen(false,b.key);return;}}
+  const L=heroState().L,xp=heroBossXP(b,L),now=Date.now();
+  rec.won=now;rec.name=b.name;
   const lim=dAdd(b.d,-60);for(const d in heroP.bosses)if(d<lim)delete heroP.bosses[d];
+  const bk=heroBook(),e=bk[b.base]=bk[b.base]||{n:0,first:b.d};e.n++;if(b.elite)e.el=(e.el||0)+1;if(!e.best||now-b.at<e.best)e.best=now-b.at;
   heroBonus(b.d,xp,{[b.stat]:1,discipline:.3},`Beat ${b.name}`,'⚔️','dboss');
-  const loot=heroLoot(b.d),hp=document.getElementById('hbx-hp');if(hp)hp.style.width='0%';
+  let loot=[];for(let i=0;i<heroBossLoot(b);i++)loot=loot.concat(heroLoot(b.d));
+  const hp=document.getElementById('hbx-hp');if(hp)hp.style.width='0%';
   const box=document.querySelector('#hero-boss .hbx');if(box)box.classList.add('hit');
-  setTimeout(()=>{heroBossClose();save();renderTaskList();renderHero();
-    heroShow(`<div class="hl-t">BOSS DEFEATED</div><div class="hl-em">${hIc('trophy','gold','burst',96)}</div><div class="hl-big" style="font-size:24px;">${esc(b.name)}</div><div class="hl-row">+${xp} XP</div>${loot.map(heroItemLine).join('')}`,5000,true);
+  heroSay(heroBossLine(b,'die'));
+  setTimeout(()=>{heroBossClose();save();renderTaskList();renderHero();heroSfx('fanfare');
+    heroShow(`<div class="hl-t">${b.kind==='w'?'WORLD BOSS DOWN':'BOSS DEFEATED'}</div><div class="hl-em">${hIc('trophy','gold','burst',96)}</div><div class="hl-big" style="font-size:24px;">${esc(b.name)}</div><div class="hl-row">+${xp} XP · beaten in ${Math.max(1,Math.round((now-b.at)/6e4))} min</div>${loot.map(heroItemLine).join('')}`,5000,true);
     if(typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLine==='function')gwenLine(`You beat ${b.name}! That's my hero 💜`,'happy');},900);
+}
+// What a boss says: a taunt when it shows up, a groan when it falls (read out where the device can speak)
+function heroBossLine(b,k){
+  const r=heroRng(b.key+k),t=b.task.charAt(0).toLowerCase()+b.task.slice(1);
+  const L=k==='die'?[`No… beaten by Rayan…`,`This isn't over. I'll be back.`,`Impossible! How are you this strong?`,`Arrgh… remember my name…`]
+    :b.kind==='n'?[`It's late, Rayan. Stay up with me… forever.`,`Sleep is for the weak. Keep scrolling…`,`The night is mine. You'll never ${t}.`]
+    :[`I am ${b.name}. You'll never ${t}!`,`${b.name} has come for your XP!`,`Ha! ${b.task}? You're too weak, Rayan!`,`Your excuses feed me. Try to ${t}, I dare you.`];
+  return L[Math.floor(r()*L.length)];
+}
+function heroSay(text){
+  if(heroP.sfx===false||!window.speechSynthesis||typeof SpeechSynthesisUtterance==='undefined')return;
+  try{const u=new SpeechSynthesisUtterance(text);u.pitch=.1;u.rate=.85;u.volume=1;const v=speechSynthesis.getVoices().filter(v=>v.lang.startsWith('en'));if(v.length)u.voice=v.find(x=>/male|david|guy|daniel/i.test(x.name))||v[0];speechSynthesis.speak(u);}catch(e){}
 }
 async function heroBossSettings(){
   const c=heroBossCfg();
-  sheet(`<div style="text-align:center;">${hIc('skull','red','burst',56)}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">Daily bosses</div>
-    <div class="hm-sub" style="text-align:center;margin:4px 0 12px;">One boss a day at a random time. You get ${HERO_DB_MIN} minutes to do its challenge.</div>
+  sheet(`<div style="text-align:center;">${hIc('skull','red','burst',56)}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">Battle settings</div>
+    <div class="hm-sub" style="text-align:center;margin:4px 0 12px;">One boss a day at a random time (sometimes an elite). You get ${HERO_DB_MIN} minutes to do its challenge. A world boss comes every Friday night.</div>
     <label class="hx-row"><input type="checkbox" id="hb-on" ${c.on?'checked':''}> Bosses on</label>
     <div class="hx-row">Between <input class="inp" type="time" id="hb-from" value="${c.from}" style="width:auto;"> and <input class="inp" type="time" id="hb-to" value="${c.to}" style="width:auto;"></div>
+    <label class="hx-row"><input type="checkbox" id="hb-night" ${c.night!==false?'checked':''}> Nightmare bosses after 10 PM (inside these hours)</label>
+    <label class="hx-row"><input type="checkbox" id="hb-hp" ${heroP.hpOff?'':'checked'}> Health (HP): missed tasks hurt, at 0 you fall</label>
+    <label class="hx-row"><input type="checkbox" id="hb-sfx" ${heroP.sfx===false?'':'checked'}> Sounds and boss voices</label>
     <div class="hm-sub" style="margin:6px 0 10px;">On the phone it rings like an alarm, even on silent, until you open DayTrack. Do Not Disturb can still hold it back.</div>
     <div style="display:flex;gap:8px;margin-bottom:8px;"><button class="hk-btn" onclick="heroAlarm?heroAlarmOff():heroAlarmOn()">🥁 Hear the music</button><button class="hk-btn" onclick="heroBossTestRing()">📳 Test the alarm</button></div>
     <button class="hk-btn pri" style="width:100%;" onclick="heroBossSave()">Save</button>${closeBtn}`);
@@ -972,28 +1041,62 @@ async function heroBossSettings(){
 function heroBossSave(){
   const c=heroBossCfg(),f=document.getElementById('hb-from').value,t=document.getElementById('hb-to').value;
   const was=c.on;c.on=document.getElementById('hb-on').checked;if(/^\d\d:\d\d$/.test(f))c.from=f;if(/^\d\d:\d\d$/.test(t))c.to=t;
-  if(c.to<=c.from)c.to='22:00';
-  if(c.on&&!was)c.onAt=Date.now();else{const b=heroDBoss(heroTod());if(b&&b.state==='gone')c.onAt=Date.now();} // moving the hours never curses today
-  heroBossSent='';save();closeOv('dt-ov');renderHero();renderHeroMini();showToast(c.on?'⚔️ Bosses on':'Bosses off');
+  if(c.to<=c.from)c.to='22:00';c.night=document.getElementById('hb-night').checked;
+  const hpWas=!heroP.hpOff;heroP.hpOff=!document.getElementById('hb-hp').checked;if(!heroP.hpOff&&!hpWas)heroP.hpOn=heroTod(); // switching HP back on starts fresh
+  heroP.sfx=document.getElementById('hb-sfx').checked;
+  if(c.on&&!was)c.onAt=Date.now();else if(heroBossList(heroTod()).some(b=>b.state==='gone'))c.onAt=Date.now(); // moving the hours never curses today
+  heroBossSent='';save();closeOv('dt-ov');renderHero();renderHeroMini();showToast(c.on?'⚔️ Saved':'Bosses off');
 }
 function heroBossCard(mini){
-  const b=heroDBoss(heroTod());
-  if(!b)return mini?'':`<div class="dboss off" onclick="heroBossSettings()"><div style="flex:1">Daily bosses are off</div><span class="minibtn">Turn on</span></div>`;
-  if(mini&&b.state==='soon')return'';
-  const ic=hIc(b.state==='won'?'trophy':b.state==='gone'?'skull':b.g,b.state==='won'?'gold':b.state==='gone'?'dark':b.col,'burst',mini?40:54);
-  const left=Math.max(0,Math.ceil((b.until-Date.now())/6e4));
-  const body={soon:`<b>A boss is lurking…</b><small>It shows up at a random time between ${c12(heroBossCfg().from)} and ${c12(heroBossCfg().to)}. Keep your phone close.</small>`,
-    on:`<b>${esc(b.name)} is here!</b><small>${esc(b.task)} · ${left} min left</small>`,
-    won:`<b>${esc(b.name)} defeated</b><small>Next boss tomorrow. Wins so far: ${heroBossWins()}</small>`,
-    gone:`<b>${esc(b.name)} escaped</b><small>Its curse: −10% XP today. Be ready tomorrow.</small>`}[b.state];
-  return`<div class="dboss ${b.state}"${b.state==='on'?' onclick="heroBossOpen()"':''}>${ic}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;">${body}</div>${b.state==='on'?'<span class="hq-claim">Fight</span>':mini?'':`<button class="minibtn" onclick="event.stopPropagation();heroBossSettings()">⚙</button>`}</div>`;
+  const list=heroBossList(heroTod());
+  if(!heroBossCfg().on)return mini?'':`<div class="dboss off" onclick="heroBossSettings()"><div style="flex:1">Daily bosses are off</div><span class="minibtn">Turn on</span></div>`;
+  return list.filter(b=>!(b.state==='soon'&&(mini||b.kind==='n'))).map(b=>{
+    const hide=b.state==='soon'&&b.kind==='d',ic=hIc(b.state==='won'?'trophy':b.state==='gone'||hide?'skull':b.g,b.state==='won'?'gold':b.state==='gone'||hide?'dark':b.col,'burst',mini?40:54); // a lurking boss stays a mystery
+    const left=Math.max(0,Math.ceil((b.until-Date.now())/6e4)),W=b.kind==='w';
+    const body={soon:W?`<b>🌍 World boss tonight</b><small>${esc(b.name)} arrives at ${new Date(b.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}. One hour, three strikes, big loot.</small>`
+        :`<b>A boss is lurking…</b><small>It shows up at a random time between ${c12(heroBossCfg().from)} and ${c12(heroBossCfg().to)}. Keep your phone close.</small>`,
+      on:`<b>${esc(b.name)} is here!</b><small>${W?`${b.hits.length}/3 strikes`:esc(b.task)} · ${left} min left</small>`,
+      won:`<b>${esc(b.name)} defeated</b><small>${W?'See you next Friday':'Next boss tomorrow'}. Wins so far: ${heroBossWins()}</small>`,
+      gone:`<b>${esc(b.name)} escaped</b><small>${b.kind==='d'?'Its curse: −10% XP today. Be ready tomorrow.':'No curse this time.'}</small>`}[b.state];
+    return`<div class="dboss ${b.state}${b.kind!=='d'||(b.elite&&!hide)?' '+(b.kind==='n'?'night':b.kind==='w'?'world':'elite'):''}"${b.state==='on'?` onclick="heroBossOpen(false,'${b.key}')"`:''}>${ic}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;">${body}</div>${b.state==='on'?'<span class="hq-claim">Fight</span>':mini?'':`<button class="minibtn" onclick="event.stopPropagation();heroBossSettings()">⚙</button>`}</div>`;
+  }).join('')||(mini?'':`<div class="dboss off" onclick="heroBossSettings()"><div style="flex:1">No boss today</div><span class="minibtn">⚙</span></div>`);
 }
 const c12=hm=>{const[h,m]=hm.split(':').map(Number);return`${(h+11)%12+1}${m?':'+String(m).padStart(2,'0'):''} ${h<12?'AM':'PM'}`;};
 // Bosses beaten, for Gwen's house: each becomes a trophy parcel
 function heroTrophies(){
-  const lim=dAdd(heroTod(),-14),out=Object.entries(heroP.bosses||{}).filter(([d,b])=>b.won&&d>=lim).map(([d,b])=>({id:'b-'+d,date:d,reason:`Rayan beat ${b.name||'a daily boss'}`}));
+  const lim=dAdd(heroTod(),-14),out=Object.entries(heroP.bosses||{}).filter(([d,b])=>b.won&&d.slice(0,10)>=lim).map(([d,b])=>({id:'b-'+d,date:d.slice(0,10),reason:`Rayan beat ${b.name||'a daily boss'}`}));
   Object.entries(heroP.claims||{}).forEach(([k,c])=>{if(k[0]==='w'&&c.d>=lim&&/^Quest: Earn \d+ XP$/.test(c.what||''))out.push({id:'w-'+k.slice(1,11),date:c.d,reason:'Rayan defeated the weekly boss'});});
   return out;
+}
+
+// ── Boss book: every boss you've met, with your fastest win; the ones you haven't met are dark ──
+function heroBook(){
+  if(!heroP.book){heroP.book={};Object.entries(heroP.bosses||{}).forEach(([k,r])=>{if(!r.won)return;const b=heroBossGet(k),base=b?b.base:(r.name||'').replace(/^Elite /,'');if(!base)return;
+    const e=heroP.book[base]=heroP.book[base]||{n:0,first:k.slice(0,10)};e.n++;if(b&&(!e.best||r.won-b.at<e.best))e.best=r.won-b.at;});}
+  return heroP.book;
+}
+const heroMin=ms=>ms?`${Math.floor(ms/6e4)}:${String(Math.floor(ms/1e3)%60).padStart(2,'0')}`:'–';
+function heroBookHtml(){
+  const bk=heroBook(),all=[...HERO_DBOSS.map(x=>[x[0],x[1],x[2],x[3],'Daily']),...HERO_WBOSS.map(x=>[x[0],x[1],x[2],'Three strikes in an hour','World']),...HERO_NBOSS.map(x=>[x[0],x[1],x[2],x[3],'Nightmare'])];
+  const met=all.filter(x=>bk[x[0]]).length;
+  return`<div class="hm-sub" style="margin-bottom:8px;">${met} of ${all.length} bosses beaten. Tap one you've beaten to fight it again for practice (no XP, just your best time).</div><div class="book">`
+    +all.map(([n,g,c,t,k])=>{const e=bk[n];return e?`<button class="bk" onclick="heroReplay('${esc(n).replace(/'/g,'\\\'')}')">${hIc(g,c,'burst',44)}<b>${esc(n)}</b><small>${k} · beaten ${e.n}×${e.el?` (${e.el} elite)`:''}</small><small>Fastest ${heroMin(e.best)}${e.rb?` · practice ${heroMin(e.rb)}`:''}</small></button>`
+      :`<div class="bk lock">${hIc('lock','dark','burst',44)}<b>???</b><small>${k} boss</small></div>`;}).join('')+'</div>';
+}
+// Practice fight: a stopwatch and a strike button, for a best time
+function heroReplay(name){
+  const x=[...HERO_DBOSS,...HERO_NBOSS].find(b=>b[0]===name)||HERO_WBOSS.find(b=>b[0]===name);if(!x)return;
+  const task=x[3]||'Do 3 of your daily boss challenges',t0=Date.now();heroDefs();closeOv('dt-ov');
+  let el=document.getElementById('hero-boss');if(!el){el=document.createElement('div');el.id='hero-boss';document.body.appendChild(el);}
+  el.innerHTML=`<div class="hbx"><div class="hbx-t">PRACTICE FIGHT</div><div class="hbx-em">${hIc(x[1],x[2],'burst',110)}</div><div class="hbx-n">${esc(name)}</div><div class="boss-hp hbx-hp"><i id="hbx-hp" style="width:100%"></i></div>
+    <div class="hbx-task">${esc(task)}</div><div class="hbx-time" id="hbx-time">0:00</div><button class="hbx-go" onclick="heroReplayWin('${esc(name).replace(/'/g,'\\\'')}',${t0})">⚔️ Done! Strike!</button><button class="hbx-later" onclick="heroBossClose()">Give up</button>
+    <div class="hbx-r">Practice: no XP, no curse. Best time ${heroMin((heroBook()[name]||{}).rb)}</div></div>`;
+  el.classList.add('on');heroSfx('roar');
+  clearInterval(heroBossOpen.t);heroBossOpen.t=setInterval(()=>{const t=document.getElementById('hbx-time');if(!t)return clearInterval(heroBossOpen.t);t.textContent=heroClock(Date.now()-t0);},1000);
+}
+function heroReplayWin(name,t0){
+  const ms=Date.now()-t0,e=heroBook()[name];heroSfx('hit');if(e&&(!e.rb||ms<e.rb)){e.rb=ms;save();showToast(`🏆 New best time: ${heroMin(ms)}`);}else showToast(`⏱️ ${heroMin(ms)} · best ${heroMin(e&&e.rb)}`);
+  const hp=document.getElementById('hbx-hp');if(hp)hp.style.width='0%';setTimeout(()=>{heroBossClose();renderHero();},700);
 }
 
 // ── Class evolution at level 20 ──
@@ -1194,7 +1297,7 @@ function heroHeatmap(h){
   const by={};h.aw.forEach(a=>by[a.d]=(by[a.d]||0)+a.xp);
   const vals=Object.values(by).filter(v=>v>0).sort((a,b)=>a-b),q=f=>vals[Math.floor(vals.length*f)]||1,lv=[q(.25),q(.5),q(.75)];
   const tod=heroTod(),start=dAdd(heroWeekStart(tod),-52*7);let cells='',d=start,i=0;
-  for(;d<=tod;d=dAdd(d,1),i++){const v=by[d]||0,l=v<=0?0:v<=lv[0]?1:v<=lv[1]?2:v<=lv[2]?3:4;cells+=`<rect x="${Math.floor(i/7)*7}" y="${(i%7)*7}" width="6" height="6" rx="1.2" class="hm${l}"><title>${fmtDay(d)}: ${v} XP</title></rect>`;}
+  for(;d<=tod;d=dAdd(d,1),i++){const v=by[d]||0,l=v<=0?0:v<=lv[0]?1:v<=lv[1]?2:v<=lv[2]?3:4;cells+=`<rect x="${Math.floor(i/7)*7}" y="${(i%7)*7}" width="6" height="6" rx="1.2" class="hm${l}" onclick="heroDay('${d}')"><title>${fmtDay(d)}: ${v} XP</title></rect>`;}
   return`<svg viewBox="0 0 371 49" class="heat">${cells}</svg><div class="heat-k">Less <i class="hm0"></i><i class="hm1"></i><i class="hm2"></i><i class="hm3"></i><i class="hm4"></i> More · ${Object.keys(by).filter(k=>k>=start&&by[k]>0).length} active days this year</div>`;
 }
 
@@ -1215,8 +1318,11 @@ async function heroShare(){
   const h=heroState(),c=document.createElement('canvas');c.width=1080;c.height=1350;const x=c.getContext('2d');
   const g=x.createLinearGradient(0,0,1080,1350);g.addColorStop(0,'#1E1B4B');g.addColorStop(.6,'#4C1D95');g.addColorStop(1,'#7C2D12');x.fillStyle=g;x.fillRect(0,0,1080,1350);
   const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(heroRankIc(h.L,260,true));
-  await new Promise(r=>{img.onload=r;img.onerror=r;});try{x.drawImage(img,410,60,260,260);}catch(e){}
-  x.textAlign='center';x.fillStyle='#fff';x.font='800 80px system-ui,sans-serif';x.fillText('RAYAN',540,400);
+  await new Promise(r=>{img.onload=r;img.onerror=r;});
+  if(heroP.avImg){const av=new Image();av.src=heroP.avImg;await new Promise(r=>{av.onload=r;av.onerror=r;});x.save();x.beginPath();x.arc(540,190,128,0,Math.PI*2);x.clip();try{x.drawImage(av,412,62,256,256);}catch(e){}x.restore();
+    x.lineWidth=8;x.strokeStyle='#F5B82E';x.beginPath();x.arc(540,190,130,0,Math.PI*2);x.stroke();try{x.drawImage(img,630,220,120,120);}catch(e){}}
+  else try{x.drawImage(img,410,60,260,260);}catch(e){}
+  x.textAlign='center';x.fillStyle='#fff';x.font='800 80px system-ui,sans-serif';x.fillText((heroP.name||'Rayan').toUpperCase(),540,400);
   x.font='600 38px system-ui,sans-serif';x.fillStyle='#FCD34D';const t=heroTitle(heroAchievements(h));x.fillText(`${t?'「'+t+'」 ':''}${h.rank} ${h.cls}`,540,460);
   x.font='800 120px system-ui,sans-serif';x.fillText(`LEVEL ${h.L}`,540,600);
   const b=heroBar(h.xp,HERO_B);x.fillStyle='rgba(255,255,255,.18)';x.fillRect(140,640,800,22);x.fillStyle='#F59E0B';x.fillRect(140,640,8*b.pct,22);
@@ -1225,7 +1331,7 @@ async function heroShare(){
     x.fillStyle='#fff';x.font='600 30px system-ui,sans-serif';x.fillText(s.name,cx,cy);x.fillStyle='#FCD34D';x.textAlign='right';x.fillText('Lv '+L,cx+390,cy);x.textAlign='left';
     x.fillStyle='rgba(255,255,255,.15)';x.fillRect(cx,cy+14,390,10);x.fillStyle={Body:'#EF4444',Mind:'#3B82F6',Spirit:'#A855F7',Life:'#22C55E'}[s.g];x.fillRect(cx,cy+14,3.9*sb.pct,10);});
   x.textAlign='center';x.fillStyle='rgba(255,255,255,.55)';x.font='500 26px system-ui,sans-serif';x.fillText(`DayTrack · ${fmtDay(heroTod())}`,540,1310);
-  saveImage(c.toDataURL('image/png'),'rayan-level-'+h.L+'.png');
+  saveImage(c.toDataURL('image/jpeg',.92),`${(heroP.name||'rayan').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-level-${h.L}.jpg`);
 }
 
 // Avatar frame grows with your level
@@ -1251,9 +1357,10 @@ function heroBagHtml(h){
   const inv=heroInv();
   return`<div class="bag">${Object.entries(HERO_ITEMS).map(([k,[n,d,g,c]])=>`<div class="bag-i">${hIc(g,inv[k]>0?c:'dark','hex',40)}<b>${n} ×${inv[k]||0}</b><small>${d}</small>${inv[k]>0?`<button class="minibtn" onclick="heroUse('${k}')">Use</button>`:''}</div>`).join('')}</div>
     <div class="sl" style="display:flex;justify-content:space-between;align-items:center;">Shop<span class="coin">🪙 ${heroCoins(h).toLocaleString()} coins</span></div><div class="hm-sub" style="margin-bottom:6px;">You earn a coin for every 10 XP.</div>`
-    +Object.entries(HERO_ITEMS).map(([k,[n,,g,c,cost]])=>`<div class="shop">${hIc(g,c,'hex',26)}<span>${n}</span><button class="minibtn" onclick="heroBuy('item','${k}')">🪙 ${cost}</button></div>`).join('')
-    +heroShop().map(r=>`<div class="shop">${hIc('trophy','gold','circle',26)}<span>${esc(r.name)}</span><button class="minibtn" onclick="heroBuy('reward','${r.id}')">🪙 ${r.cost}</button><button class="hx-x" onclick="heroDelReward('${r.id}')">×</button></div>`).join('')
-    +`<button class="minibtn" style="margin-top:8px;width:100%;padding:10px;" onclick="heroAddReward()">+ Add a real-life reward</button>`
+    +Object.entries(HERO_ITEMS).filter(x=>x[1][4]).map(([k,[n,,g,c,cost]])=>`<div class="shop">${hIc(g,c,'hex',26)}<span>${n}</span><button class="minibtn" onclick="heroBuy('item','${k}')">🪙 ${cost}</button></div>`).join('')
+    +heroShop().map(r=>`<div class="shop">${hIc('trophy','gold','circle',26)}<span>${esc(r.name)}</span><button class="hx-x${heroP.pin===r.id?' on':''}" title="Save up for this" onclick="heroPinReward('${r.id}')">${heroP.pin===r.id?'★':'☆'}</button><button class="minibtn" onclick="heroBuy('reward','${r.id}')">🪙 ${r.cost}</button><button class="hx-x" onclick="heroDelReward('${r.id}')">×</button></div>`).join('')
+    +`<button class="minibtn" style="margin-top:8px;width:100%;padding:10px;" onclick="heroAddReward()">+ Add a real-life reward</button><div class="hm-sub" style="margin-top:6px;">Tap ☆ on a reward to save up for it: its bar shows on your Tasks card.</div>`
+    +`<div class="sl">Crafting</div>`+heroCraftHtml()
     +((heroP.buys||[]).length?`<div class="hm-sub" style="margin-top:8px;">Last bought: ${esc(heroP.buys[heroP.buys.length-1].name)}, ${fmtDay(heroP.buys[heroP.buys.length-1].d)}</div>`:'');
 }
 function heroGearHtml(){
@@ -1267,4 +1374,307 @@ function heroFlags(old){
   const a=document.getElementById('hero-flag-hard'),b=document.getElementById('hero-flag-boss'),hard=!!(a&&a.checked);
   return{hard,hardFrom:hard?(old&&old.hard&&old.hardFrom)||heroTod():null,boss:!!(b&&b.checked)};
 }
+// ════════ Round 5 ════════
+
+// ── Sounds: made on the spot (no files): coin for XP, fanfare for level-ups and wins, hit, boss roar ──
+function heroSfx(k){
+  if(heroP.sfx===false)return;const ctx=typeof gwenAudioCtx==='function'?gwenAudioCtx():null;if(!ctx)return;
+  try{
+    const t=ctx.currentTime+.02,out=ctx.createGain();out.gain.value=.22;out.connect(ctx.destination);
+    const tone=(f,a,d,type='square',f2)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;o.frequency.setValueAtTime(f,t+a);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+a+d);
+      g.gain.setValueAtTime(0,t+a);g.gain.linearRampToValueAtTime(1,t+a+.01);g.gain.exponentialRampToValueAtTime(.001,t+a+d);o.connect(g);g.connect(out);o.start(t+a);o.stop(t+a+d+.05);};
+    const noise=(a,d,lp)=>{const n=Math.floor(ctx.sampleRate*d),buf=ctx.createBuffer(1,n,ctx.sampleRate),x=buf.getChannelData(0);for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*(1-i/n);
+      const s=ctx.createBufferSource(),f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=lp;s.buffer=buf;s.connect(f);f.connect(out);s.start(t+a);};
+    if(k==='coin'){tone(988,0,.08);tone(1319,.07,.25);}
+    else if(k==='fanfare'){[523,659,784,1047].forEach((f,i)=>tone(f,i*.11,i===3?.7:.14,'sawtooth'));tone(784,.33,.7,'triangle');}
+    else if(k==='hit'){noise(0,.25,1800);tone(160,0,.3,'sine',50);if(navigator.vibrate)navigator.vibrate(80);}
+    else if(k==='roar'){noise(0,1.2,500);tone(110,0,1.2,'sawtooth',45);tone(82,.05,1.1,'square',40);}
+  }catch(e){}
+}
+
+// ── Health: missed tasks and escaped bosses hurt, done tasks and finished days heal.
+// At 0 you fall (−50% XP) until a day with 3 finished tasks revives you at 50 HP. Worked out from saved data, from the day HP started. ──
+let heroHPc=null;
+function heroHP(){
+  if(heroP.hpOff)return null;
+  const tod=heroTod();if(!heroP.hpOn)heroP.hpOn=tod;
+  const key=[tod,heroP.hpOn,tasks.length,tasks.reduce((n,t)=>n+t.done.length,0),completedDays.length,JSON.stringify(heroP.bosses||{}).length].join('|');
+  if(heroHPc&&heroHPc.key===key)return heroHPc;
+  const doneOn=d=>tasks.filter(t=>t.done.includes(d)).length,fall={};let hp=100,down=false,from=heroP.hpOn<dAdd(tod,-400)?dAdd(tod,-400):heroP.hpOn;
+  for(let d=from;d<tod;d=dAdd(d,1)){
+    const n=doneOn(d);
+    if(down){if(n>=3){down=false;hp=50;}else fall[d]=true;continue;}
+    const dow=new Date(d+'T12:00:00').getDay(),miss=tasks.filter(t=>(t.createdAt||'')<=d&&(t.recurring?isTodayTask(t,d,dow):t.date===d)&&!t.done.includes(d)).length,b=heroDBoss(d);
+    hp=Math.min(100,hp+Math.min(30,5*n)+(completedDays.includes(d)?20:0)-10*miss-(b&&b.state==='gone'?15:0));
+    if(hp<=0){hp=0;down=true;}
+  }
+  const n=doneOn(tod),rev=down&&n>=3;if(down&&!rev)fall[tod]=true;
+  return heroHPc={key,hp:rev?50:down?0:hp,down:down&&!rev,rev,n,fall};
+}
+function heroHPHtml(){
+  const x=heroHP();if(!x)return'';
+  if(x.down)return`<div class="hp-row down" onclick="event.stopPropagation();showToast('Finish 3 tasks today to revive at 50 HP')">💀 <b>Fallen</b><span>Revive: finish 3 tasks today (${x.n}/3). Until then −50% XP</span></div>`;
+  return`<div class="hp-row${x.hp<=30?' low':''}" onclick="event.stopPropagation();showToast('❤️ Each missed task: −10 HP at midnight. Escaped boss −15. Done tasks +5 each, a finished day +20')"><span>${x.rev?'✨ Revived':'❤️ HP'}</span><div class="bar"><i style="width:${x.hp}%"></i></div><b>${x.hp}</b></div>`;
+}
+
+// ── Ghost: you this week against you last week, up to the same day ──
+function heroGhost(h){const tod=heroTod(),ws=heroWeekStart(tod),sum=(a,b)=>h.aw.filter(x=>x.d>=a&&x.d<=b).reduce((n,x)=>n+x.xp,0);return{me:sum(ws,tod),gh:sum(dAdd(ws,-7),dAdd(tod,-7)),full:sum(dAdd(ws,-7),dAdd(ws,-1))};}
+function heroGhostHtml(h){
+  const g=heroGhost(h),mx=Math.max(1,g.me,g.gh),d=g.me-g.gh;
+  return`<div class="ghost"><div><span>You</span><div class="bar"><i style="width:${g.me/mx*100}%"></i></div><b>${g.me.toLocaleString()}</b></div><div class="gh"><span>👻 Ghost</span><div class="bar"><i style="width:${g.gh/mx*100}%"></i></div><b>${g.gh.toLocaleString()}</b></div>
+    <small>${d>0?`${d.toLocaleString()} XP ahead of last week's you`:d<0?`${(-d).toLocaleString()} XP behind last week's you. Catch up!`:'Neck and neck'} · the ghost is last week up to the same day (it ended on ${g.full.toLocaleString()})</small></div>`;
+}
+
+// ── Weekly ranked: Bronze III to Master I. Beat your 4-week average by 10% to rank up (50% = two steps), drop under 80% and you fall a step ──
+const HERO_LADDER=['Bronze','Silver','Gold','Platinum','Diamond','Master'];
+function heroRanked(h){
+  const ws=heroWeekStart(heroTod());if(!heroP.rkOn)heroP.rkOn=ws;
+  const wk={};h.aw.forEach(a=>{const w=heroWeekStart(a.d);wk[w]=(wk[w]||0)+a.xp;});
+  const avg=w=>Math.max(150,[1,2,3,4].reduce((n,i)=>n+(wk[dAdd(w,-7*i)]||0),0)/4);
+  let st=3,last=0;for(let w=heroP.rkOn<dAdd(ws,-7*104)?dAdd(ws,-7*104):heroP.rkOn;w<ws;w=dAdd(w,7)){const x=wk[w]||0,a=avg(w);last=x>=1.5*a?2:x>=1.1*a?1:x<.8*a?-1:0;st=Math.max(0,Math.min(17,st+last));}
+  const a=avg(ws);return{st,t:Math.floor(st/3),name:`${HERO_LADDER[Math.floor(st/3)]} ${['III','II','I'][st%3]}`,x:wk[ws]||0,up:Math.round(1.1*a),keep:Math.round(.8*a),last};
+}
+function heroRankedHtml(h){
+  const r=heroRanked(h),col=['bronze','silver','gold','teal','blue','legend'][r.t];
+  return`<div class="ssn">${hIc(['shield','shield','hex','gem','diamond','crown'][r.t],col,r.t>=4?'burst':'hex',56)}<div style="flex:1;min-width:0;"><small>Weekly ranked${r.last>0?' · ranked up last week ▲':r.last<0?' · dropped last week ▼':''}</small><b>${r.name}</b>
+    <div class="bar" style="height:7px;margin:6px 0 3px;"><i style="width:${Math.min(100,r.x/r.up*100)}%"></i></div><small>${r.x>=r.up?'Rank-up locked in for Sunday ✓':`${(r.up-r.x).toLocaleString()} XP more this week to rank up`} · under ${r.keep.toLocaleString()} you drop</small></div></div>`;
+}
+
+// ── Monthly pass: 30 tiers, sized to your usual XP, a reward every 5 tiers and a title at 30 ──
+function heroPass(h){
+  const tod=heroTod(),m=tod.slice(0,7),ps=heroP.pass=heroP.pass||{};
+  if(!ps[m]){const l=h.aw.filter(a=>a.d>=dAdd(tod,-30)&&a.d<tod).reduce((n,a)=>n+a.xp,0);ps[m]={size:Math.max(100,Math.round(l/30/10)*10),got:[]};for(const k of Object.keys(ps).sort().slice(0,-12))delete ps[k];}
+  const p=ps[m],xp=h.aw.filter(a=>a.d.startsWith(m)).reduce((n,a)=>n+a.xp,0);
+  return{m,p,xp,tier:Math.min(30,Math.floor(xp/p.size))};
+}
+const heroPassTitle=m=>new Date(m+'-15T12:00:00').toLocaleString('en',{month:'long'})+' Champion';
+function heroPassHtml(h){
+  const P=heroPass(h),rw=[5,10,15,20,25,30];
+  return`<div class="hm-sub" style="margin-bottom:6px;">Tier ${P.tier}/30 · a tier every ${P.p.size} XP this month · ${P.tier<30?`${(P.p.size*(P.tier+1)-P.xp).toLocaleString()} XP to tier ${P.tier+1}`:'Complete!'}</div><div class="pass">${Array.from({length:30},(_,i)=>{const t=i+1,r=rw.includes(t);return`<i class="${t<=P.tier?'on':''}${r?' rw':''}">${r?(P.p.got.includes(t)?'✓':t===30?'👑':'🎁'):''}</i>`;}).join('')}</div>`
+    +`<div class="hm-sub" style="margin-top:6px;">🎁 Loot every 5 tiers · 👑 Tier 30: double loot and the title “${heroPassTitle(P.m)}”</div>`
+    +rw.filter(t=>t<=P.tier&&!P.p.got.includes(t)).map(t=>`<button class="hq-chest" onclick="heroPassClaim(${t})">${t===30?'👑':'🎁'} Claim the tier ${t} reward</button>`).join('');
+}
+function heroPassClaim(t){
+  const P=heroPass(heroState());if(t>P.tier||P.p.got.includes(t))return;P.p.got.push(t);
+  let loot=heroLoot();if(t===30)loot=loot.concat(heroLoot());save();renderHero();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">PASS TIER ${t}</div><div class="hl-em">${hIc(t===30?'crown':'chest','gold','burst',90)}</div>${t===30?`<div class="hl-row">New title: <b>${heroPassTitle(P.m)}</b></div>`:''}${loot.map(heroItemLine).join('')}`,4500,true);
+}
+
+// ── Mastery stars: keep training a finished skill (its practice task) for stars at 10, 25, 50, 100 and 200 days ──
+const HERO_STARS=[10,25,50,100,200];
+function heroStarDays(sk){const p=(heroP.skills||{})[sk.id];if(!p||(p.at||[]).length<sk.steps.length)return null;const from=p.at[p.at.length-1];return tasks.filter(t=>t.skill===sk.id).flatMap(t=>t.done).filter(d=>d>from).sort();}
+function heroStars(sk){const ds=heroStarDays(sk);if(!ds)return null;const n=HERO_STARS.filter(x=>ds.length>=x).length;return{n,days:ds.length,next:HERO_STARS[n]};}
+function heroStarsHtml(s){
+  const x=heroStars(s)||{n:0,days:0,next:10},has=tasks.some(t=>t.skill===s.id);
+  return`<div style="text-align:center;font-size:15px;font-weight:700;color:var(--grntxt);margin-top:12px;">🏆 Skill mastered! <span class="stars">${'★'.repeat(x.n)}${'☆'.repeat(5-x.n)}</span></div><div class="hm-sub" style="text-align:center;margin-top:4px;">${x.next?`Train it on ${x.next-x.days} more day${x.next-x.days>1?'s':''} for star ${x.n+1} (+${100*(x.n+1)} XP)`:'All 5 mastery stars!'}</div>`
+    +(has?'':`<button class="hk-btn" style="width:100%;margin-top:8px;" onclick="heroTrain('${s.id}')">⭐ Keep training for stars</button>`);
+}
+function heroTrain(id){
+  const s=heroSkill(id);if(!s)return;
+  if(!tasks.some(t=>t.skill===id))tasks.push({id:uid(),name:`${s.name} training`,notes:'Keep it sharp for mastery stars',icon:s.ic,iconType:'emoji',recurring:true,days:[...(s.days||[])],done:[],date:null,
+    priority:'none',notifStyle:'default',showInCal:true,createdAt:heroTod(),subtasks:[],reminder:null,reminderLastFired:null,reminded:[],count:null,skill:id});
+  save();renderTaskList();heroOpenSkill(id);renderHero();showToast('⭐ Training task added');
+}
+
+// ── Dungeon: 5 floors, each cleared by finishing a task in time (60, 50, 40, 30, 20 minutes). Once a day ──
+const HERO_DG=[60,50,40,30,20];
+function heroDg(){const g=heroP.dg;if(!g||g.d!==heroTod())return null;const left=g.f<5&&!g.fail?g.t+HERO_DG[g.f]*6e4-Date.now():0;return{...g,left,over:g.f>=5||!!g.fail||left<=0};}
+function heroDgStart(){
+  const tod=heroTod();if(heroP.dg&&heroP.dg.d===tod)return;
+  heroP.dg={d:tod,t:Date.now(),f:0,n:tasks.filter(t=>t.done.includes(tod)).length};save();renderHero();renderHeroMini();heroSfx('roar');
+  showToast('🏰 Floor 1: finish any task within 60 minutes');
+}
+function heroDgTick(silent){
+  const g=heroP.dg,tod=heroTod();if(!g||g.d!==tod||g.f>=5||g.fail)return;
+  const n=tasks.filter(t=>t.done.includes(tod)).length;if(silent||n<=g.n){g.n=Math.max(g.n,n);return;}
+  g.n=n;if(Date.now()-g.t>HERO_DG[g.f]*6e4){g.fail=1;return;}
+  g.f++;g.t=Date.now();heroBonus(tod,20*g.f,{discipline:1,endurance:.2},`Dungeon floor ${g.f}`,'🏰','dungeon');
+  if(g.f===5){heroBonus(tod,100,{discipline:1},'Dungeon cleared','🏰','dungeon');const loot=heroLoot(tod);
+    setTimeout(()=>{heroSfx('fanfare');heroShow(`<div class="hl-t">DUNGEON CLEARED</div><div class="hl-em">${hIc('chest','gold','burst',90)}</div><div class="hl-row">+400 XP in total</div>${loot.map(heroItemLine).join('')}`,5000,true);},1200);}
+  else setTimeout(()=>showToast(`🏰 Floor ${g.f} cleared! Floor ${g.f+1}: next task within ${HERO_DG[g.f]} minutes`),1200);
+}
+function heroDgHtml(){
+  const g=heroDg();
+  if(!g)return`<div class="hm-sub" style="margin-bottom:8px;">5 floors. Clear each one by finishing a task in time: 60, 50, 40, 30, then 20 minutes. Floors pay 20 to 100 XP and the end pays a chest. Once a day.</div><button class="hq-chest" onclick="heroDgStart()">🏰 Enter the dungeon</button>`;
+  return`<div class="dg">${[1,2,3,4,5].map(i=>`<i class="${i<=g.f?'on':i===g.f+1&&!g.over?'now':''}">${i<=g.f?'✓':i}</i>`).join('')}</div><div class="hm-sub" style="margin-top:6px;">${g.f>=5?'Cleared! Come back tomorrow.':g.over?`The dungeon closed on floor ${g.f+1}. Try again tomorrow.`:`Floor ${g.f+1}: finish a task within ${Math.max(1,Math.ceil(g.left/6e4))} min (+${20*(g.f+1)} XP)`}</div>`;
+}
+
+// ── Crafting: turn spare items into better ones ──
+const HERO_CRAFT=[['reroll',3,'potion'],['potion',2,'freeze'],['potion',3,'mega']];
+function heroCraft(i){
+  const[a,n,b]=HERO_CRAFT[i],inv=heroInv();if((inv[a]||0)<n)return showToast(`You need ${n} ${HERO_ITEMS[a][0]}s`);
+  inv[a]-=n;inv[b]=(inv[b]||0)+1;save();renderHero();heroSfx('coin');
+  heroShow(`<div class="hl-t">CRAFTED</div><div class="hl-em">${hIc(HERO_ITEMS[b][2],HERO_ITEMS[b][3],'burst',80)}</div><div class="hl-big" style="font-size:24px;">${HERO_ITEMS[b][0]}</div><div class="hl-rank">${HERO_ITEMS[b][1]}</div>`,3500,true);
+}
+function heroCraftHtml(){
+  const inv=heroInv();
+  return HERO_CRAFT.map(([a,n,b],i)=>`<div class="shop">${hIc(HERO_ITEMS[a][2],HERO_ITEMS[a][3],'hex',24)}<span>${n} ${HERO_ITEMS[a][0]}${n>1?'s':''} → ${HERO_ITEMS[b][0]}</span><button class="minibtn" ${(inv[a]||0)>=n?'':'disabled'} onclick="heroCraft(${i})">Craft</button></div>`).join('');
+}
+
+// ── Gwen's daily bet: she picks one of today's tasks and bets you can't finish it before a time ──
+function heroBet(){
+  if(typeof gwenCfg==='undefined'||!gwenCfg.key)return null;
+  const tod=heroTod(),now=new Date(),b=heroP.bet;if(b&&b.d===tod)return b;
+  const h=now.getHours();if(h<8||h>=19)return null;
+  const open=tasks.filter(t=>isTodayTask(t,tod,now.getDay())&&!t.done.includes(tod));if(!open.length)return null;
+  const r=heroRng(tod+'bet'),t=open[Math.floor(r()*open.length)];
+  return heroP.bet={d:tod,id:t.id,name:t.name,by:Math.min(22,h+2+Math.floor(r()*3)),won:null};
+}
+function heroBetTick(silent){
+  const b=heroP.bet,tod=heroTod();if(!b||b.d!==tod||b.won!==null)return;
+  const t=tasks.find(x=>x.id===b.id),late=new Date().getHours()>=b.by;
+  if(!t||!t.done.includes(tod)){if(late)b.won=false;return;}
+  if(silent)return; // a tick from another device: that one settles the bet
+  b.won=!late;const say=typeof gwenLine==='function'?gwenLine:()=>{};
+  if(b.won){heroBonus(tod,60,{charisma:1,discipline:.5},`Won Gwen's bet: ${b.name}`,'💜','bet');if(typeof gwenBond==='function')gwenBond(5);setTimeout(()=>say(`Okay okay, you win! "${b.name}" before ${c12(b.by+':00')}. I'm impressed 💜`,'happy'),1500);}
+  else setTimeout(()=>say('Hehe, I won the bet! But you still did it, so I\'m proud of you 💜','happy'),1500);
+}
+function heroBetHtml(full){
+  const b=heroBet();if(!b)return full?`<div class="hm-sub">${typeof gwenCfg!=='undefined'&&gwenCfg.key?'Each day between 8 AM and 7 PM Gwen bets you can\'t finish one of your tasks in time. Win for +60 XP and bond points.':'Set Gwen up on the Gwen tab and she\'ll bet you can\'t finish one of your tasks in time.'}</div>`:'';const lost=b.won===false||(b.won===null&&new Date().getHours()>=b.by);
+  return`<div class="bet${b.won?' won':lost?' lost':''}">${hIc('heart','pink','shield',34)}<div style="flex:1;min-width:0;"><b>${b.won?'You won Gwen\'s bet!':lost?'Gwen won the bet':'Gwen bets you can\'t…'}</b><small>“${esc(b.name)}” before ${c12(b.by+':00')}${b.won?' · +60 XP and bond points':lost?'. There\'s always tomorrow 😏':' · win: +60 XP and bond points'}</small></div></div>`;
+}
+
+// ── Friend duel: race a friend's DayTrack to the most XP this week. Your PC hosts it like a shared list (same link, same /s/ path) ──
+const heroDuelText=()=>{const tod=heroTod(),ws=heroWeekStart(tod),xp=heroState().aw.filter(a=>a.d>=ws&&a.d<=tod).reduce((n,a)=>n+a.xp,0);return`${(heroP.name||'Rayan').replace(/\|/g,'')}|${xp}|${ws}`;};
+let heroDuelData=null,heroDuelAt=0;
+async function heroDuelPush(force){
+  const D=heroP.duel;if(!D||(!force&&Date.now()-heroDuelAt<6e4))return;heroDuelAt=Date.now();
+  const opts={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{id:D.me,text:heroDuelText(),done:false,at:Date.now()}]})};
+  try{const r=D.host?await lifeApi('share?code='+D.code,opts):await fetch(D.url+'/data',opts);
+    heroDuelData=r.status===404?{gone:1}:r.ok?{items:((await r.json()).items||[]).filter(i=>!i.del)}:{err:1};}catch(e){heroDuelData={err:1};}
+  const el=document.getElementById('hero-duel');if(el)el.innerHTML=heroDuelHtml();
+}
+const heroHex=()=>[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
+async function heroDuelNew(){
+  const url=typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof shareLink==='function'?shareLink('x'):'';
+  if(!url)return showToast('Add your PC address (https://…ts.net) and Gwen key in Settings first');
+  const code=heroHex(),me='p'+uid();
+  try{const r=await lifeApi('share?code='+code,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'⚔️ DayTrack duel',items:[{id:me,text:heroDuelText(),done:false,at:Date.now()}]})});if(!r.ok)throw 0;}
+  catch(e){return showToast('❌ Your PC needs to be on to start a duel');}
+  heroP.duel={code,url:shareLink(code),me,host:true};save();await heroDuelPush(true);heroDuelShare();renderHero();
+}
+function heroDuelShare(){
+  const D=heroP.duel;if(!D)return;const msg=`Duel me in DayTrack: most XP this week wins! In DayTrack go to Level → Story → Friend duel → Join one, and paste this link: ${D.url}`;
+  if(navigator.share)navigator.share({title:'DayTrack duel',text:msg}).catch(()=>{});else navigator.clipboard.writeText(msg).then(()=>showToast('📋 Invite copied'));
+}
+async function heroDuelJoin(){
+  const m=((await ask('Paste the duel link your friend sent','https://…/s/…'))||'').trim().match(/https:\/\/[^\s]+?\/s\/([a-f0-9]{32})/);
+  if(!m)return showToast('That doesn\'t look like a duel link');
+  const name=((await ask('Your name in the duel','e.g. Sami'))||'').trim().slice(0,20);if(!name)return;
+  heroP.name=name;heroP.duel={code:m[1],url:m[0],me:'p'+uid()};heroDuelData=null;save();await heroDuelPush(true);renderHero();
+}
+function heroDuelLeave(){if(!confirm('Leave this duel?'))return;heroP.duel=null;heroDuelData=null;save();renderHero();}
+function heroDuelHtml(){
+  const D=heroP.duel;
+  if(!D)return`<div class="hm-sub" style="margin-bottom:8px;">Race a friend to the most XP this week (Sunday to Saturday). They need the DayTrack app too. Your PC hosts the duel, like a shared list.</div><div style="display:flex;gap:8px;"><button class="hk-btn pri" onclick="heroDuelNew()">⚔️ Start a duel</button><button class="hk-btn" onclick="heroDuelJoin()">🔗 Join one</button></div>`;
+  if(!heroDuelData){setTimeout(()=>heroDuelPush(true),0);return'<div class="hm-sub">Loading the duel…</div>';}
+  if(heroDuelData.gone)return`<div class="hm-sub" style="margin-bottom:8px;">This duel has ended.</div><button class="minibtn" onclick="heroP.duel=null;heroDuelData=null;save();renderHero();">OK</button>`;
+  const ws=heroWeekStart(heroTod()),ps=(heroDuelData.items||[]).map(i=>{const[n,x,w]=String(i.text).split('|');return{me:i.id===D.me,n:n||'?',x:w===ws?+x||0:0};}).sort((a,b)=>b.x-a.x),mx=Math.max(1,...ps.map(p=>p.x));
+  return(heroDuelData.err?'<div class="hm-sub" style="margin-bottom:6px;">Couldn\'t reach the duel right now (is the host\'s PC on?).</div>':'')
+    +ps.map((p,i)=>`<div class="duel${p.me?' me':''}"><b>${i===0&&p.x?'👑 ':''}${esc(p.n)}${p.me?' (you)':''}</b><div class="bar"><i style="width:${p.x/mx*100}%"></i></div><span>${p.x.toLocaleString()}</span></div>`).join('')
+    +(ps.length<2&&!heroDuelData.err?'<div class="hm-sub" style="margin:6px 0;">Waiting for your friend to join…</div>':'')
+    +`<div style="display:flex;gap:8px;margin-top:8px;">${D.host?'<button class="minibtn" onclick="heroDuelShare()">📤 Invite</button>':''}<button class="minibtn" onclick="heroDuelPush(true)">↻ Refresh</button><button class="minibtn" onclick="heroDuelLeave()">Leave</button></div>`;
+}
+
+// ── For the phone's home-screen widget: level bar, HP and today's boss (the widget works out the boss state itself) ──
+function heroWidget(){
+  try{
+    const h=heroState(),b=heroBar(h.xp,HERO_B),hp=heroHP(),bs=heroBossList(heroTod()).filter(x=>!(x.kind==='n'&&x.state==='soon'));
+    const x=bs.find(z=>z.state==='on')||bs.find(z=>z.state==='soon')||bs[bs.length-1];
+    return{L:h.L,pct:b.pct,left:b.left,hp:hp?hp.hp:-1,down:!!(hp&&hp.down),boss:x?{name:x.name,at:x.at,until:x.until,won:!!x.won,cursed:x.kind==='d'}:null};
+  }catch(e){return null;}
+}
+
+// ── A day of the year map: what earned that day's XP ──
+function heroDay(d){
+  const aw=heroAwards().filter(a=>a.d===d),t=aw.reduce((n,a)=>n+a.xp,0);
+  sheet(`<div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">${fmtDay(d)}</div><div class="hm-sub" style="text-align:center;margin:2px 0 10px;">${t>0?'+':''}${t} XP</div>`
+    +(aw.length?aw.map(a=>`<div class="hl-g" style="padding:7px 0;border-bottom:1px solid var(--brd);"><span>${a.ic} ${esc(a.what)}</span><b>${a.xp>0?'+':''}${a.xp}</b></div>`).join(''):'<div class="hm-sub">No XP that day.</div>')+closeBtn);
+}
+// The real-life reward you're saving for, on the Tasks card
+function heroPinHtml(h){
+  const r=heroP.pin&&heroShop().find(x=>x.id===heroP.pin);if(!r)return'';const c=heroCoins(h);
+  return`<div class="pin" onclick="event.stopPropagation();heroSetSeg('bag');switchTab('hero')"><span>🎯 ${esc(r.name)}</span><div class="bar"><i style="width:${Math.min(100,c/r.cost*100)}%"></i></div><small>${c>=r.cost?'Ready to buy!':`${c}/${r.cost} 🪙`}</small></div>`;
+}
+function heroPinReward(id){heroP.pin=heroP.pin===id?null:id;save();renderHero();renderHeroMini();}
+
+// ── Steps: every day's real count (the Walk habit stops at its goal), a weekly challenge on a race track, and walk mode ──
+// heroP.steps {date: steps} comes from the phone (life.js readSteps) and syncs, so the PC shows it too.
+function heroStepsIn(s){
+  if(!s)return;const st=heroP.steps=heroP.steps||{},tod=heroTod();let ch=false;
+  for(const[d,n]of Object.entries({...(s.days||{}),[tod]:s.today}))if(d<=tod&&n>(st[d]||0)){st[d]=n;ch=true;}
+  for(const d in st)if(d<dAdd(tod,-400))delete st[d];
+  if(ch){heroWrite();if(document.body.dataset.tab==='hero')renderHero();if(heroWalkOn)heroWalkDraw();}
+}
+const heroStepsOn=()=>!!heroP.steps&&Object.keys(heroP.steps).length>0;
+const heroWeekSteps=ws=>{const st=heroP.steps||{};let n=0;for(let i=0;i<7;i++)n+=st[dAdd(ws,i)]||0;return n;};
+const HERO_STEP_GOALS=[35000,50000,70000,100000];
+// Challenge XP: 200 plus 1 per 250 steps of the goal, on the day the goal is reached
+function heroStepAwards(add){
+  Object.entries(heroP.stepCh||{}).forEach(([ws,goal])=>{let n=0;for(let i=0;i<7;i++){const d=dAdd(ws,i);n+=(heroP.steps||{})[d]||0;if(n>=goal){add(d,200+Math.round(goal/250),{endurance:1,legs:.5},`Step challenge: ${goal.toLocaleString()} steps`,'👟','steps');break;}}});
+}
+// Oval running track; the runner (you) goes round once for the whole week's goal, the ghost is last week
+function heroTrack(frac,ghost,size=320){
+  const W=size,H=size*.56,r=H/2-14,x0=W/2-(W/2-14-r),x1=W/2+(W/2-14-r),cy=H/2;
+  const path=`M${W/2} ${cy+r} L${x1} ${cy+r} A${r} ${r} 0 0 0 ${x1} ${cy-r} L${x0} ${cy-r} A${r} ${r} 0 0 0 ${x0} ${cy+r} Z`;
+  const f=Math.max(0,Math.min(1,frac)),g=Math.max(0,Math.min(1,ghost||0)),id='tk'+Math.random().toString(36).slice(2,6);
+  const av=heroP.avImg?`<clipPath id="${id}c"><circle r="13"/></clipPath><circle r="15" fill="#F59E0B"/><image href="${heroP.avImg}" x="-13" y="-13" width="26" height="26" clip-path="url(#${id}c)"/>`:`<circle r="15" fill="#F59E0B"/><text text-anchor="middle" dominant-baseline="central" font-size="16">${esc(heroP.av||'🧑')}</text>`;
+  return`<svg viewBox="0 0 ${W} ${H}" class="track"><path d="${path}" class="tk-out"/><path d="${path}" class="tk-lane" id="${id}"/><path d="${path}" class="tk-done" pathLength="1" stroke-dasharray="${f} 1"/>
+    <line x1="${W/2}" y1="${cy+r-12}" x2="${W/2}" y2="${cy+r+12}" class="tk-line"/><text x="${W/2}" y="${cy+4}" text-anchor="middle" class="tk-c">${Math.round(f*100)}%</text>
+    ${g?`<g opacity=".45"><animateMotion dur="1.6s" fill="freeze" keyPoints="0;${g}" keyTimes="0;1" calcMode="linear"><mpath href="#${id}"/></animateMotion><circle r="11" fill="#94A3B8"/><text text-anchor="middle" dominant-baseline="central" font-size="12">👻</text></g>`:''}
+    <g><animateMotion dur="2s" fill="freeze" keyPoints="0;${f}" keyTimes="0;1" calcMode="spline" keySplines=".4 0 .2 1"><mpath href="#${id}"/></animateMotion>${av}</g></svg>`;
+}
+function heroStepsHtml(){
+  const tod=heroTod(),ws=heroWeekStart(tod),st=heroP.steps||{},today=st[tod]||0,week=heroWeekSteps(ws),goal=(heroP.stepCh||{})[ws];
+  const phone=typeof has==='function'&&has('steps'),on=typeof lifeDev!=='undefined'&&lifeDev.steps;
+  if(!heroStepsOn())return phone&&!on?`<div class="hm-sub" style="margin-bottom:8px;">Count your steps with the phone's own step counter, take weekly challenges and watch yourself run laps.</div><button class="hk-btn pri" style="width:100%;" onclick="toggleSteps()">🚶 Turn on steps</button>`
+    :`<div class="hm-sub">${phone?'Waiting for the first step count…':'Steps come from the phone app: turn them on there (Settings → Steps) and they show up here too.'}</div>`;
+  const dayN=Math.round((new Date(tod+'T12:00:00')-new Date(ws+'T12:00:00'))/864e5)+1,lastW=dAdd(ws,-7);
+  let ghostSoFar=0;for(let i=0;i<dayN;i++)ghostSoFar+=st[dAdd(lastW,i)]||0;
+  const bars=Array.from({length:7},(_,i)=>{const d=dAdd(ws,i),n=st[d]||0;return{d,n};}),mx=Math.max(1,...bars.map(b=>b.n),goal?goal/7:0);
+  const past=Object.keys(heroP.stepCh||{}).filter(w=>w<ws).sort().reverse().slice(0,4);
+  return`<div class="st-top"><div><b>${today.toLocaleString()}</b><small>steps today · ${(today*.00075).toFixed(1)} km</small></div>${phone?'<button class="hk-btn pri" onclick="heroWalk()">🚶 Walk mode</button>':''}</div>`
+    +(goal?`<div class="hm-sub" style="margin:10px 0 4px;">This week's challenge: <b>${week.toLocaleString()} / ${goal.toLocaleString()}</b> steps${week>=goal?' · done! 🏆':` · ${(goal-week).toLocaleString()} to go, ${8-dayN} day${8-dayN>1?'s':''} left`}</div>${heroTrack(week/goal,ghostSoFar/goal)}<div class="hm-sub" style="text-align:center;">One lap = your goal · 👻 = you last week by today (${ghostSoFar.toLocaleString()})</div>`
+      :`<div class="hm-sub" style="margin:10px 0 6px;">${week.toLocaleString()} steps this week. Take a challenge to race it on the track:</div><div class="st-goals">${HERO_STEP_GOALS.map(g=>`<button class="minibtn" onclick="heroStepGoal(${g})">${g/1000}k</button>`).join('')}<button class="minibtn" onclick="heroStepGoal()">Other</button></div>`)
+    +`<div class="st-bars">${bars.map(b=>`<div title="${fmtDay(b.d)}: ${b.n.toLocaleString()}"><i style="height:${Math.round(b.n/mx*100)}%"${b.d===tod?' class="now"':''}></i><small>${'SMTWTFS'[new Date(b.d+'T12:00:00').getDay()]}</small></div>`).join('')}</div>`
+    +(past.length?`<div class="sl">Past challenges</div>`+past.map(w=>{const n=heroWeekSteps(w),g=heroP.stepCh[w];return`<div class="hl-g" style="padding:5px 0;"><span>${n>=g?'🏆':'❌'} Week of ${fmtDay(w)}</span><b>${n.toLocaleString()} / ${g.toLocaleString()}</b></div>`;}).join(''):'');
+}
+async function heroStepGoal(g){
+  if(!g)g=Math.max(5000,Math.min(500000,parseInt(String(await ask('Steps goal for this week','e.g. 60000')||'').replace(/[^0-9]/g,''),10)||0));if(!g)return;
+  const ws=heroWeekStart(heroTod());heroP.stepCh=heroP.stepCh||{};heroP.stepCh[ws]=g;save();renderHero();
+  showToast(`👟 Challenge on: ${g.toLocaleString()} steps by Saturday night (+${200+Math.round(g/250)} XP)`);
+}
+// Last week's result, once, when a new week starts
+function heroStepWeekCheck(){
+  const ws=heroWeekStart(heroTod()),lw=dAdd(ws,-7),g=(heroP.stepCh||{})[lw];if(!g||heroP.stepSeen===lw)return;heroP.stepSeen=lw;
+  const n=heroWeekSteps(lw);setTimeout(()=>heroShow(`<div class="hl-t">WEEK RESULTS</div><div class="hl-em">${hIc(n>=g?'trophy':'flag',n>=g?'gold':'dark','burst',90)}</div><div class="hl-big" style="font-size:26px;">${n.toLocaleString()} steps</div><div class="hl-row">Challenge: ${g.toLocaleString()} ${n>=g?'✓ beaten!':'✗ not this time'}</div>${heroTrack(n/g,0,260)}`,6000,n>=g),2500);
+}
+// Walk mode: you on a road, live steps since you started, distance and time
+let heroWalkOn=null;
+const heroClock=ms=>`${Math.floor(ms/6e4)}:${String(Math.floor(ms/1e3)%60).padStart(2,'0')}`;
+function heroWalk(){
+  if(typeof readSteps==='function')readSteps();const tod=heroTod();
+  heroWalkOn={t:Date.now(),s0:(heroP.steps||{})[tod]||0,d:tod};
+  let el=document.getElementById('hero-walk');if(!el){el=document.createElement('div');el.id='hero-walk';document.body.appendChild(el);}
+  el.classList.add('on');heroWalkDraw();
+  clearInterval(heroWalk.t);heroWalk.t=setInterval(()=>{if(typeof readSteps==='function')readSteps();heroWalkDraw();},8000);
+  clearInterval(heroWalk.c);heroWalk.c=setInterval(()=>{const c=document.getElementById('wk-time');if(c&&heroWalkOn)c.textContent=heroClock(Date.now()-heroWalkOn.t);},1000);
+}
+function heroWalkDraw(){
+  const el=document.getElementById('hero-walk');if(!el||!heroWalkOn)return;
+  const tod=heroTod(),now=(heroP.steps||{})[tod]||0,n=Math.max(0,now-heroWalkOn.s0),t=typeof stepTask==='function'?stepTask():null,goal=t&&t.count?t.count.target:6000;
+  el.innerHTML=`<div class="wk"><div class="wk-sky"></div><div class="wk-road"><div class="wk-me">${heroP.avImg?`<img src="${heroP.avImg}" alt="">`:`<span>${esc(heroP.av||'🧑')}</span>`}</div></div>
+    <div class="wk-n">${n.toLocaleString()}</div><div class="wk-l">steps this walk</div>
+    <div class="wk-row"><div><b>${(n*.00075).toFixed(2)}</b><small>km</small></div><div><b id="wk-time">${heroClock(Date.now()-heroWalkOn.t)}</b><small>time</small></div><div><b>${Math.round(n*.04)}</b><small>kcal</small></div></div>
+    <div class="wk-goal"><div class="bar"><i style="width:${Math.min(100,now/goal*100)}%"></i></div><small>${now.toLocaleString()} / ${goal.toLocaleString()} today</small></div>
+    <button class="hbx-go" onclick="heroWalkEnd()">🏁 End walk</button><div class="hbx-r">Steps update every few seconds from your phone's counter</div></div>`;
+}
+function heroWalkEnd(){
+  clearInterval(heroWalk.t);clearInterval(heroWalk.c);const w=heroWalkOn;heroWalkOn=null;
+  const el=document.getElementById('hero-walk');if(el)el.classList.remove('on');if(!w)return;
+  const n=Math.max(0,((heroP.steps||{})[heroTod()]||0)-w.s0),min=Math.round((Date.now()-w.t)/6e4);
+  if(n>0||min>0){heroP.walks=(heroP.walks||[]).concat({d:w.d,steps:n,min}).slice(-60);save();}
+  renderHero();showToast(`🏁 Walk done: ${n.toLocaleString()} steps in ${min} min`);
+}
+
 if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',heroDefs);

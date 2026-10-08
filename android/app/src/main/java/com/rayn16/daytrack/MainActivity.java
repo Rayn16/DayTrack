@@ -7,6 +7,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.WallpaperManager;
 import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
@@ -33,7 +34,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
+import android.os.Environment;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -592,6 +595,26 @@ public class MainActivity extends Activity {
                     });
                 } catch (Exception e) { unlocked(false); }
             });
+        }
+
+        // A picture made in the app (character card, postcard): saved to Pictures/DayTrack, then the share sheet opens.
+        // The web page can't do either inside the app (no navigator.share, no downloads).
+        @JavascriptInterface public boolean shareImage(String dataUrl, String name) {
+            if (Build.VERSION.SDK_INT < 29 || dataUrl == null) return false;
+            try {
+                byte[] bytes = Base64.decode(dataUrl.substring(dataUrl.indexOf(',') + 1), Base64.DEFAULT);
+                String mime = dataUrl.startsWith("data:image/jpeg") ? "image/jpeg" : "image/png";
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.Images.Media.DISPLAY_NAME, name);
+                v.put(MediaStore.Images.Media.MIME_TYPE, mime);
+                v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/DayTrack");
+                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                if (uri == null) return false;
+                try (OutputStream o = getContentResolver().openOutputStream(uri)) { o.write(bytes); }
+                Intent send = new Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                runOnUiThread(() -> startActivity(Intent.createChooser(send, "Share")));
+                return true;
+            } catch (Exception e) { return false; }
         }
 
         @JavascriptInterface public boolean setWallpaper(String dataUrl) {

@@ -271,6 +271,7 @@
       <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="quests" onclick="heroSetSeg('quests')">⚔️ Quests</button><button class="rb" data-s="bag" onclick="heroSetSeg('bag')">🎒 Bag</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
       <div class="dcol">
         <div class="card" id="hero-card"></div>
+        <div class="card hseg-stats"><div class="cl">Steps</div><div id="hero-steps"></div></div>
         <div class="card hseg-stats" id="hero-body-card"><div class="cl">Your body · tap a part</div><div id="hero-body"></div></div>
         <div class="card hseg-stats"><div class="cl">Your shape</div><div id="hero-radar"></div></div>
         <div class="card hseg-stats"><div class="cl">Stats · tap one to see what trained it</div><div id="hero-stats"></div></div>
@@ -286,16 +287,23 @@
         <div class="card hseg-log"><div class="cl">Weekly report card</div><div id="hero-report"></div></div>
         <div class="card hseg-log"><div class="cl">You vs last month</div><div id="hero-vs"></div></div>
         <div class="card hseg-log"><div class="cl">Season</div><div id="hero-season"></div></div>
+        <div class="card hseg-log"><div class="cl">Ranked</div><div id="hero-ranked"></div></div>
+        <div class="card hseg-log"><div class="cl">Friend duel</div><div id="hero-duel"></div></div>
         <div class="card hseg-log"><div class="cl">Your year</div><div id="hero-heat"></div></div>
         <div class="card hseg-log"><div class="cl">Journal · one line a night</div><div id="hero-journal"></div></div>
       </div>
       <div class="dcol">
-        <div class="card hseg-quests"><div class="cl">Daily boss</div><div id="hero-dboss"></div></div>
+        <div class="card hseg-quests"><div class="cl">Bosses</div><div id="hero-dboss"></div></div>
+        <div class="card hseg-quests" id="hero-bet-card"><div class="cl">Gwen's bet</div><div id="hero-bet"></div></div>
+        <div class="card hseg-quests"><div class="cl">Dungeon</div><div id="hero-dg"></div></div>
+        <div class="card hseg-quests"><div class="cl">You vs your ghost</div><div id="hero-ghost"></div></div>
+        <div class="card hseg-quests"><div class="cl">Monthly pass</div><div id="hero-pass"></div></div>
         <div class="card hseg-quests"><div class="cl">Quests · claim rewards when done</div><div id="hero-quests"></div></div>
         <div class="card hseg-quests"><div class="cl">Story</div><div id="hero-story"></div></div>
         <div class="card hseg-quests"><div class="cl">Bounty board</div><div id="hero-bounty"></div></div>
         <div class="card hseg-quests"><div class="cl">Mini bosses</div><div id="hero-mboss"></div></div>
         <div class="card hseg-quests"><div class="cl">Bad habits I'm quitting</div><div id="hero-quit"></div></div>
+        <div class="card hseg-quests"><div class="cl">Boss book</div><div id="hero-book"></div></div>
         <div class="card hseg-log"><div class="cl">Achievements and titles</div><div id="hero-ach"></div></div>
         <div class="card hseg-log"><div class="cl">Your story</div><div id="hero-log"></div></div>
       </div>
@@ -2969,6 +2977,8 @@ async function openPostcard(i){
 }
 function postcardWallpaper(){if(!confirm('Set this as your phone\'s wallpaper?'))return;showToast(DayTrackNative.setWallpaper(postcardImg)?'📱 Wallpaper set 💜':'❌ Couldn\'t set the wallpaper');}
 async function saveImage(dataUrl,name){
+  const N=window.DayTrackNative;
+  if(N&&N.shareImage)return showToast(N.shareImage(dataUrl,name)?'💾 Saved to your gallery (Pictures/DayTrack)':'Couldn\'t save the picture');
   const blob=await(await fetch(dataUrl)).blob(),file=new File([blob],name,{type:blob.type});
   if(navigator.canShare&&navigator.canShare({files:[file]}))return navigator.share({files:[file]}).catch(()=>{});
   const a=document.createElement('a');a.href=dataUrl;a.download=name;a.click();
@@ -3099,7 +3109,7 @@ function nativeWidget(){
   widgetTimer=setTimeout(()=>{
     const y=toDateStr(new Date(Date.now()-864e5));
     try{N.widget(JSON.stringify({tasks:tasks.map(t=>({id:t.id,name:t.name,icon:t.iconType==='image'?'':t.icon,recurring:!!t.recurring,days:t.days||[],date:t.date||null,
-      done:t.recurring?t.done.filter(d=>d>=y):t.done.slice(-1)}))}));}catch(e){}
+      done:t.recurring?t.done.filter(d=>d>=y):t.done.slice(-1)})),hero:typeof heroWidget==='function'?heroWidget():null}));}catch(e){}
     const face=([...gwenChat].reverse().find(m=>m.role==='assistant'&&m.thumb)||{}).thumb||'';
     if(face!==widgetFace&&N.widgetFace){widgetFace=face;try{N.widgetFace(face);}catch(e){}}
   },600);

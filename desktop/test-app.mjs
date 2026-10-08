@@ -34,7 +34,7 @@ assert.deepEqual(lv.heroDetect('Buy a lamp'), {});
 assert.equal(lv.heroLvl(0, 50), 1); assert.equal(lv.heroLvl(99, 50), 1); assert.equal(lv.heroLvl(100, 50), 2);
 for (const L of [2, 7, 30]) { assert.equal(lv.heroLvl(lv.heroAt(L, 50), 50), L); assert.equal(lv.heroLvl(lv.heroAt(L, 50) - 1, 50), L - 1); }
 // Buffs: a 7-day streak and 7 h sleep raise XP, short sleep and an overdue task lower it
-const bf = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'sleepHours', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nheroP.bossCfg={on:false,seed:"t"};return {heroBuffs, heroMult, heroP, heroTaskAwards, heroDBoss, heroEvent, isTodayTask:typeof isTodayTask};');
+const bf = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'sleepHours', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nheroP.bossCfg={on:false,seed:"t"};return {heroBuffs, heroMult, heroP, heroTaskAwards, heroDBoss, heroWBoss, heroNBoss, heroEvent, isTodayTask:typeof isTodayTask};');
 const toDateStr = new Function(html.match(/function pad\(.*/)[0] + html.match(/function toDateStr\(.*/)[0] + 'return toDateStr;')();
 const days7 = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07'];
 const hrs = s => { const m = t => +t.slice(0, 2) * 60 + +t.slice(3); return ((m(s.wake) - m(s.bed) + 1440) % 1440) / 60; };
@@ -52,8 +52,21 @@ assert.ok(ev > 80 && ev < 170, 'events ' + ev);
 b.heroP.bossCfg = {on: true, from: '10:00', to: '22:00', seed: 'abc', onAt: 1};
 for (let i = 0; i < 200; i++) {
   const d = toDateStr(new Date(2026, 0, 1 + i)), x = b.heroDBoss(d), t = new Date(x.at), m = t.getHours() * 60 + t.getMinutes();
-  assert.ok(m >= 600 && m <= 1290, d + ' ' + m); assert.equal(x.until - x.at, 30 * 60000); assert.equal(b.heroDBoss(d).at, x.at);
+  assert.ok(m >= 600 && m <= 1290, d + ' ' + m); assert.equal(x.until - x.at, (x.elite ? 20 : 30) * 60000); assert.equal(b.heroDBoss(d).at, x.at);
 }
+// About one in seven is an elite; world bosses only on Fridays with three strikes; nightmares only after 10 PM inside his hours
+const el = Array.from({length: 400}, (_, i) => b.heroDBoss(toDateStr(new Date(2026, 0, 1 + i)))).filter(x => x.elite).length;
+assert.ok(el > 30 && el < 95, 'elites ' + el);
+for (let i = 0; i < 60; i++) {
+  const d = toDateStr(new Date(2026, 0, 1 + i)), w = b.heroWBoss(d), fri = new Date(d + 'T12:00:00').getDay() === 5;
+  assert.equal(!!w, fri, d); if (w) { assert.equal(w.tasks.length, 3); assert.equal(new Set(w.tasks).size, 3); assert.equal(w.until - w.at, 3600e3); assert.equal(new Date(w.at).getHours(), 21); }
+}
+assert.equal(Array.from({length: 100}, (_, i) => b.heroNBoss(toDateStr(new Date(2026, 0, 1 + i)))).filter(Boolean).length, 0); // hours end at 10 PM: no room
+b.heroP.bossCfg.to = '23:59';
+const nb = Array.from({length: 300}, (_, i) => b.heroNBoss(toDateStr(new Date(2026, 0, 1 + i)))).filter(Boolean);
+assert.ok(nb.length > 20 && nb.length < 75, 'nightmares ' + nb.length);
+nb.forEach(x => { const t = new Date(x.at), m = t.getHours() * 60 + t.getMinutes(); assert.ok(m >= 1320 && m + 30 <= 1439, 'night ' + m); });
+b.heroP.bossCfg.to = '22:00';
 b.heroP.bossCfg.onAt = new Date(2026, 5, 1).getTime(); assert.equal(b.heroDBoss('2026-05-20'), null); // none before they were switched on
 b.heroP.bossCfg.on = false; assert.equal(b.heroDBoss('2026-10-08'), null);
 // Hardcore doubles task XP; a mini boss pays more the longer it waited
@@ -66,3 +79,16 @@ assert.ok(aw.filter(a => a.k === 'hard').length > 200 && aw.filter(a => a.k === 
 const mb = hb.heroTaskAwards({name: 'Fix the car', recurring: false, days: [], done: ['2026-01-11'], subtasks: [], boss: true, createdAt: '2026-01-01'});
 assert.equal(mb.find(a => a.k === 'mboss').xp, 140); // 20 × 2 + 10 days × 10
 console.log('All app checks passed');
+// HP: a daily task missed every day drains 10 HP a day; at 0 you fall (−50% XP) until 3 tasks are done in a day
+{
+  const back = n => toDateStr(new Date(Date.now() - n * 864e5)), tod = back(0);
+  const hpT = [{id: 'p', name: 'Pray', recurring: true, days: [], done: [], subtasks: [], createdAt: back(30)}];
+  const hh = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'sleepHours', 'isTodayTask', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nheroP.bossCfg={on:false};return {heroHP, heroBuffs, heroP};')(toDateStr, [], {}, {}, hpT, hrs, isT);
+  hh.heroP.hpOn = back(12);
+  let x = hh.heroHP(); assert.equal(x.down, true); assert.equal(x.hp, 0); assert.ok(x.fall[back(1)] && x.fall[tod]);
+  assert.ok(hh.heroBuffs(back(1)).some(b => b.name === 'Fallen')); assert.ok(!hh.heroBuffs(back(5)).some(b => b.name === 'Fallen'));
+  ['a', 'b', 'c'].forEach(id => hpT.push({id, name: id, recurring: false, days: [], date: tod, done: [tod], subtasks: [], createdAt: tod}));
+  x = hh.heroHP(); assert.equal(x.down, false); assert.equal(x.hp, 50); assert.ok(!x.fall[tod]);
+  hh.heroP.hpOn = back(4); hpT.splice(1); x = hh.heroHP(); assert.equal(x.hp, 60); // 4 missed days
+}
+console.log('Round 5 checks passed');
