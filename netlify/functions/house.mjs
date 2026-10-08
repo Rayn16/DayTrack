@@ -32,7 +32,7 @@ const handler = async (event) => {
     }
     if (q.peek) return peek();
     if (q.year) return json(200, { year: await house.get('year', { type: 'json' }) });
-    if (q.from !== 'phone') houseSeen = Date.now();
+    if (!q.from) houseSeen = Date.now();
     const parcels = ((await house.get('parcels', { type: 'json' })) || []).filter(p => p.status !== 'opened');
     const ms = milestone(today), pr = await phonePrayers(), ram = ramadan(today);
     peeks = peeks.filter(p => Date.now() - p.at < PEEK_WAIT);

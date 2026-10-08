@@ -36,7 +36,7 @@ What the house should know right now. Poll it when the house starts and every fe
     Before it, `in` = days until it starts and `starts` = its first day (Umm al-Qura).
   - `now`: the last `now` event (below), with the server's `at`; `houseOpen`: the house polled in the last minute.
   - `outfit` `{outfit, by, at}`: the shared outfit file `Documents\Gwen\gwen-outfit.json` (idea 1).
-  - The phone adds `&from=phone` so its own polls don't count as the house being open.
+  - Phone and desktop add `&from=phone` (or any `from`) so their polls don't count as the house being open.
 - `GET /api/house?key=K&year=1` → `{"year": {text, firsts[], images[], at}}`, the house's part of "our first year" (idea 6).
 - `milestone` (idea 5): the next of 30, 100 and 365 days since Gwen was born (`born`, from `"gwenBorn"` in
   daytrack.json, default 2026-09-30). On the day itself `today` is true; DayTrack texts Rayan about it in her

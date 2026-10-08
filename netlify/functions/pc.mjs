@@ -20,10 +20,12 @@ const processes = () => new Promise(ok => {
 
 // Idea 30: the phone wakes the PC with a magic packet to this network card (wired first; not Tailscale, VPNs or virtual ones)
 export function wakeMac() {
+  // WoL works on the wired card, so it wins even with no IPv4 yet; Wi-Fi only as a last resort while connected
+  const wifi = n => /wi-?fi|wireless|wlan/i.test(n), real = x => !x.internal && x.mac && x.mac !== '00:00:00:00:00:00';
   const cards = Object.entries(os.networkInterfaces()).filter(([name, a]) => !/loopback|tailscale|vethernet|virtual|vmware|vpn|hyper-v|bluetooth|wsl/i.test(name)
-    && a.some(x => x.family === 'IPv4' && !x.internal && x.mac && x.mac !== '00:00:00:00:00:00' && !x.address.startsWith('100.')));
-  cards.sort(([a], [b]) => /wi-?fi|wireless|wlan/i.test(a) - /wi-?fi|wireless|wlan/i.test(b));
-  return cards.length ? cards[0][1].find(x => x.family === 'IPv4').mac : null;
+    && a.some(x => real(x) && !x.address.startsWith('100.') && (!wifi(name) || x.family === 'IPv4')));
+  cards.sort(([a], [b]) => wifi(a) - wifi(b));
+  return cards.length ? cards[0][1].find(real).mac : null;
 }
 
 // Idea 3: which evenings he games, from the reports (hours of the day a game was open), kept 8 weeks
