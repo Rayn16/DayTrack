@@ -973,7 +973,8 @@ function heroBossSave(){
   const c=heroBossCfg(),f=document.getElementById('hb-from').value,t=document.getElementById('hb-to').value;
   const was=c.on;c.on=document.getElementById('hb-on').checked;if(/^\d\d:\d\d$/.test(f))c.from=f;if(/^\d\d:\d\d$/.test(t))c.to=t;
   if(c.to<=c.from)c.to='22:00';
-  if(c.on&&!was)c.onAt=Date.now();else{const b=heroDBoss(heroTod());if(b&&b.state==='gone')c.onAt=Date.now();} // moving the hours never curses todayheroBossSent='';save();closeOv('dt-ov');renderHero();renderHeroMini();showToast(c.on?'⚔️ Bosses on':'Bosses off');
+  if(c.on&&!was)c.onAt=Date.now();else{const b=heroDBoss(heroTod());if(b&&b.state==='gone')c.onAt=Date.now();} // moving the hours never curses today
+  heroBossSent='';save();closeOv('dt-ov');renderHero();renderHeroMini();showToast(c.on?'⚔️ Bosses on':'Bosses off');
 }
 function heroBossCard(mini){
   const b=heroDBoss(heroTod());
