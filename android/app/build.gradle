@@ -49,7 +49,7 @@ android {
 
 // The same files the desktop app carries, copied in at build time
 tasks.register('copyWeb', Copy) {
-    from('../..') { include 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', 'life.js', 'ar.js', 'icon.svg', 'manifest.json' }
+    from('../..') { include 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', 'boss.ogg', 'life.js', 'ar.js', 'icon.svg', 'manifest.json' }
     into layout.buildDirectory.dir('webassets/web')
 }
 preBuild.dependsOn copyWeb
