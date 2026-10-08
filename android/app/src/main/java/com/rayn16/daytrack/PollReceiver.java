@@ -12,7 +12,7 @@ public class PollReceiver extends BroadcastReceiver {
         Context app = c.getApplicationContext();
         new Thread(() -> {
             try {
-                if (Intent.ACTION_BOOT_COMPLETED.equals(i.getAction())) Phone.places(app, null); // a restart forgets proximity alerts
+                if (Intent.ACTION_BOOT_COMPLETED.equals(i.getAction())) { Phone.places(app, null); BossAlarm.schedule(app); } // a restart forgets proximity alerts and alarms
                 Poller.poll(app);
             } finally { r.finish(); }
         }).start();

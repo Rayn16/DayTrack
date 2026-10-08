@@ -141,7 +141,8 @@ public class MainActivity extends Activity {
             }
         });
         setContentView(web);
-        web.loadUrl(getIntent().getBooleanExtra("gwen", false) ? START + "?tab=gwen" : START);
+        web.loadUrl(getIntent().getBooleanExtra("gwen", false) ? START + "?tab=gwen" : getIntent().getBooleanExtra("boss", false) ? START + "?tab=boss" : START);
+        if (getIntent().getBooleanExtra("boss", false)) BossAlarm.stop(this);
         // Not again after the activity is rebuilt or reopened from recents
         if (saved == null && (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) handle(getIntent());
     }
@@ -151,6 +152,7 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
         if (i.getBooleanExtra("gwen", false)) web.evaluateJavascript("switchTab('gwen');pullGwenInbox();", null);
+        if (i.getBooleanExtra("boss", false)) { BossAlarm.stop(this); web.evaluateJavascript("window.heroBossOpen&&heroBossOpen()", null); }
         handle(i);
     }
 
@@ -487,6 +489,11 @@ public class MainActivity extends Activity {
             Poller.prefs(MainActivity.this).edit().putString("times", json).apply();
             Poller.schedule(MainActivity.this);
         }
+
+        // The next daily bosses ([{at, until, title, body}]) ring like an alarm; stopBoss quiets one that's ringing
+        @JavascriptInterface public void bosses(String json) { BossAlarm.set(MainActivity.this, json); }
+
+        @JavascriptInterface public void stopBoss() { BossAlarm.stop(MainActivity.this); }
 
         @JavascriptInterface public boolean notifOn() { return getSystemService(NotificationManager.class).areNotificationsEnabled(); }
 

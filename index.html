@@ -268,15 +268,37 @@
 
     <!-- LEVEL TAB: you as a game character (levels.js) -->
     <div id="tab-hero" class="tab" data-seg="stats">
-      <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="quests" onclick="heroSetSeg('quests')">⚔️ Quests</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
+      <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="quests" onclick="heroSetSeg('quests')">⚔️ Quests</button><button class="rb" data-s="bag" onclick="heroSetSeg('bag')">🎒 Bag</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
       <div class="dcol">
         <div class="card" id="hero-card"></div>
         <div class="card hseg-stats" id="hero-body-card"><div class="cl">Your body · tap a part</div><div id="hero-body"></div></div>
         <div class="card hseg-stats"><div class="cl">Your shape</div><div id="hero-radar"></div></div>
         <div class="card hseg-stats"><div class="cl">Stats · tap one to see what trained it</div><div id="hero-stats"></div></div>
+        <div class="card hseg-stats"><div class="cl">Perks</div><div id="hero-perks"></div></div>
+        <div class="card hseg-stats"><div class="cl">Personal records</div><div id="hero-recs"></div></div>
+        <div class="card hseg-bag"><div class="cl">Party</div><div id="hero-party"></div></div>
+        <div class="card hseg-bag"><div class="cl">Inventory</div><div id="hero-bag"></div></div>
+        <div class="card hseg-bag"><div class="cl">Gear</div><div id="hero-gear"></div></div>
       </div>
-      <div class="dcol"><div class="card hseg-skills"><div class="cl">Skill tree · tap a node</div><div id="hero-skills"></div></div></div>
-      <div class="dcol"><div class="card hseg-quests"><div class="cl">Quests · claim rewards when done</div><div id="hero-quests"></div></div><div class="card hseg-log"><div class="cl">Achievements and titles</div><div id="hero-ach"></div></div><div class="card hseg-log"><div class="cl">Your story</div><div id="hero-log"></div></div></div>
+      <div class="dcol">
+        <div class="card hseg-skills"><div class="cl">Skill tree · tap a node</div><div id="hero-skills"></div></div>
+        <div class="card hseg-skills"><div class="cl">Monthly fitness test</div><div id="hero-ft"></div></div>
+        <div class="card hseg-log"><div class="cl">Weekly report card</div><div id="hero-report"></div></div>
+        <div class="card hseg-log"><div class="cl">You vs last month</div><div id="hero-vs"></div></div>
+        <div class="card hseg-log"><div class="cl">Season</div><div id="hero-season"></div></div>
+        <div class="card hseg-log"><div class="cl">Your year</div><div id="hero-heat"></div></div>
+        <div class="card hseg-log"><div class="cl">Journal · one line a night</div><div id="hero-journal"></div></div>
+      </div>
+      <div class="dcol">
+        <div class="card hseg-quests"><div class="cl">Daily boss</div><div id="hero-dboss"></div></div>
+        <div class="card hseg-quests"><div class="cl">Quests · claim rewards when done</div><div id="hero-quests"></div></div>
+        <div class="card hseg-quests"><div class="cl">Story</div><div id="hero-story"></div></div>
+        <div class="card hseg-quests"><div class="cl">Bounty board</div><div id="hero-bounty"></div></div>
+        <div class="card hseg-quests"><div class="cl">Mini bosses</div><div id="hero-mboss"></div></div>
+        <div class="card hseg-quests"><div class="cl">Bad habits I'm quitting</div><div id="hero-quit"></div></div>
+        <div class="card hseg-log"><div class="cl">Achievements and titles</div><div id="hero-ach"></div></div>
+        <div class="card hseg-log"><div class="cl">Your story</div><div id="hero-log"></div></div>
+      </div>
     </div>
 
     <!-- TIMER TAB -->
@@ -559,6 +581,8 @@
     <div style="font-size:11px;color:var(--sub);margin-bottom:4px;">Each tap adds one; it's done when you reach the number.</div>
     <div class="sl">Levels up ⭐</div>
     <div id="hero-pick"></div>
+    <label class="hx-row hx-flag"><input type="checkbox" id="hero-flag-hard"> <span><b>💀 Hardcore</b> Double XP, but a missed day costs XP (repeating tasks)</span></label>
+    <label class="hx-row hx-flag"><input type="checkbox" id="hero-flag-boss"> <span><b>👹 Mini boss</b> For a task you keep putting off: worth more XP every day it waits</span></label>
     <div class="sl">Reminder ⏰</div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">
       <button class="rb on" id="rm-none" onclick="setRemType('none')">Off</button>
@@ -684,7 +708,7 @@
     <!-- Level -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">⭐ Level</div>
-      <div style="font-size:13px;color:var(--sub);line-height:1.6;">You're a game character. Every task you tick gives XP, and the words in its name decide which stats grow: push-ups train <b style="color:var(--txt);">Arms</b> and <b style="color:var(--txt);">Chest</b>, Quran trains <b style="color:var(--txt);">Faith</b>, studying trains <b style="color:var(--txt);">Intellect</b>. Pick the stats yourself under <b style="color:var(--txt);">Levels up</b> when you add a task. Finishing every task, goal steps and timer sessions give XP too. Tap a stat to see what trained it. <b style="color:var(--txt);">Your body</b> lights up each part (arms, chest, back, core, legs, heart) by its level. <b style="color:var(--txt);">Skills</b> is a skill tree: each branch is a path (calisthenics, cooking, money, Quran…), some unlock others, start one and its practice task joins your list, tap <b style="color:var(--txt);">I can do it</b> when you master a step. <b style="color:var(--txt);">Quests</b> give daily, weekly and monthly goals; claim the reward when one is done (Gwen's quest from her house is in there too). <b style="color:var(--txt);">Buffs</b> raise your XP (a streak, 7 h of sleep, a good mood, a weekly quest) and <b style="color:var(--txt);">debuffs</b> lower it (too little sleep, overdue tasks, a broken streak). <b style="color:var(--txt);">Story</b> shows every level-up and where the XP came from, plus achievements; some give a title you can wear under your name. Each week a <b style="color:var(--txt);">boss</b> appears in Quests and your XP knocks its HP down.</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">You're a game character. Every task you tick gives XP, and the words in its name decide which stats grow: push-ups train <b style="color:var(--txt);">Arms</b> and <b style="color:var(--txt);">Chest</b>, Quran trains <b style="color:var(--txt);">Faith</b>, studying trains <b style="color:var(--txt);">Intellect</b>. Pick the stats yourself under <b style="color:var(--txt);">Levels up</b> when you add a task. Finishing every task, goal steps and timer sessions give XP too. Tap a stat to see what trained it. <b style="color:var(--txt);">Your body</b> lights up each part (arms, chest, back, core, legs, heart) by its level. <b style="color:var(--txt);">Skills</b> is a skill tree: each branch is a path (calisthenics, cooking, money, Quran…), some unlock others, start one and its practice task joins your list, tap <b style="color:var(--txt);">I can do it</b> when you master a step. <b style="color:var(--txt);">Quests</b> give daily, weekly and monthly goals; claim the reward when one is done (Gwen's quest from her house is in there too). <b style="color:var(--txt);">Buffs</b> raise your XP (a streak, 7 h of sleep, a good mood, a weekly quest) and <b style="color:var(--txt);">debuffs</b> lower it (too little sleep, overdue tasks, a broken streak). <b style="color:var(--txt);">Story</b> shows every level-up and where the XP came from, plus achievements; some give a title you can wear under your name. Each week a <b style="color:var(--txt);">boss</b> appears in Quests and your XP knocks its HP down.<br><br>Every day a <b style="color:var(--txt);">daily boss</b> shows up at a random time (you choose the hours) and your phone rings like an alarm. Do its challenge within 30 minutes and tap <b style="color:var(--txt);">Strike</b> for XP and loot; if it escapes you get −10% XP that day. Chests, bosses and story chapters drop <b style="color:var(--txt);">items</b> (streak freeze, XP potion, quest reroll) into your <b style="color:var(--txt);">Bag</b>, where you also spend <b style="color:var(--txt);">coins</b> (1 per 10 XP) on items or real-life rewards you set. Every 5 levels gives a <b style="color:var(--txt);">perk</b>. Achievements unlock <b style="color:var(--txt);">gear</b> that adds XP. Tasks done within an hour of each other build a <b style="color:var(--txt);">combo</b>. Mark a task <b style="color:var(--txt);">Hardcore</b> (double XP, misses cost XP) or <b style="color:var(--txt);">Mini boss</b> (worth more the longer it waits). Also: a daily login reward, story chapters, a bounty board for your own quests, bad habits you're quitting, a monthly fitness test, personal records, a pet that grows when you show up, Gwen in your party, a weekly report card, you vs last month, seasons, a year heatmap and a one-line journal. Share your character card with <b style="color:var(--txt);">📤 Share card</b>.</div>
     </div>
 
     <!-- Summary -->
@@ -857,7 +881,7 @@ async function syncReminders(renewed){
         tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,gwenWake:gwenCfg.wake||null,gwenBed:gwenCfg.bed||null,gwenCheered:gwenCfg.cheered||null,gwenLoc:gwenCfg.loc||null,gwenStudy:gwenCfg.study||null,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo)),
         prayers:prayerCfg.on&&prayerCfg.loc?{remind:!!prayerCfg.remind,days:prayerDays(3)}:null,
         goals:goals.map(g=>({name:g.name,done:g.steps.filter(x=>x.done).length,total:g.steps.length,lastAt:g.steps.map(x=>x.done).filter(Boolean).sort().pop()||null})),
-        sleep:Object.fromEntries(Object.entries(sleepLog).filter(([d])=>d>=weekAgo)),...(window.lifeReminders?lifeReminders():{})})
+        sleep:Object.fromEntries(Object.entries(sleepLog).filter(([d])=>d>=weekAgo)),trophies:heroTrophies(),...(window.lifeReminders?lifeReminders():{})})
     });
     if(!renewed&&(await r.json().catch(()=>({}))).gone){await renewPush(reg,sub);return syncReminders(true);}
   }catch(e){}
@@ -1102,7 +1126,7 @@ function boot(){
   if(document.documentElement.classList.contains('panel'))document.querySelector('#tasks-card .cl').textContent='Today · Esc to close';
   nativeWidget();setTimeout(takeShare,400);setTimeout(checkAppUpdate,3000);refreshPrayerLoc();
   setInterval(renderPrayerCard,60e3);
-  pullGwenInbox();if(new URLSearchParams(location.search).get('tab')==='gwen')switchTab('gwen');
+  pullGwenInbox();if(new URLSearchParams(location.search).get('tab')==='gwen')switchTab('gwen');if(new URLSearchParams(location.search).get('tab')==='boss')setTimeout(()=>heroBossOpen(),300);
   if(syncCode)pullSync();
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();gwen3d();pullGwenInbox();});
   if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='dt-actions')applyPendingDone();if(e.data==='gwen-open'){switchTab('gwen');pullGwenInbox();}});
@@ -1206,7 +1230,7 @@ function openAddTask(){
   document.getElementById('rem-h').value='1';
   document.getElementById('rem-m').value='30';
   document.getElementById('cnt-target').value='';document.getElementById('cnt-unit').value='';
-  heroPickInit(null);
+  heroPickInit(null);heroFlagsInit(null);
   document.getElementById('add-task-title').textContent='New Task';
   document.getElementById('save-task-btn').textContent='Add Task';
   document.getElementById('add-task-ov').classList.add('on');if(window.lifeTaskSheet)lifeTaskSheet(editingTaskId?tasks.find(x=>x.id===editingTaskId):null);
@@ -1238,7 +1262,7 @@ function openEditTask(id){
   else if(dRemType==='interval'&&t.reminder){setRemType('interval');document.getElementById('rem-h').value=t.reminder.h||1;document.getElementById('rem-m').value=t.reminder.m||30;}
   else{setRemType('none');}
   document.getElementById('cnt-target').value=t.count?t.count.target:'';document.getElementById('cnt-unit').value=t.count?t.count.unit||'':'';
-  heroPickInit(t.stats);
+  heroPickInit(t.stats);heroFlagsInit(t);
   document.getElementById('add-task-title').textContent='Edit Task';
   document.getElementById('save-task-btn').textContent='Save Changes';
   document.getElementById('add-task-ov').classList.add('on');if(window.lifeTaskSheet)lifeTaskSheet(editingTaskId?tasks.find(x=>x.id===editingTaskId):null);
@@ -1268,7 +1292,7 @@ function saveTask(){
     t.name=name;t.notes=notes;t.icon=dIcon;t.iconType=dIconType;
     t.recurring=dRec;t.days=[...dDays];t.priority=dPriority;
     t.notifStyle=dNotifStyle;t.showInCal=dShowInCal;
-    t.reminder=reminder;t.date=date;t.count=count;t.place=window.lifePlace?lifePlace():null;t.stats=heroPick;
+    t.reminder=reminder;t.date=date;t.count=count;t.place=window.lifePlace?lifePlace():null;t.stats=heroPick;Object.assign(t,heroFlags(t));
     // preserve existing subtask done state, add new subtasks
     const existing=t.subtasks||[];
     t.subtasks=dSubtasks.map(s=>{const ex=existing.find(e=>e.id===s.id);return{id:s.id,name:s.name,done:ex?ex.done:[]};});
@@ -1280,7 +1304,7 @@ function saveTask(){
       priority:dPriority,notifStyle:dNotifStyle,showInCal:dShowInCal,
       createdAt:toDateStr(new Date()),
       subtasks:dSubtasks.map(s=>({id:s.id,name:s.name,done:[]})),
-      reminder,reminderLastFired:null,reminded:[],count,stats:heroPick,place:window.lifePlace?lifePlace():null
+      reminder,reminderLastFired:null,reminded:[],count,stats:heroPick,place:window.lifePlace?lifePlace():null,...heroFlags(null)
     });
     save();closeOv('add-task-ov');renderTaskList();
     const rl=remLabel(reminder);showToast(rl?`✅ Added · ${rl}`:'✅ Task added!');
