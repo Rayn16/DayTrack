@@ -9,8 +9,8 @@ const {pathToFileURL} = require('url');
 const PORT = 5053;
 const BRIDGE = 'http://127.0.0.1:5052';
 const OLD_SERVER = 'https://yasuomain.netlify.app'; // only to bring sync data over the first time
-const NAMES = ['sync', 'save-reminder', 'reminder-action', 'check-reminders', 'gwen', 'test-push', 'outbox', 'house', 'pc', 'backup'];
-const CORS = {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*'};
+const NAMES = ['sync', 'save-reminder', 'reminder-action', 'check-reminders', 'gwen', 'test-push', 'outbox', 'house', 'pc', 'backup', 'phone', 'share'];
+const CORS = {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*', 'Access-Control-Expose-Headers': '*'};
 
 // Netlify Blobs' get/setJSON/list, one JSON file per key
 function fileStore(dir) {
@@ -79,7 +79,10 @@ async function start({dataDir, keysFile, fnDir, hooks}) {
       });
       let r;
       const fn = url.pathname.match(/^\/(?:\.netlify\/functions|api)\/([a-z-]+)$/);
-      if (fn && fns[fn[1]]) r = await fns[fn[1]](new Request('http://localhost' + url.pathname + url.search, {method: req.method, headers: {'Content-Type': req.headers['content-type'] || 'application/json'}, body}));
+      // A shared list's own page, for people without DayTrack (Tailscale Funnel passes only /s/ through, on port 8443)
+      const shared = url.pathname.match(/^(?:\/s)?\/s\/([a-f0-9]{32})(\/data)?\/?$/);
+      if (shared) r = await fns.share(new Request(`http://localhost/?code=${shared[1]}${shared[2] ? '' : '&page=1'}`, {method: req.method === 'POST' && shared[2] ? 'POST' : 'GET', headers: {'Content-Type': 'application/json'}, body: req.method === 'POST' && shared[2] ? JSON.stringify({items: (() => { try { return JSON.parse(body).items; } catch (_) { return []; } })()}) : undefined})); // items only: no renaming or unsharing from outside
+      else if (fn && fns[fn[1]]) r = await fns[fn[1]](new Request('http://localhost' + url.pathname + url.search, {method: req.method, headers: {'Content-Type': req.headers['content-type'] || 'application/json'}, body}));
       else if (url.pathname.startsWith('/pc/')) {
         // Gwen's bridge, for the phone app (its web page can't call her directly)
         const headers = {...req.headers}; delete headers.host; delete headers.origin;

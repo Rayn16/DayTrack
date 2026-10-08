@@ -85,3 +85,59 @@ export async function parcelFor(today, completedDays, doneCount) {
   await house.setJSON('parcels', list);
   return p;
 }
+
+// Umm al-Qura Hijri date of a YYYY-MM-DD day: {y, m, d}
+const HIJRI = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' });
+export function hijri(date) {
+  const p = Object.fromEntries(HIJRI.formatToParts(new Date(date + 'T12:00:00Z')).map(x => [x.type, x.value]));
+  return { y: parseInt(p.year, 10), m: Number(p.month), d: Number(p.day) };
+}
+// Idea 5: is it Ramadan (which day), or how long until it starts
+export function ramadan(today) {
+  const h = hijri(today);
+  if (h.m === 9) return { today: true, day: h.d };
+  let n = 1; while (n < 400 && hijri(dayAdd(today, n)).m !== 9) n++;
+  return { today: false, in: n, starts: dayAdd(today, n) };
+}
+// The phone works out prayer times from its location and saves the next few days with its reminders
+export async function phonePrayers() {
+  const store = blobStore('daytrack'), { blobs } = await store.list();
+  for (const { key } of blobs) {
+    const d = await store.get(key, { type: 'json' });
+    const today = d && localNow(d.tz).date, p = d && d.prayers && d.prayers.days && d.prayers.days[today];
+    if (p) return { date: today, ...p };
+  }
+  return null;
+}
+
+// Idea 2: one small quest a day, taking turns between the phone, the house and the desktop.
+// Whoever sees it done POSTs {event: "quest", id}; the house gives the reward.
+export const QUESTS = {
+  phone: { connect4: 'Beat me at Connect Four on your phone', anygame: 'Win any game against me in DayTrack', asr3: 'Finish 3 tasks before Asr',
+    noon2: 'Finish 2 tasks before noon', adhkar: 'Read your morning or evening adhkar in DayTrack' },
+  house: { deer: 'Find the deer in the house tonight', marshmallow: 'Toast marshmallows with me at the fire pit', walk: 'Go for a walk with me around the house',
+    dance: 'Dance with me in the house', chess: 'Beat me at chess in the house', checkers: 'Beat me at checkers in the house',
+    connect4: 'Beat me at Connect Four in the house', reversi: 'Beat me at Reversi in the house', uno: 'Play Uno with me in the house',
+    pong: 'Beat me at Pong in the house', dishes: 'Help me with the dishes in the house', photo: 'Take a photo with me in the house',
+    yasuo: 'Give Yasuo some pets in the house', puzzle: 'Help me with the jigsaw puzzle in the house', leaves: 'Jump in a leaf pile with me',
+    boat: 'Row out on the pond with me', picnic: 'Have a picnic with me', fox: 'Say hi to the fox with me', piano: 'Play the piano for me in the house',
+    story: 'Listen to me read a chapter by the fire' },
+  pc: { hello: 'Come and talk to me on your PC', watch: 'Watch something with me on your PC' },
+};
+export function questFor(today) {
+  const n = Math.abs(dayDiff(today, '2026-01-01')), where = ['phone', 'house', 'pc'][n % 3], kinds = Object.keys(QUESTS[where]);
+  const kind = kinds[Math.floor(n / 3) % kinds.length];
+  return { id: 'q-' + today, date: today, where, kind, text: QUESTS[where][kind], done: false };
+}
+export async function todaysQuest(today) {
+  const house = blobStore('daytrack-house');
+  let q = await house.get('quest', { type: 'json' });
+  if (!q || q.date !== today) { q = questFor(today); await house.setJSON('quest', q); }
+  return q;
+}
+export async function questDone(today, id, by) {
+  const house = blobStore('daytrack-house'), q = await todaysQuest(today);
+  if (q.id !== id) return { ok: false, error: 'Not today\'s quest', quest: q };
+  if (!q.done) { q.done = true; q.doneBy = String(by || '').slice(0, 20); q.doneAt = Date.now(); await house.setJSON('quest', q); }
+  return { ok: true, quest: q };
+}

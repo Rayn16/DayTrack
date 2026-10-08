@@ -86,6 +86,20 @@ const handler = async () => {
       }
     }
 
+    // Morning adhkar after Fajr, evening adhkar after Asr (a little after the adhan, once each)
+    const ADHKAR_AFTER = 25;
+    const prayDay = data.prayers && data.prayers.days && data.prayers.days[todStr];
+    if (data.adhkar && prayDay && typeof prayDay === 'object') {
+      const fired = data.adhkarFired && data.adhkarFired.date === todStr ? data.adhkarFired.names : [];
+      for (const [name, label] of [['Fajr', '🌅 Morning adhkar'], ['Asr', '🌇 Evening adhkar']]) {
+        const at = prayDay[name];
+        if (!/^\d{2}:\d{2}$/.test(at || '') || fired.includes(name) || Math.abs(nowMin - toMin(at) - ADHKAR_AFTER) > 1) continue;
+        await notify(webpush, subscription, 'Take a few minutes for your adhkar 🤲 Tap to open them.', 'default', undefined, label);
+        data.adhkarFired = { date: todStr, names: [...fired, name] };
+        changed = true;
+      }
+    }
+
     // A study session with Gwen ended while the app was in the background
     const study = data.gwenStudy;
     if (study && nowMs >= study.end) {
@@ -180,6 +194,8 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
   const sleep = data.sleep || {}, lastNight = hrs(sleep[tod]), weekSleep = week.map(d => hrs(sleep[d])).filter(h => h != null);
   const goals = (data.goals || []).filter(g => g.total && g.done < g.total).map(g => `${g.name} (${g.done}/${g.total} steps${g.lastAt ? `, last step ${g.lastAt === tod ? 'today' : g.lastAt}` : ', no step yet'})`).join('; ');
 
+  const events = data.events || [], sp = data.spend;
+  const spendLine = sp && sp.week ? `His spending this week: ${sp.week.total} SAR${sp.lastWeek ? ` (last week ${sp.lastWeek.total} SAR)` : ''}; by category: ${Object.entries(sp.week.cats || {}).map(([k, v]) => `${k} ${v}`).join(', ')}.` : '';
   const names = list => list.map(t => t.name + (!t.recurring && t.date && t.date < tod ? ' (overdue)' : '')).join(', ');
   const facts = slot === 'recap' ? [
     'It is Sunday evening. Text him a short recap of his week in your own words, then one warm line for the week ahead.',
@@ -189,6 +205,8 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
     weekSleep.length ? `His sleep this week: ${(weekSleep.reduce((a, b) => a + b, 0) / weekSleep.length).toFixed(1)} hours a night on average over ${weekSleep.length} logged nights.` : '',
     goals ? `His goals: ${goals}. Mention one briefly.` : '',
     open.length ? `Still to do today: ${names(open)}.` : '',
+    spendLine ? `${spendLine} Mention it only if something stands out (a category way up or down).` : '',
+    'End by inviting him to plan the coming week with you in DayTrack (the Week view has a "Plan my week with Gwen" button).',
   ].filter(Boolean).join('\n') : [
     slot === 'hello' ? (data.gwenWake ? 'It is his wake-up time and your text is his alarm. Wake him up, playfully.' : 'It is his morning. Send a good-morning text.')
       + ' End with one light question of the day to get to know him better: about him (his likes, memories, opinions, little what-ifs), never about his tasks, and not one you already asked.'
@@ -199,6 +217,7 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
     slot === 'plan' ? '' : today.length ? `Today's tasks: ${names(today)}. Still to do: ${open.length ? names(open) : 'nothing'}.` : 'He has no tasks today.',
     slot === 'hello' && dream ? `How you slept last night (your dream): ${dream}` : '',
     slot === 'hello' && plans ? `His plans: ${plans.slice(0, 500)}` : '',
+    slot === 'hello' && events.length ? `On his phone calendar today: ${events.map(e => e.title + (e.at ? ` at ${e.at}` : '')).join(', ')}.` : '',
     slot === 'hello' && lastNight != null ? `He logged ${lastNight.toFixed(1)} hours of sleep last night (${sleep[tod].bed} to ${sleep[tod].wake}).${lastNight < 6 ? ' That is short: be gentle about it.' : ''}` : '',
     (slot === 'hello' || slot === 'evening') && goals ? `His goals: ${goals}. If one hasn't moved in 4+ days, you can ask about it lightly (not every time).` : '',
     weather ? `Weather where he is today: ${weather}. Mention it only if it matters (heat, rain, dust, cold).` : '',

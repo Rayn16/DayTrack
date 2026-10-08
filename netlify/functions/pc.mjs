@@ -1,7 +1,9 @@
 import { lambda } from '../lib/fn.mjs';
-import { keyOk } from '../lib/house.mjs';
+import { keyOk, localNow, questDone, phonePrayers, ramadan } from '../lib/house.mjs';
+import { blobStore } from '../lib/fn.mjs';
 import { spawn, execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 // Gwen's PC from the phone: is it on, is Gwen running, is a game open; start Gwen, lock the PC. Contract: desktop/API.md
@@ -16,6 +18,35 @@ const processes = () => new Promise(ok => {
   execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, timeout: 5000 }, (e, out) => ok(e ? [] : out.split('\n').map(l => (l.match(/^"([^"]+)"/) || [])[1]).filter(Boolean)));
 });
 
+// Idea 30: the phone wakes the PC with a magic packet to this network card (wired first; not Tailscale, VPNs or virtual ones)
+export function wakeMac() {
+  const cards = Object.entries(os.networkInterfaces()).filter(([name, a]) => !/loopback|tailscale|vethernet|virtual|vmware|vpn|hyper-v|bluetooth|wsl/i.test(name)
+    && a.some(x => x.family === 'IPv4' && !x.internal && x.mac && x.mac !== '00:00:00:00:00:00' && !x.address.startsWith('100.')));
+  cards.sort(([a], [b]) => /wi-?fi|wireless|wlan/i.test(a) - /wi-?fi|wireless|wlan/i.test(b));
+  return cards.length ? cards[0][1].find(x => x.family === 'IPv4').mac : null;
+}
+
+// Idea 3: which evenings he games, from the reports (hours of the day a game was open), kept 8 weeks
+const today = () => localNow(Intl.DateTimeFormat().resolvedOptions().timeZone).date;
+async function logGame(game) {
+  if (!game) return;
+  const store = blobStore('daytrack-house'), log = (await store.get('games', { type: 'json' })) || {}, d = today(), h = new Date().getHours();
+  if ((log[d] || []).includes(h)) return;
+  log[d] = [...(log[d] || []), h];
+  await store.setJSON('games', Object.fromEntries(Object.entries(log).filter(([k]) => k >= new Date(Date.now() - 56 * 864e5).toISOString().slice(0, 10))));
+}
+// {"Tue": {"from": 20, "to": 23, "weeks": 3}}: weekdays he gamed on at least 2 of the last 4 weeks
+export async function gameNights() {
+  const log = (await blobStore('daytrack-house').get('games', { type: 'json' })) || {}, out = {}, since = new Date(Date.now() - 28 * 864e5).toISOString().slice(0, 10);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  for (const [d, hours] of Object.entries(log)) {
+    if (d < since || !hours.length) continue;
+    const k = days[new Date(d + 'T12:00:00Z').getUTCDay()], o = out[k] = out[k] || { from: 24, to: 0, weeks: 0 };
+    o.weeks++; o.from = Math.min(o.from, ...hours); o.to = Math.max(o.to, ...hours.map(x => x + 1));
+  }
+  return Object.fromEntries(Object.entries(out).filter(([, o]) => o.weeks >= 2));
+}
+
 async function status() {
   let gwen = false;
   try { gwen = (await fetch('http://127.0.0.1:5052/daytrack/ping', { signal: AbortSignal.timeout(1500) })).ok; } catch (_) {}
@@ -27,7 +58,10 @@ async function status() {
     if (game === undefined) game = (GAMES.find(([re]) => list.some(p => re.test(p))) || [])[1] || null;
   }
   if (fresh && typeof report.gwen === 'boolean') gwen = gwen || report.gwen;
-  return { pc: true, gwen, airi, game, reportedAt: fresh ? report.at : null, version: (globalThis.dtHooks && globalThis.dtHooks.version) || null };
+  const pr = await phonePrayers().catch(() => null), ram = ramadan(today());
+  return { pc: true, gwen, airi, game, reportedAt: fresh ? report.at : null, version: (globalThis.dtHooks && globalThis.dtHooks.version) || null, mac: wakeMac(),
+    // Idea 5: desktop Gwen keeps quiet near iftar
+    ramadan: { active: ram.today, day: ram.day || null, ...(ram.today && pr ? { iftar: pr.Maghrib, suhoor: pr.Fajr } : {}) } };
 }
 
 const handler = async (event) => {
@@ -35,14 +69,16 @@ const handler = async (event) => {
   let body = {};
   if (event.httpMethod === 'POST') { try { body = JSON.parse(event.body || '{}'); } catch (_) { return json(400, { error: 'Bad JSON' }); } }
   if (!keyOk(body.key || q.key)) return json(401, { error: 'Wrong key' });
-  if (event.httpMethod === 'GET') return json(200, await status());
+  if (event.httpMethod === 'GET') return json(200, q.games ? { nights: await gameNights() } : await status());
   const hooks = globalThis.dtHooks || {}, dir = process.env.DT_GWEN_DIR || '';
 
   switch (body.action) {
     case 'report':
       report = { at: Date.now(), ...(typeof body.gwen === 'boolean' ? { gwen: body.gwen } : {}), ...(typeof body.airi === 'boolean' ? { airi: body.airi } : {}),
         ...('game' in body ? { game: body.game ? String(body.game).slice(0, 60) : null } : {}) };
+      await logGame(report.game).catch(e => console.error('Game log:', e.message));
       return json(200, { ok: true });
+    case 'quest': return json(200, await questDone(today(), body.id, 'desktop'));
     case 'start': {
       const bat = ['Start-Gwen-Remote.bat', 'Start-Gwen.bat'].find(f => dir && fs.existsSync(path.join(dir, f)));
       if (!bat) return json(404, { error: 'Start-Gwen.bat not found in Documents\\Gwen' });
