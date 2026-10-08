@@ -1,0 +1,87 @@
+/* Levels (levels.js) and the wide PC layout */
+#hero-chip{position:relative;overflow:hidden;background:linear-gradient(135deg,#F59E0B,#F97316);color:#fff;border:none;border-radius:22px;padding:4px 11px 6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+#hero-chip i{position:absolute;left:0;bottom:0;height:3px;background:rgba(255,255,255,.85);}
+#hero-mini{cursor:pointer;background:linear-gradient(135deg,color-mix(in srgb,#F59E0B 16%,var(--card)),var(--card) 75%);}
+.hm-top{display:flex;align-items:center;gap:12px;}
+.hm-av{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#F59E0B,#F97316);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;box-shadow:0 0 14px rgba(245,158,11,.45);}
+.hm-name{font-size:15px;font-weight:700;color:var(--txt);}
+.hm-bar{margin:6px 0 4px;height:7px;}.hm-bar i,.hc-bar i{background:linear-gradient(90deg,#F59E0B,#F97316);}
+.hm-sub{font-size:12px;color:var(--sub);}.hm-sub b{color:#F97316;}
+.hm-stats{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}.hm-stats span{background:var(--inp);border-radius:10px;padding:4px 9px;font-size:12px;color:var(--txt);}.hm-stats b{color:var(--pri);}
+#hero-seg{display:flex;gap:6px;margin-bottom:12px;}#hero-seg button{flex:1;}
+#tab-hero[data-seg=stats] .hseg-skills,#tab-hero[data-seg=stats] .hseg-log,
+#tab-hero[data-seg=skills] .hseg-stats,#tab-hero[data-seg=skills] .hseg-log,
+#tab-hero[data-seg=log] .hseg-stats,#tab-hero[data-seg=log] .hseg-skills{display:none;}
+#hero-card{background:linear-gradient(160deg,#1E1B4B,#4C1D95 60%,#7C2D12);color:#fff;}
+.hc-top{display:flex;align-items:center;gap:12px;}
+.hc-av{width:62px;height:62px;border-radius:18px;border:2px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);font-size:34px;cursor:pointer;flex-shrink:0;}
+.hc-name{font-size:20px;font-weight:800;}.hc-cls{font-size:13px;opacity:.8;margin-top:2px;}
+.hc-lv{text-align:center;font-size:38px;font-weight:800;line-height:1;color:#FCD34D;text-shadow:0 0 18px rgba(252,211,77,.6);}.hc-lv small{display:block;font-size:9px;letter-spacing:2px;color:#fff;opacity:.7;}
+.hc-bar{height:10px;margin:14px 0 5px;background:rgba(255,255,255,.18);}
+.hc-xp{display:flex;justify-content:space-between;font-size:12px;opacity:.85;}
+.hc-today{margin-top:10px;font-size:13px;font-weight:700;color:#FCD34D;}
+.radar{width:100%;max-width:340px;display:block;margin:0 auto;}.radar .rg{fill:none;stroke:var(--brd);stroke-width:1;}.radar .rv{fill:color-mix(in srgb,var(--pri) 30%,transparent);stroke:var(--pri);stroke-width:2;}
+.radar text{font-size:10px;fill:var(--sub);font-weight:600;}
+.hs-g{font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 4px;}.hs-g:first-child{margin-top:0;}
+.hs-row{display:grid;grid-template-columns:26px 86px 1fr 46px;align-items:center;gap:8px;padding:6px 0;cursor:pointer;}.hs-row .bar{height:8px;}
+.hs-ic{font-size:18px;text-align:center;}.hs-n{font-size:14px;font-weight:600;color:var(--txt);}.hs-l{font-size:12px;font-weight:700;color:var(--pri);text-align:right;}
+.hl-item{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--brd);font-size:13px;color:var(--txt);}
+.hl-day{border-bottom:1px solid var(--brd);padding:8px 0;}.hl-day:last-child{border-bottom:none;}
+.hl-dh{display:flex;justify-content:space-between;font-size:13px;color:var(--txt);margin-bottom:4px;}.hl-dh span{color:#F97316;font-weight:700;}
+.hl-g{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--sub);padding:2px 0;}.hl-g span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.hl-g span:last-child{flex-shrink:0;}
+.hk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;}
+.hk{display:flex;align-items:center;gap:10px;background:var(--inp);border:2px solid transparent;border-radius:14px;padding:10px;text-align:left;cursor:pointer;font-family:inherit;color:var(--txt);width:100%;}
+.hk.on{border-color:var(--pri);}.hk.done{background:var(--grnl);}
+.hk-ic{font-size:26px;flex-shrink:0;}.hk-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}.hk-b b{font-size:14px;}.hk-b small{font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hk-n{font-size:12px;font-weight:700;color:var(--pri);}
+.hk-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.hk-step{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--brd);font-size:14px;color:var(--txt);}.hk-step.lock{opacity:.5;}
+.hk-dot{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:var(--inp);color:var(--sub);}
+.hk-step.done .hk-dot{background:var(--grn);color:#fff;}.hk-step.now .hk-dot{background:var(--pri);color:#fff;box-shadow:0 0 0 4px var(--pril);}
+.hk-goal{font-size:12px;color:var(--pri);font-weight:600;margin-top:2px;}.hk-how{font-size:13px;color:var(--sub);margin-top:4px;line-height:1.45;}
+.hk-btn{flex:1;background:var(--pril);color:var(--pri);border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}.hk-btn.pri{background:var(--pri);color:#fff;}
+#hero-pick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}#hero-pick .rb{padding:5px 10px;font-size:12px;}
+#hero-pop{position:fixed;top:calc(env(safe-area-inset-top,0px) + 56px);left:50%;transform:translate(-50%,-20px);opacity:0;pointer-events:none;z-index:210;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;align-items:center;max-width:calc(100vw - 32px);background:linear-gradient(135deg,#F59E0B,#F97316);color:#fff;padding:8px 14px;border-radius:18px;box-shadow:0 8px 24px rgba(249,115,22,.4);transition:opacity .25s,transform .25s;}
+#hero-pop.on{opacity:1;transform:translate(-50%,0);}#hero-pop b{font-size:16px;}#hero-pop span{font-size:12px;background:rgba(255,255,255,.22);border-radius:10px;padding:2px 8px;}
+#hero-lvl{position:fixed;inset:0;z-index:220;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);}#hero-lvl.on{display:flex;}
+.hl-box{background:linear-gradient(160deg,#1E1B4B,#4C1D95 60%,#7C2D12);color:#fff;border-radius:24px;padding:24px 28px;text-align:center;min-width:260px;max-width:calc(100vw - 40px);animation:pop .45s ease-out;box-shadow:0 0 60px rgba(252,211,77,.35);}
+.hl-t{font-size:13px;letter-spacing:4px;font-weight:800;color:#FCD34D;}.hl-big{font-size:34px;font-weight:800;margin-top:6px;}.hl-rank{opacity:.8;font-size:14px;margin-bottom:8px;}
+.hl-row{font-size:15px;margin-top:8px;}.hl-row b{color:#FCD34D;}.hl-tap{font-size:11px;opacity:.6;margin-top:14px;}
+
+/* Dashboard columns: on a phone they're invisible and the cards stack as before */
+.dcol{display:contents;}
+
+/* ── PC: sidebar on the left, cards in columns ── */
+@media (min-width:900px){
+  html.app #app{display:grid;grid-template-columns:210px minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);}
+  html.app #nav{grid-column:1;grid-row:1/4;display:flex;flex-direction:column;gap:4px;border-top:none;border-right:1px solid var(--brd);padding:16px 10px;}
+  html.app #nav::before{content:'☀️ DayTrack';font-size:19px;font-weight:800;color:var(--pri);padding:4px 12px 18px;}
+  html.app .nb{flex-direction:row;justify-content:flex-start;gap:10px;font-size:14px;padding:4px 6px;border-radius:14px;}
+  html.app .nb:hover{background:var(--inp);}
+  html.app .nb .ic{width:44px;height:36px;}
+  html.app #hdr,html.app #notif-banner,html.app #main{grid-column:2;}
+  html.app #hdr{padding:12px 24px;}html.app #hdr .brand{visibility:hidden;}
+  html.app .tab{padding:20px 24px 32px;max-width:1500px;margin:0 auto;}
+  html.app .tab.on:not(#tab-tasks):not(#tab-gwen):not(#tab-hero){columns:380px;column-gap:16px;}
+  html.app .tab.on>*{break-inside:avoid;}
+  html.app #sum-stats{column-span:all;grid-template-columns:repeat(4,1fr)!important;}
+  html.app #save-ses-btn{column-span:all;}
+  /* Tasks = the dashboard: you and your day | today's tasks | goals and lists */
+  html.app #tab-tasks.on{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr) minmax(260px,340px);gap:16px;align-items:start;padding-bottom:96px;}
+  html.app .dcol{display:block;min-width:0;}
+  html.app #tasks-card{min-height:300px;}
+  /* Character: sheet on the left, skills and history to the right; no tabs needed */
+  html.app #hero-seg{display:none;}
+  html.app #tab-hero.on{display:grid!important;grid-template-columns:minmax(300px,400px) minmax(0,1fr) minmax(280px,360px);gap:16px;align-items:start;}
+  html.app #tab-hero .card.hseg-stats,html.app #tab-hero .card.hseg-skills,html.app #tab-hero .card.hseg-log{display:block!important;}
+  /* Gwen: her stage on the left, the chat as a side panel */
+  html.app #tab-gwen.has3d #gwen-sheet,html.app #tab-gwen.has3d #gwen-sheet.open{left:auto;top:0;width:420px;height:100%;border-radius:0;box-shadow:-6px 0 24px rgba(0,0,0,.12);padding-top:12px;}
+  html.app #tab-gwen.has3d #gwen-grab{display:none;}
+  html.app #tab-gwen.has3d #gwen-stage{right:420px;}
+  /* Sheets open as dialogs in the middle */
+  html.app .ov{align-items:center;justify-content:center;}
+  html.app .sh{width:540px;max-width:calc(100vw - 40px);border-radius:22px;max-height:86vh;transform:translateY(30px) scale(.97);}
+  html.app .ov.on .sh{transform:none;}
+  html.app #fab{right:32px;bottom:32px;}
+  html.app .toast{bottom:32px;}
+}

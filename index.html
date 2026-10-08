@@ -108,7 +108,7 @@
     #app{display:flex;flex-direction:column;height:100%;position:relative;}
     #hdr{background:var(--hdr);padding:calc(env(safe-area-inset-top,0px) + 10px) 15px 10px;border-bottom:1px solid var(--brd);flex-shrink:0;transition:background .25s,border-color .25s;}
     #main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);transition:background .25s;}
-    #nav{background:var(--nav);border-top:1px solid var(--brd);display:grid;grid-template-columns:repeat(6,1fr);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:background .25s,border-color .25s;}
+    #nav{background:var(--nav);border-top:1px solid var(--brd);display:grid;grid-template-columns:repeat(7,1fr);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:background .25s,border-color .25s;}
     /* Phone frame only in a browser tab, not in the installed or desktop app */
     @media(min-width:600px) and (display-mode:browser){
       html:not(.app) body{background:#0D0D1A;display:flex;justify-content:center;align-items:center;min-height:100vh;overflow:auto;padding:24px 0;}
@@ -206,17 +206,19 @@
     .pc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0 12px;}.pc-grid div{background:var(--inp);border-radius:12px;padding:9px 2px;text-align:center;font-size:11px;color:var(--sub);}.pc-grid b{display:block;font-size:18px;margin-bottom:2px;}
     .pcards{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}.pcards img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;cursor:pointer;display:block;}
     /* The PC's Today panel (Ctrl+Alt+D): just today's tasks */
-    html.panel #hdr,html.panel #nav,html.panel #fab,html.panel #notif-banner,html.panel #tab-tasks>.card:not(#tasks-card){display:none!important;}
+    html.panel #hdr,html.panel #nav,html.panel #fab,html.panel #notif-banner,html.panel #tab-tasks .card:not(#tasks-card){display:none!important;}
     html.panel #tab-tasks{padding:10px 10px 16px;}
   </style>
+  <link rel="stylesheet" href="levels.css">
 </head>
 <body data-tab="tasks">
 <div id="app">
 
   <div id="hdr">
     <div style="display:flex;align-items:center;justify-content:space-between;">
-      <span style="font-size:18px;font-weight:700;color:var(--pri);">☀️ DayTrack</span>
+      <span class="brand" style="font-size:18px;font-weight:700;color:var(--pri);">☀️ DayTrack</span>
       <div style="display:flex;align-items:center;gap:8px;">
+        <button id="hero-chip" onclick="switchTab('hero')"></button>
         <button onclick="openInfo()" style="background:none;border:none;color:var(--sub);font-size:18px;cursor:pointer;padding:2px 6px;line-height:1;" title="Help">ℹ️</button>
         <span id="dt-date" style="background:var(--pril);color:var(--pri);font-size:12px;font-weight:600;padding:4px 11px;border-radius:22px;transition:background .25s,color .25s;"></span>
       </div>
@@ -235,7 +237,9 @@
 
     <!-- TASKS TAB -->
     <div id="tab-tasks" class="tab on">
+      <div class="dcol">
       <div class="card" id="gwen-hi" onclick="switchTab('gwen')"></div>
+      <div class="card" id="hero-mini" onclick="switchTab('hero')"></div>
       <div class="card" id="dt-update" style="display:none;"></div>
       <div class="card" id="sleep-card" style="display:none;"></div>
       <div class="card" style="margin-bottom:12px;">
@@ -250,9 +254,24 @@
       </div>
       <div class="card" id="prayer-card" style="display:none;"></div>
       <div class="card" id="mood-card"></div>
-      <div class="card" id="tasks-card"><div class="cl">Today's Tasks</div><div id="task-list"></div></div>
+      </div>
+      <div class="dcol"><div class="card" id="tasks-card"><div class="cl">Today's Tasks</div><div id="task-list"></div></div></div>
+      <div class="dcol">
       <div class="card" id="goals-card"></div>
       <div class="card" id="lists-card"></div>
+      </div>
+    </div>
+
+    <!-- LEVEL TAB: you as a game character (levels.js) -->
+    <div id="tab-hero" class="tab" data-seg="stats">
+      <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
+      <div class="dcol">
+        <div class="card" id="hero-card"></div>
+        <div class="card hseg-stats"><div class="cl">Your shape</div><div id="hero-radar"></div></div>
+        <div class="card hseg-stats"><div class="cl">Stats · tap one to see what trained it</div><div id="hero-stats"></div></div>
+      </div>
+      <div class="dcol"><div class="card hseg-skills"><div class="cl">Skills · learn something new</div><div id="hero-skills"></div></div></div>
+      <div class="dcol"><div class="card hseg-log"><div class="cl">Your story</div><div id="hero-log"></div></div></div>
     </div>
 
     <!-- TIMER TAB -->
@@ -476,6 +495,7 @@
   <button id="fab" aria-label="New task (hold to say it)"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
   <div id="nav">
     <button class="nb on" data-t="tasks" onclick="switchTab('tasks')"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>Tasks</button>
+    <button class="nb" data-t="hero" onclick="switchTab('hero')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9z"/></svg></span>Level</button>
     <button class="nb" data-t="timer" onclick="switchTab('timer')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg></span>Timer</button>
     <button class="nb" data-t="cal" onclick="switchTab('cal')"><span class="ic"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>Calendar</button>
     <button class="nb" data-t="summary" onclick="switchTab('summary')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/></svg></span>Summary</button>
@@ -491,7 +511,7 @@
     <div style="width:36px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 14px;"></div>
     <div id="add-task-title" style="font-size:17px;font-weight:700;margin-bottom:13px;text-align:center;color:var(--txt);">New Task</div>
     <div class="sl">Task Name</div>
-    <input class="inp" id="new-name" type="text" placeholder="e.g. Morning Run">
+    <input class="inp" id="new-name" type="text" placeholder="e.g. Morning Run" oninput="heroPickRender()">
     <div class="sl">Icon</div>
     <div style="display:flex;align-items:center;gap:11px;margin-bottom:9px;">
       <div id="icon-prev" style="width:50px;height:50px;border-radius:13px;background:var(--pril);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">📝</div>
@@ -524,9 +544,11 @@
     <div class="sl">Count it (optional)</div>
     <div style="display:flex;gap:8px;margin-bottom:4px;">
       <input class="inp" id="cnt-target" type="number" min="0" max="999" placeholder="How many" style="width:110px;">
-      <input class="inp" id="cnt-unit" placeholder="e.g. glasses of water, push-ups, pages" maxlength="30" style="flex:1;">
+      <input class="inp" id="cnt-unit" placeholder="e.g. glasses of water, push-ups, pages" maxlength="30" style="flex:1;" oninput="heroPickRender()">
     </div>
     <div style="font-size:11px;color:var(--sub);margin-bottom:4px;">Each tap adds one; it's done when you reach the number.</div>
+    <div class="sl">Levels up ⭐</div>
+    <div id="hero-pick"></div>
     <div class="sl">Reminder ⏰</div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">
       <button class="rb on" id="rm-none" onclick="setRemType('none')">Off</button>
@@ -567,6 +589,8 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="hero-pop"></div>
+<div id="hero-lvl" onclick="this.classList.remove('on')"></div>
 <div class="ov" id="dt-ov" onclick="bgClose(event,'dt-ov')"><div class="sh" id="dt-ov-body" style="max-height:88vh;overflow-y:auto;"></div></div>
 <div id="lock-ov"><div style="font-size:54px;margin-bottom:10px;">🔒</div><div style="font-size:17px;font-weight:700;margin-bottom:18px;">DayTrack is locked</div><button onclick="unlockApp()" style="background:var(--pri);color:white;border:none;border-radius:13px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">Unlock</button></div>
 <input type="file" id="file-in" accept="image/*" style="display:none" onchange="fileLoad(this)">
@@ -646,6 +670,12 @@
       <div style="font-size:13px;color:var(--sub);line-height:1.6;">Tap any day to see a detailed breakdown: progress bar, which tasks were done vs not done, and a notes section. Colored dots on the calendar show activity: 🟢 green = all tasks done, 🟠 orange = partial, purple = tasks exist but none done. Switch to <b style="color:var(--txt);">Week</b> to see seven days at once and drag a task to another day.</div>
     </div>
 
+    <!-- Level -->
+    <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
+      <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">⭐ Level</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;">You're a game character. Every task you tick gives XP, and the words in its name decide which stats grow: push-ups train <b style="color:var(--txt);">Arms</b> and <b style="color:var(--txt);">Chest</b>, Quran trains <b style="color:var(--txt);">Faith</b>, studying trains <b style="color:var(--txt);">Intellect</b>. Pick the stats yourself under <b style="color:var(--txt);">Levels up</b> when you add a task. Finishing every task, goal steps and timer sessions give XP too. Tap a stat to see what trained it. <b style="color:var(--txt);">Skills</b> has step-by-step paths (calisthenics, cooking, money, Quran…): start one and its practice task joins your list, tap <b style="color:var(--txt);">I can do it</b> when you master a step. <b style="color:var(--txt);">Story</b> shows every level-up and where the XP came from.</div>
+    </div>
+
     <!-- Summary -->
     <div style="background:var(--inp);border-radius:14px;padding:13px;margin-bottom:10px;">
       <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;">📊 Summary</div>
@@ -668,6 +698,7 @@
   </div>
 </div>
 
+<script src="levels.js"></script>
 <script>
 const EMOS=['📝','💼','🏃','🍽️','☕','😴','📚','🎮','🏋️','🚗','✈️','🎵','💊','🧘','🛒','⭐','🎯','💡','🔔','📞','💻','🏠','💰','🎁','📅','💪','🍎','🚿','🦷','🎨','🔧','📖','🏆','❤️','🌟','✅','🎤','🎬','🏊','🌅','🐕','🌿','🎂','🏅','🧠'];
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -778,7 +809,7 @@ let expandedTasks=new Set();
 // ── Persistence ─────────────────────────────────────────────────────────────
 function save(){
   localUpdated=Date.now();
-  writeLocal();
+  writeLocal();heroTick();
   syncReminders();queueSync();
 }
 function writeLocal(){
@@ -797,6 +828,7 @@ function writeLocal(){
     localStorage.setItem('dt_lists',JSON.stringify(lists));
     localStorage.setItem('dt_sleep',JSON.stringify(sleepLog));
   }catch(e){}
+  heroWrite();
   nativeWidget();
 }
 async function syncReminders(renewed){
@@ -837,6 +869,7 @@ function load(){
     if(!gwenCfg.pc&&/Windows/.test(navigator.userAgent))gwenCfg.pc='http://127.0.0.1:5052'; // desktop app: Gwen's bridge is on this same PC
     quiet=JSON.parse(localStorage.getItem('dt_quiet')||'null')||quiet;
     syncCode=localStorage.getItem('dt_sync');
+    heroLoad();
   }catch(e){tasks=[];savedSessions=[];calNotes={};completedDays=[];}
 }
 
@@ -847,7 +880,7 @@ const SYNC_URL='/.netlify/functions/sync';
 let syncCode=null,syncReady=false,syncTimer,localUpdated=0;
 function queueSync(){if(!syncCode)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncReady?pushSync():pullSync(),1500);}
 async function pushSync(){
-  try{await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:syncCode,data:{tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,updatedAt:localUpdated}})});}catch(e){}
+  try{await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:syncCode,data:{tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,player:heroP,updatedAt:localUpdated}})});}catch(e){}
 }
 async function pullSync(){
   try{
@@ -870,8 +903,8 @@ async function pullInbox(){
 }
 function applyData(d){
   tasks=d.tasks||[];savedSessions=d.savedSessions||[];calNotes=d.calNotes||{};completedDays=d.completedDays||[];moods=d.moods||{};
-  goals=d.goals||[];lists=d.lists||[];sleepLog=d.sleep||{};
-  localUpdated=d.updatedAt;writeLocal();syncReminders();
+  goals=d.goals||[];lists=d.lists||[];sleepLog=d.sleep||{};if(d.player)heroP=d.player;
+  localUpdated=d.updatedAt;writeLocal();syncReminders();heroTick(true);
   renderTaskList();renderMood();renderCal();renderSummary();renderPastSessions();
 }
 function startSync(){
@@ -932,7 +965,7 @@ async function applyPendingDone(){
 
 // ── Export / Import ──────────────────────────────────────────────────────────
 function exportData(){
-  const data={tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,exportedAt:new Date().toISOString(),version:1};
+  const data={tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,player:heroP,exportedAt:new Date().toISOString(),version:1};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -954,7 +987,8 @@ function importData(inp){
       if(d.goals)goals=d.goals;
       if(d.lists)lists=d.lists;
       if(d.sleep)sleepLog=d.sleep;
-      save();renderTaskList();renderMood();renderSummary();renderCal();
+      if(d.player)heroP=d.player;
+      heroTick(true);save();renderTaskList();renderMood();renderSummary();renderCal();
       showToast('📥 Imported!');
     }catch(err){showToast('❌ Invalid file');}
   };
@@ -1042,7 +1076,7 @@ function setPri(p){
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 function boot(){
-  load();
+  load();heroTick(true);
   if(isDark)document.body.classList.add('dark');
   applyPresetTheme(currentPreset);
   applyColorTheme(currentTheme);
@@ -1082,6 +1116,7 @@ function switchTab(t,dir){
   document.getElementById('main').scrollTop=0;
   if(t==='cal')renderCal();
   if(t==='summary')renderSummary();
+  if(t==='hero')renderHero();
   if(t==='timer')renderTimerTab();
   if(t==='gwen'){renderGwen();gwen3d();}
 }
@@ -1159,6 +1194,7 @@ function openAddTask(){
   document.getElementById('rem-h').value='1';
   document.getElementById('rem-m').value='30';
   document.getElementById('cnt-target').value='';document.getElementById('cnt-unit').value='';
+  heroPickInit(null);
   document.getElementById('add-task-title').textContent='New Task';
   document.getElementById('save-task-btn').textContent='Add Task';
   document.getElementById('add-task-ov').classList.add('on');
@@ -1190,6 +1226,7 @@ function openEditTask(id){
   else if(dRemType==='interval'&&t.reminder){setRemType('interval');document.getElementById('rem-h').value=t.reminder.h||1;document.getElementById('rem-m').value=t.reminder.m||30;}
   else{setRemType('none');}
   document.getElementById('cnt-target').value=t.count?t.count.target:'';document.getElementById('cnt-unit').value=t.count?t.count.unit||'':'';
+  heroPickInit(t.stats);
   document.getElementById('add-task-title').textContent='Edit Task';
   document.getElementById('save-task-btn').textContent='Save Changes';
   document.getElementById('add-task-ov').classList.add('on');
@@ -1219,7 +1256,7 @@ function saveTask(){
     t.name=name;t.notes=notes;t.icon=dIcon;t.iconType=dIconType;
     t.recurring=dRec;t.days=[...dDays];t.priority=dPriority;
     t.notifStyle=dNotifStyle;t.showInCal=dShowInCal;
-    t.reminder=reminder;t.date=date;t.count=count;
+    t.reminder=reminder;t.date=date;t.count=count;t.stats=heroPick;
     // preserve existing subtask done state, add new subtasks
     const existing=t.subtasks||[];
     t.subtasks=dSubtasks.map(s=>{const ex=existing.find(e=>e.id===s.id);return{id:s.id,name:s.name,done:ex?ex.done:[]};});
@@ -1231,7 +1268,7 @@ function saveTask(){
       priority:dPriority,notifStyle:dNotifStyle,showInCal:dShowInCal,
       createdAt:toDateStr(new Date()),
       subtasks:dSubtasks.map(s=>({id:s.id,name:s.name,done:[]})),
-      reminder,reminderLastFired:null,reminded:[],count
+      reminder,reminderLastFired:null,reminded:[],count,stats:heroPick
     });
     save();closeOv('add-task-ov');renderTaskList();
     const rl=remLabel(reminder);showToast(rl?`✅ Added · ${rl}`:'✅ Task added!');
@@ -1245,7 +1282,7 @@ function taskTime(t){const r=t.reminder,v=typeof r==='string'?r:r&&r.type==='tim
 function taskGroup(t,tod,dow){if(!isTodayTask(t,tod,dow))return 4;const tm=taskTime(t);return!tm?3:tm<'12:00'?0:tm<'17:00'?1:2;}
 let justChecked=null;
 function renderTaskList(){
-  renderGwenHi();renderSleepCard();renderPrayerCard();renderGoals();renderLists();
+  renderGwenHi();renderHeroMini();renderSleepCard();renderPrayerCard();renderGoals();renderLists();
   const el=document.getElementById('task-list');
   const tod=toDateStr(new Date()),dow=new Date().getDay();
   const todayTasks=tasks.filter(t=>isTodayTask(t,tod,dow));
@@ -1377,7 +1414,7 @@ function confetti(){
   box.innerHTML=Array.from({length:60},(_,i)=>`<i style="left:${Math.random()*100}%;background:${cols[i%6]};--x:${Math.round((Math.random()-.5)*160)}px;--r:${Math.round(360+Math.random()*720)}deg;animation-duration:${(1.6+Math.random()*1.4).toFixed(2)}s;animation-delay:${(Math.random()*.4).toFixed(2)}s;"></i>`).join('');
   document.body.appendChild(box);setTimeout(()=>box.remove(),3600);
 }
-function deleteTask(id){tasks=tasks.filter(t=>t.id!==id);save();renderTaskList();showToast('Removed');}
+function deleteTask(id){const t=tasks.find(x=>x.id===id);if(t)heroBank(t);tasks=tasks.filter(t=>t.id!==id);save();renderTaskList();showToast('Removed');}
 
 // ── Timer ─────────────────────────────────────────────────────────────────────
 function addTimerItem(){const id=uid();sesItems.push({id,name:'',accum:0,startedAt:null,running:false,locked:false});renderTimerTab();setTimeout(()=>{const el=document.getElementById('tn-'+id);if(el)el.focus();},80);}
@@ -1412,7 +1449,7 @@ function saveSession(){
   sesItems.forEach(it=>{const ni=document.getElementById('tn-'+it.id);if(ni)it.name=ni.value;if(it.running){it.accum+=Date.now()-it.startedAt;it.startedAt=null;it.running=false;}});
   const name=document.getElementById('ses-name').value.trim()||'Session';
   const total=sesItems.reduce((s,it)=>s+it.accum,0);
-  savedSessions.unshift({id:uid(),name,date:new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),total,items:sesItems.map(it=>({name:it.name||'Timer',dur:it.accum}))});
+  savedSessions.unshift({id:uid(),name,day:toDateStr(new Date()),date:new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),total,items:sesItems.map(it=>({name:it.name||'Timer',dur:it.accum}))});
   sesItems=[];document.getElementById('ses-name').value='';
   save();renderTimerTab();showToast(`💾 "${name}" saved!`);
 }
@@ -1561,6 +1598,7 @@ function gwenContext(){
     gwenSpecialDays(7).map(d=>`${d.what.replace(/^\S+ /,'').replace('Your birthday',"Rayan's birthday").replace('Gwen’s birthday','your own birthday')} ${d.in===0?'is today':d.in===1?'is tomorrow':`is in ${d.in} days`}.`).join(' '),
     `Streak: ${calculateStreak()} day(s) of finishing everything. Mood today: ${m?['very low','low','okay','good','great'][m-1]:'not picked yet'}.`,
     gwenMoodLine(),
+    heroLine(),
     gwenOutfitLine(),
     gwenWx?`Weather where he is: ${gwenWx.text}.`:'',
     gwenCfg.study?`He is in a study session with you (${gwenCfg.study.what}), ${Math.max(1,Math.ceil((gwenCfg.study.end-Date.now())/60e3))} minutes left: keep replies very short and nudge him back to studying.`:'',
@@ -2444,7 +2482,7 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2600);}
 
 // ── Swipe navigation ──────────────────────────────────────────────────────────
-const TABS=['tasks','timer','cal','summary','gwen','settings'];
+const TABS=['tasks','hero','timer','cal','summary','gwen','settings'];
 (function initSwipe(){
   const main=document.getElementById('main');
   let tx=0,ty=0,swiping=false;

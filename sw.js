@@ -1,5 +1,5 @@
-const CACHE = 'daytrack-v4';
-const FILES = ['./', './index.html', './manifest.json', './icon.svg'];
+const CACHE = 'daytrack-v5';
+const FILES = ['./', './index.html', './levels.js', './levels.css', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
