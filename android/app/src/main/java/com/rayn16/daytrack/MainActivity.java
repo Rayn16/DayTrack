@@ -617,6 +617,15 @@ public class MainActivity extends Activity {
             } catch (Exception e) { return false; }
         }
 
+        // Walk mode GPS: true when recording started (asks for precise location first if needed)
+        @JavascriptInterface public boolean walkStart() {
+            if (!granted(Manifest.permission.ACCESS_FINE_LOCATION)) { askPerm("location"); return false; }
+            WalkService.start(MainActivity.this); return true;
+        }
+        @JavascriptInterface public void walkStop() { WalkService.stop(MainActivity.this); }
+        @JavascriptInterface public String walkPoints(int from) { return WalkService.since(from); }
+        @JavascriptInterface public boolean walking() { return WalkService.running; }
+
         @JavascriptInterface public boolean setWallpaper(String dataUrl) {
             try {
                 Bitmap b = Poller.bitmap(dataUrl);

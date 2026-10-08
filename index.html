@@ -108,7 +108,7 @@
     #app{display:flex;flex-direction:column;height:100%;position:relative;}
     #hdr{background:var(--hdr);padding:calc(env(safe-area-inset-top,0px) + 10px) 15px 10px;border-bottom:1px solid var(--brd);flex-shrink:0;transition:background .25s,border-color .25s;}
     #main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);transition:background .25s;}
-    #nav{background:var(--nav);border-top:1px solid var(--brd);display:grid;grid-template-columns:repeat(7,1fr);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:background .25s,border-color .25s;}
+    #nav{background:var(--nav);border-top:1px solid var(--brd);display:grid;grid-template-columns:repeat(5,1fr);align-items:end;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);transition:background .25s,border-color .25s;}
     /* Phone frame only in a browser tab, not in the installed or desktop app */
     @media(min-width:600px) and (display-mode:browser){
       html:not(.app) body{background:#0D0D1A;display:flex;justify-content:center;align-items:center;min-height:100vh;overflow:auto;padding:24px 0;}
@@ -120,6 +120,11 @@
     .nb{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--sub);font-size:10px;font-weight:500;padding:7px 0 8px;font-family:inherit;transition:color .2s;width:100%;}.nb.on{color:var(--pri);font-weight:700;}
     .nb .ic{width:50px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center;transition:background .2s,box-shadow .2s;}.nb .ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
     .nb.on .ic{background:var(--pril);box-shadow:0 0 14px color-mix(in srgb,var(--pri) 35%,transparent);}.nb.on .ic .fill{fill:currentColor;}
+    .nb-x{display:none;}
+    .nb-gwen .ic{width:56px;height:56px;border-radius:50%;margin-top:-24px;background:linear-gradient(135deg,var(--pri),#EC4899);color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--pri) 45%,transparent);border:4px solid var(--nav);}
+    .nb-gwen .ic svg{width:24px;height:24px;}.nb-gwen.on .ic{background:linear-gradient(135deg,var(--pri),#EC4899);box-shadow:0 0 18px color-mix(in srgb,#EC4899 60%,transparent);}
+    .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}.more-grid button{background:var(--pril);border:none;border-radius:16px;padding:16px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--pri);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;}
+    .more-grid svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
     .card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px;transition:background .25s;}
     .cl{font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;}
     .ov{position:fixed;inset:0;background:var(--over);display:flex;align-items:flex-end;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}.ov.on{opacity:1;pointer-events:all;}
@@ -272,6 +277,7 @@
       <div class="dcol">
         <div class="card" id="hero-card"></div>
         <div class="card hseg-stats"><div class="cl">Steps</div><div id="hero-steps"></div></div>
+        <div class="card hseg-stats"><div class="cl">Walks</div><div id="hero-walks"></div></div>
         <div class="card hseg-stats" id="hero-body-card"><div class="cl">Your body · tap a part</div><div id="hero-body"></div></div>
         <div class="card hseg-stats"><div class="cl">Your shape</div><div id="hero-radar"></div></div>
         <div class="card hseg-stats"><div class="cl">Stats · tap one to see what trained it</div><div id="hero-stats"></div></div>
@@ -536,11 +542,12 @@
   <div id="nav">
     <button class="nb on" data-t="tasks" onclick="switchTab('tasks')"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>Tasks</button>
     <button class="nb" data-t="hero" onclick="switchTab('hero')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9z"/></svg></span>Level</button>
-    <button class="nb" data-t="timer" onclick="switchTab('timer')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg></span>Timer</button>
+    <button class="nb nb-gwen" data-t="gwen" onclick="switchTab('gwen')"><span class="ic"><svg viewBox="0 0 24 24"><path class="fill" d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>Gwen</button>
     <button class="nb" data-t="cal" onclick="switchTab('cal')"><span class="ic"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>Calendar</button>
-    <button class="nb" data-t="summary" onclick="switchTab('summary')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/></svg></span>Summary</button>
-    <button class="nb" data-t="gwen" onclick="switchTab('gwen')"><span class="ic"><svg viewBox="0 0 24 24"><path class="fill" d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>Gwen</button>
-    <button class="nb" data-t="settings" onclick="switchTab('settings')"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Settings</button>
+    <button class="nb nb-more" data-t="more" onclick="moreSheet()"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" class="fill"/><circle cx="12" cy="12" r="1.6" class="fill"/><circle cx="19" cy="12" r="1.6" class="fill"/></svg></span>More</button>
+    <button class="nb nb-x" data-t="timer" onclick="switchTab('timer')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg></span>Timer</button>
+    <button class="nb nb-x" data-t="summary" onclick="switchTab('summary')"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3"/></svg></span>Summary</button>
+    <button class="nb nb-x" data-t="settings" onclick="switchTab('settings')"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Settings</button>
   </div>
 
 </div>
@@ -1157,6 +1164,7 @@ function switchTab(t,dir){
   el.classList.add('on',goRight?'slide-in-right':'slide-in-left');
   el.addEventListener('animationend',()=>el.classList.remove('slide-in-right','slide-in-left'),{once:true});
   document.querySelector(`.nb[data-t="${t}"]`).classList.add('on');
+  if(['timer','summary','settings'].includes(t))document.querySelector('.nb-more').classList.add('on');
   document.getElementById('main').scrollTop=0;
   if(t==='cal')renderCal();
   if(t==='summary')renderSummary();
@@ -2530,7 +2538,8 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2600);}
 
 // ── Swipe navigation ──────────────────────────────────────────────────────────
-const TABS=['tasks','hero','timer','cal','summary','gwen','settings'];
+function moreSheet(){const b=t=>{const x=document.querySelector(`.nb[data-t="${t}"]`);return`<button onclick="closeOv('dt-ov');switchTab('${t}')">${x.querySelector('.ic').innerHTML}${x.textContent.trim()}</button>`;};sheet(`<div class="more-grid">${b('timer')}${b('summary')}${b('settings')}</div>`);}
+const TABS=['tasks','hero','gwen','cal','timer','summary','settings'];
 (function initSwipe(){
   const main=document.getElementById('main');
   let tx=0,ty=0,swiping=false;
@@ -2545,9 +2554,7 @@ const TABS=['tasks','hero','timer','cal','summary','gwen','settings'];
     if(!swiping)return;swiping=false;
     const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
     if(Math.abs(dx)<50||Math.abs(dx)<Math.abs(dy)*1.5)return;
-    const active=document.querySelector('.nb.on');
-    if(!active)return;
-    const cur=TABS.indexOf(active.dataset.t);
+    const cur=TABS.indexOf(document.body.dataset.tab||'tasks');
     if(dx<0&&cur<TABS.length-1)switchTab(TABS[cur+1],1); // swipe left → next
     else if(dx>0&&cur>0)switchTab(TABS[cur-1],-1);        // swipe right → prev
   },{passive:true});

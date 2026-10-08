@@ -92,3 +92,19 @@ console.log('All app checks passed');
   hh.heroP.hpOn = back(4); hpT.splice(1); x = hh.heroHP(); assert.equal(x.hp, 60); // 4 missed days
 }
 console.log('Round 5 checks passed');
+
+// Walks: distance, auto-pause, splits, climb, same-route
+{
+  const wk = new Function(fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nreturn {heroWalkStats, heroSameRoute};')();
+  const pts = []; let lat = 24.7, t = 0;
+  for (let i = 0; i < 360; i++) { lat += 7 / 111195; t += 5; pts.push([lat, 46.7, 600 + (i < 180 ? i * .2 : 36), t]); }   // 1.4 m/s for 30 min, climbing 36 m
+  for (let i = 0; i < 12; i++) { t += 5; pts.push([lat, 46.7, 636, t]); }                                         // a 1-minute stop
+  const s = wk.heroWalkStats(pts);
+  assert(Math.abs(s.m - 2513) < 15, 'walk distance ' + s.m);
+  assert(Math.abs(s.mov - 1795) < 10, 'auto-pause ignores the stop: ' + s.mov);
+  assert(s.sp.length === 2 && Math.abs(s.sp[0] - 714) < 5, 'splits ' + s.sp);
+  assert(s.climb >= 30 && s.climb <= 36, 'climb ' + s.climb);
+  const a = {start: [24.7, 46.7], end: [24.72, 46.7], m: 2500}, b = {start: [24.7005, 46.7], end: [24.7202, 46.7], m: 2600}, c = {...b, m: 4000};
+  assert(wk.heroSameRoute(a, b) && !wk.heroSameRoute(a, c), 'same route');
+  console.log('Walk checks passed');
+}
