@@ -479,10 +479,9 @@ function lifeQuestCheck(kind,extra){
   renderLife();confetti();
   if(gwenCfg.key)gwenLine('Quest done! 🎯 There\'s a little something waiting for you in the house 💜','happy');
 }
-function questCard(){
-  const q=quest;if(!q||q.date!==toDateStr(new Date()))return'';
-  const where={phone:'📱 here in DayTrack',house:'🏠 in her house',pc:'💻 on your PC'}[q.where]||'',go=q.done?'':q.kind==='connect4'||q.kind==='anygame'?'gwenGames()':q.kind==='adhkar'?`openAdhkar('${adhkarNow()||'m'}')`:'';
-  return`<div class="card life-card" style="display:flex;align-items:center;gap:10px;${go?'cursor:pointer;':''}"${go?` onclick="${go}"`:''}><span style="font-size:24px;">${q.done?'✅':'🎯'}</span><div style="flex:1;min-width:0;"><div style="font-size:11px;color:var(--sub);font-weight:600;">GWEN'S QUEST FOR TODAY · ${where}</div><div style="font-size:14px;font-weight:600;${q.done?'text-decoration:line-through;color:var(--sub);':''}">${esc(q.text)}</div>${q.done?'<div style="font-size:12px;color:var(--grntxt);">Done! Your reward is in the house 🎁</div>':''}</div></div>`;
+// Where Gwen's quest is done, and what tapping it opens (shown in the daily quests, levels.js)
+function questGo(q){
+  return{where:{phone:'📱 here',house:'🏠 in her house',pc:'💻 on your PC'}[q.where]||'',go:q.done?'':q.kind==='connect4'||q.kind==='anygame'?'gwenGames()':q.kind==='adhkar'?`openAdhkar('${adhkarNow()||'m'}')`:''};
 }
 window.lifeTaskDone=()=>lifeQuestCheck('task');
 window.lifeGame=(name,r)=>{life.games[r]=(life.games[r]||0)+1;life.games.by={...(life.games.by||{}),[name]:{...((life.games.by||{})[name]||{}),[r]:(((life.games.by||{})[name]||{})[r]||0)+1}};lifeSave();if(r==='won')lifeQuestCheck('game',name);};
@@ -553,7 +552,8 @@ async function openYear(){
 // ── Cards, settings, Gwen's context ───────────────────────────────────────────
 function renderLife(){
   const top=document.getElementById('life-top'),bot=document.getElementById('life-bottom');if(!top)return;
-  top.innerHTML=ramadanCard()+adhkarCard()+questCard()+sundayCard()+quranCard();
+  top.innerHTML=ramadanCard()+adhkarCard()+sundayCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
+  renderHeroMini();
   bot.innerHTML=routinesCard();
   renderSpend();
 }

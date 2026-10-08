@@ -33,4 +33,15 @@ assert.deepEqual(lv.heroDetect('Read a book'), {intellect: 1, focus: .3});
 assert.deepEqual(lv.heroDetect('Buy a lamp'), {});
 assert.equal(lv.heroLvl(0, 50), 1); assert.equal(lv.heroLvl(99, 50), 1); assert.equal(lv.heroLvl(100, 50), 2);
 for (const L of [2, 7, 30]) { assert.equal(lv.heroLvl(lv.heroAt(L, 50), 50), L); assert.equal(lv.heroLvl(lv.heroAt(L, 50) - 1, 50), L - 1); }
+// Buffs: a 7-day streak and 7 h sleep raise XP, short sleep and an overdue task lower it
+const bf = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'sleepHours', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nreturn {heroBuffs, heroMult};');
+const toDateStr = new Function(html.match(/function pad\(.*/)[0] + html.match(/function toDateStr\(.*/)[0] + 'return toDateStr;')();
+const days7 = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07'];
+const hrs = s => { const m = t => +t.slice(0, 2) * 60 + +t.slice(3); return ((m(s.wake) - m(s.bed) + 1440) % 1440) / 60; };
+let b = bf(toDateStr, days7, {'2026-10-08': {bed: '23:00', wake: '07:30'}}, {}, [], hrs);
+assert.deepEqual(b.heroBuffs('2026-10-08').map(x => x.name), ['Blazing', 'Well rested']);
+assert.equal(b.heroMult('2026-10-08'), 1.3);
+b = bf(toDateStr, [], {'2026-10-08': {bed: '02:00', wake: '06:30'}}, {}, [{recurring: false, date: '2026-10-06', done: []}], hrs);
+assert.deepEqual(b.heroBuffs('2026-10-08').map(x => x.name), ['Tired', 'Early bird', 'Overdue']);
+assert.equal(b.heroMult('2026-10-08'), 0.9);
 console.log('All app checks passed');

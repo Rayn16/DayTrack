@@ -232,6 +232,7 @@ function heroLevelUps(aw){
 // ── After every save: show what just went up ──
 let heroLast=null;
 function heroTick(silent){
+  heroAchCheck(silent);
   const s=heroSum(heroAwards()),prev=heroLast;heroLast=s;
   if(silent||!prev||s.total<=prev.total)return;
   const gains=HERO_STATS.filter(x=>s.st[x.id]>prev.st[x.id]).map(x=>({...x,add:s.st[x.id]-prev.st[x.id],L0:heroLvl(prev.st[x.id],HERO_SB),L:heroLvl(s.st[x.id],HERO_SB)})).sort((a,b)=>b.add-a.add);
@@ -293,7 +294,7 @@ function renderHero(){
   tab.dataset.seg=heroSeg;renderHeroChip(h);
   document.getElementById('hero-card').innerHTML=`
     <div class="hc-top"><button class="hc-av" onclick="heroAvatar()" title="Change">${esc(heroP.av)}</button>
-      <div style="flex:1;min-width:0;"><div class="hc-name">Rayan</div><div class="hc-cls">${h.rank} ${h.cls}</div></div>
+      <div style="flex:1;min-width:0;"><div class="hc-name">Rayan</div><div class="hc-cls">${heroTitle(heroAchievements(h))?`<b class="hc-title">「${esc(heroTitle(heroAchievements(h)))}」</b> `:''}${h.rank} ${h.cls}</div></div>
       <div class="hc-lv"><small>LEVEL</small>${h.L}</div></div>
     <div class="bar hc-bar"><i style="width:${b.pct}%"></i></div>
     <div class="hc-xp"><span>${h.s.total.toLocaleString()} XP</span><span>${b.left} to level ${h.L+1}</span></div>
@@ -301,15 +302,15 @@ function renderHero(){
   document.getElementById('hero-card').insertAdjacentHTML('beforeend',heroBuffChips(toDateStr(new Date()),true));
   document.getElementById('hero-radar').innerHTML=heroRadar(h);
   document.getElementById('hero-body').innerHTML=heroBody(h);
-  const Q=heroQuests(h),left=(b)=>{const n=Math.round((new Date(b+'T23:59:59')-new Date())/864e5);return n<1?`resets in ${Math.max(1,Math.ceil((new Date(b+'T23:59:59')-new Date())/36e5))} h`:`${n+1} days left`;};
-  document.getElementById('hero-quests').innerHTML=[['d','☀️ Daily'],['w','📅 Weekly'],['m','🌙 Monthly']].map(([k,n])=>`<div class="hs-g hq-h"><span>${n}</span><small>${left(Q.p[k].b)}</small></div>`+heroQuestRows(Q[k],k)).join('');
+  const Q=heroQuests(h),left=b=>{const ms=new Date(b+'T23:59:59')-new Date(),dd=Math.ceil(ms/864e5);return dd<=1?`resets in ${Math.max(1,Math.ceil(ms/36e5))} h`:`${dd} days left`;};
+  document.getElementById('hero-quests').innerHTML=[['d','☀️ Daily'],['w','📅 Weekly'],['m','🌙 Monthly']].map(([k,n])=>`<div class="hs-g hq-h"><span>${n}</span><small>${left(Q.p[k].b)}</small></div>`+(k==='w'?heroBoss(Q.w,Q.p.w):'')+heroQuestRows(Q[k],k)).join('');
   document.getElementById('hero-stats').innerHTML=Object.keys(HERO_GROUPS).map(g=>`<div class="hs-g">${g}</div>`+HERO_STATS.filter(x=>x.g===g).map(x=>{const sb=heroBar(h.s.st[x.id],HERO_SB);return`<div class="hs-row" onclick="heroStat('${x.id}')"><span class="hs-ic">${x.ic}</span><span class="hs-n">${x.name}</span><div class="bar"><i style="width:${sb.pct}%"></i></div><span class="hs-l">Lv ${sb.L}</span></div>`;}).join('')).join('');
   const ups=heroLevelUps(h.aw).slice(0,15),tod=toDateStr(new Date());
   const days=[...new Set(h.aw.map(a=>a.d))].sort().reverse().slice(0,7);
   document.getElementById('hero-log').innerHTML=
     (ups.length?`<div class="hs-g" style="margin-top:0;">Level-ups</div>`+ups.map(u=>`<div class="hl-item"><span class="hs-ic">${u.ic}</span><div style="flex:1;min-width:0;"><b>${u.name==='Level'?'You reached Level '+u.L:u.name+' reached Lv '+u.L}</b><div class="hm-sub">${u.d===tod?'Today':fmtDay(u.d)} · from ${esc(u.via)}</div></div></div>`).join(''):'')
     +(days.length?`<div class="hs-g">XP by day</div>`+days.map(d=>{const a=h.aw.filter(x=>x.d===d);return`<div class="hl-day"><div class="hl-dh"><b>${d===tod?'Today':fmtDay(d)}</b><span>+${a.reduce((n,x)=>n+x.xp,0)} XP</span></div>${a.map(x=>`<div class="hl-g"><span>${x.ic} ${esc(x.what)}</span><span>+${x.xp} ${Object.keys(x.sx).filter(k=>HERO_BY[k]).map(k=>HERO_BY[k].ic).join('')}</span></div>`).join('')}</div>`;}).join(''):'<div class="hm-sub">Your XP history shows up here once you tick a task.</div>');
-  renderHeroTree(h);
+  renderHeroTree(h);renderHeroAch(h);
 }
 // Six-sided stat shape, like a game character sheet
 function heroRadar(h){
@@ -471,7 +472,7 @@ function heroQuests(h=heroState()){
     const p=P[k];if(!heroP.q[p.id])heroP.q[p.id]=heroMakeQuests(k,p,h);
     const list=heroP.q[p.id].map((q,i)=>({...q,key:`${p.id}:${i}`}));
     // Gwen's daily quest (from her house) joins the daily ones
-    if(k==='d'&&typeof quest!=='undefined'&&quest&&quest.date===p.a)list.push({t:'gwen',n:1,text:`💜 Gwen: ${quest.text}`,done:quest.done,key:`${p.id}:gwen`,st:{charisma:1}});
+    if(k==='d'&&typeof quest!=='undefined'&&quest&&quest.date===p.a){const g=typeof questGo==='function'?questGo(quest):{};list.push({t:'gwen',n:1,text:`💜 Gwen's quest${g.where?' ('+g.where+')':''}: ${quest.text}`,done:quest.done,go:g.go,key:`${p.id}:gwen`,st:{charisma:1}});}
     out[k]=list.map(q=>{const c=Math.min(q.n,heroQProg(q,p,h.aw));return{...q,text:heroQText(q),prog:c,ready:c>=q.n,claimed:!!(heroP.claims||{})[q.key],xp:QUEST_XP[k]};});
   }
   for(const id of Object.keys(heroP.q))if(![P.d.id,P.w.id,P.m.id].includes(id))delete heroP.q[id];
@@ -479,7 +480,7 @@ function heroQuests(h=heroState()){
 }
 function heroQuestRows(list,k){
   const all=list.length&&list.every(q=>q.claimed),chest=`${heroPeriods()[k].id}:chest`,got=(heroP.claims||{})[chest];
-  return list.map(q=>`<div class="hq${q.claimed?' got':''}"><div style="flex:1;min-width:0;"><div class="hq-t">${esc(q.text)}</div><div class="hq-b"><span class="bar"><i style="width:${q.prog/q.n*100}%"></i></span><small>${q.prog}/${q.n}</small></div></div>`
+  return list.map(q=>`<div class="hq${q.claimed?' got':''}"${q.go&&!q.ready?` onclick="${q.go}" style="cursor:pointer;"`:''}><div style="flex:1;min-width:0;"><div class="hq-t">${esc(q.text)}</div><div class="hq-b"><span class="bar"><i style="width:${q.prog/q.n*100}%"></i></span><small>${q.prog}/${q.n}</small></div></div>`
     +(q.claimed?'<span class="hq-ok">✓</span>':q.ready?`<button class="hq-claim" onclick="event.stopPropagation();heroClaim('${q.key}','${k}')">Claim +${q.xp}</button>`:`<span class="hq-xp">+${q.xp} XP</span>`)+'</div>').join('')
     +(all&&k==='d'?got?'<div class="hq-chest done">🎁 Daily chest opened</div>':`<button class="hq-chest" onclick="event.stopPropagation();heroClaim('${chest}','d')">🎁 All done! Open the daily chest (+60 XP)</button>`:'');
 }
@@ -531,7 +532,7 @@ function renderHeroTree(h){
 }
 function heroTreeFit(reset){
   const box=document.getElementById('hero-tree'),svg=document.getElementById('hero-tree-svg');if(!box||!svg||!box.clientWidth)return;
-  if(reset||!heroZoom)heroZoom=Math.max(box.clientWidth/1300,.55);
+  if(reset||!heroZoom)heroZoom=Math.max(box.clientWidth/1300,.8);
   const w=Math.round(1300*heroZoom);svg.style.width=svg.style.height=w+'px';
   if(reset||!box.dataset.c){box.scrollLeft=(w-box.clientWidth)/2;box.scrollTop=(w-box.clientHeight)/2;box.dataset.c=1;}
 }
@@ -558,10 +559,54 @@ function heroBody(h){
       +R('legs',cx-21,back?128:128,42,16,8)
       +R('legs',cx-21,146,19,58,9)+R('legs',cx+2,146,19,58,9)+R('legs',cx-19,206,15,46,7)+R('legs',cx+4,206,15,46,7)
       +(back?'':`<path class="bp heart" d="M${cx-12} 56c-4-5-12-2-10 4 1 4 10 9 10 9s9-5 10-9c2-6-6-9-10-4z" fill="${xp('endurance')?'#EF4444':'var(--hb-off)'}" style="--g:#EF4444;opacity:${xp('endurance')?.45+.55*Math.min(1,L('endurance')/10):.6}" onclick="heroStat('endurance')"/>`)
-      +(back?'':`<g class="bl">${[['chest',cx,62],['core',cx,104],['arms',cx-44,74],['legs',cx-11,176]].map(([id,x,y])=>`<text x="${x}" y="${y}">${L(id)}</text>`).join('')}</g>`)
+      +(back?'':`<g class="bl">${[['chest',cx+13,60],['core',cx,104],['arms',cx-44,74],['legs',cx-11,176]].map(([id,x,y])=>`<text x="${x}" y="${y}">${L(id)}</text>`).join('')}</g>`)
       +(back?`<g class="bl">${[['back',cx,70],['core',cx,114],['legs',cx-11,176]].map(([id,x,y])=>`<text x="${x}" y="${y}">${L(id)}</text>`).join('')}</g>`:'')
       +`<text x="${cx}" y="272" class="bcap">${back?'BACK':'FRONT'}</text>`;
   };
   const tag=id=>`<button class="bt" onclick="heroStat('${id}')"><i style="background:${col(id)}"></i>${HERO_BY[id].ic} ${HERO_BY[id].name} <b>Lv ${L(id)}</b></button>`;
   return`<svg viewBox="0 0 320 280" class="body-svg">${fig(80,false)}${fig(240,true)}</svg><div class="bt-row">${['arms','chest','back','core','legs','endurance',mind,'vitality'].map(tag).join('')}</div>`;
+}
+
+// ── Achievements: worked out from everything above; each can carry a title you can wear under your name ──
+const HERO_TITLES={arms:'Iron Arms',chest:'Steel Chest',back:'Eagle Back',core:'Stone Core',legs:'Swift Legs',endurance:'Tireless',intellect:'Sage',focus:'Laser Focus',creativity:'Artist',faith:'Devout',discipline:'Unbreakable',vitality:'Vital',charisma:'Charmer',wealth:'Merchant'};
+function heroBestStreak(){const s=[...completedDays].sort();let best=0,run=0,prev='';s.forEach(d=>{run=prev&&dAdd(prev,1)===d?run+1:1;best=Math.max(best,run);prev=d;});return best;}
+function heroAchievements(h=heroState()){
+  const tk=h.aw.filter(a=>a.k==='task').length,str=heroBestStreak(),cl=Object.keys(heroP.claims||{}),mastered=heroSkills().filter(s=>heroDone(s.id)>=s.steps.length);
+  const gl=g=>HERO_STATS.filter(x=>x.g===g).reduce((n,x)=>n+heroLvl(h.s.st[x.id],HERO_SB),0)/HERO_STATS.filter(x=>x.g===g).length;
+  const list=[
+    ['first','🌱','First step','Complete your first task',tk,1],['t100','✅','Centurion','Complete 100 tasks',tk,100,'Centurion'],['t500','💯','Relentless','Complete 500 tasks',tk,500,'Relentless'],
+    ['s7','🔥','On a roll','Finish every task 7 days in a row',str,7],['s30','☄️','Unstoppable','Finish every task 30 days in a row',str,30,'Unstoppable'],
+    ['l10','⭐','Adept','Reach level 10',h.L,10],['l25','🌟','Hero','Reach level 25',h.L,25,'Hero'],['l50','👑','Legend','Reach level 50',h.L,50,'Legend'],
+    ['q10','⚔️','Quester','Claim 10 quests',cl.length,10,'Quester'],['qm','🌙','Moon hunter','Claim a monthly quest',cl.filter(k=>k[0]==='m').length,1,'Moon Hunter'],
+    ['sk','🏆','Master','Master a whole skill path',mastered.length,1],
+    ['bal','⚖️','All-rounder','Body, Mind, Spirit and Life all average Lv 5',Math.min(...Object.keys(HERO_GROUPS).map(gl)),5,'All-Rounder'],
+    ...HERO_STATS.map(x=>['st-'+x.id,x.ic,HERO_TITLES[x.id],`${x.name} level 10`,heroLvl(h.s.st[x.id],HERO_SB),10,HERO_TITLES[x.id]]),
+    ...mastered.map(s=>['m-'+s.id,s.ic,`Master of ${s.name}`,'Mastered every step',1,1,`${s.name} Master`]),
+  ];
+  return list.map(([id,ic,name,desc,v,n,title])=>({id,ic,name,desc,v:Math.min(v,n),n,title,got:v>=n}));
+}
+function heroTitle(ach){const t=heroP.title&&ach.find(a=>a.got&&a.title===heroP.title);return t?t.title:'';}
+let heroGot=null;
+function heroAchCheck(silent){
+  const ach=heroAchievements(),got=ach.filter(a=>a.got).map(a=>a.id),prev=heroGot;heroGot=got;
+  if(silent||!prev)return;
+  const fresh=ach.filter(a=>a.got&&!prev.includes(a.id));
+  if(fresh.length)setTimeout(()=>{const el=document.getElementById('hero-lvl');if(!el)return;
+    el.innerHTML=`<div class="hl-box"><div class="hl-t">ACHIEVEMENT</div>${fresh.map(a=>`<div class="hl-big" style="font-size:26px;">${a.ic} ${esc(a.name)}</div><div class="hl-rank">${esc(a.desc)}</div>${a.title?`<div class="hl-row">New title: <b>${esc(a.title)}</b></div>`:''}`).join('')}<div class="hl-tap">tap to close</div></div>`;
+    el.classList.add('on');confetti();clearTimeout(heroLevelUp.t);heroLevelUp.t=setTimeout(()=>el.classList.remove('on'),5000);},2000);
+}
+function renderHeroAch(h){
+  const el=document.getElementById('hero-ach');if(!el)return;
+  const ach=heroAchievements(h),got=ach.filter(a=>a.got),titles=got.filter(a=>a.title);
+  el.innerHTML=`<div class="hm-sub" style="margin-bottom:8px;">${got.length} of ${ach.length} unlocked${titles.length?' · tap a title to wear it':''}</div><div class="ha-grid">`
+    +ach.map(a=>`<button class="ha${a.got?' got':''}${a.got&&a.title&&heroP.title===a.title?' worn':''}" ${a.got&&a.title?`onclick="heroWear('${esc(a.title)}')"`:''} title="${esc(a.desc)}"><span class="ha-ic">${a.got?a.ic:'🔒'}</span><b>${esc(a.name)}</b><small>${a.got?(a.title?`Title: ${esc(a.title)}`:esc(a.desc)):`${esc(a.desc)} · ${Math.floor(a.v)}/${a.n}`}</small></button>`).join('')+'</div>';
+}
+function heroWear(t){heroP.title=heroP.title===t?'':t;save();renderHero();renderHeroMini();}
+
+// Weekly boss: the weekly XP quest as a monster whose HP your XP knocks down
+const HERO_BOSSES=[['👹','The Procrastinator'],['🐉','Doomscroll Dragon'],['🧟','The Couch Zombie'],['👻','Ghost of Excuses'],['🦑','The Distraction Kraken'],['🐺','Lazy Wolf'],['🗿','Stone of Sloth']];
+function heroBoss(list,p){
+  const q=list.find(x=>x.t==='xp');if(!q)return'';
+  const [ic,name]=HERO_BOSSES[Math.floor(heroRng(p.id+'boss')()*HERO_BOSSES.length)],hp=Math.max(0,q.n-q.prog);
+  return`<div class="boss${hp?'':' dead'}"><span class="boss-ic">${hp?ic:'💥'}</span><div style="flex:1;min-width:0;"><b>${hp?name:`${name} defeated!`}</b><div class="boss-hp"><i style="width:${hp/q.n*100}%"></i></div><small>${hp?`${hp} HP left · every XP you earn this week hits it`:'Claim the reward below'}</small></div></div>`;
 }
