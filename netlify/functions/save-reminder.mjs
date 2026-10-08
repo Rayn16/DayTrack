@@ -4,7 +4,7 @@ import { localNow, parcelFor, trophyParcels } from '../lib/house.mjs';
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405 };
   try {
-    const { subscription, tasks, completedDays, tz, quiet, gwen, moods, gwenWake, gwenBed, gwenCheered, gwenLoc, gwenStudy, prayers, goals, sleep, adhkar, spend, events, trophies } = JSON.parse(event.body);
+    const { subscription, tasks, completedDays, tz, quiet, gwen, moods, gwenWake, gwenBed, gwenCheered, gwenLoc, gwenStudy, prayers, goals, sleep, adhkar, spend, events, trophies, nudges } = JSON.parse(event.body);
     if (!subscription || !subscription.keys || !subscription.keys.auth) {
       console.log('Missing subscription or keys');
       return { statusCode: 400, body: 'Missing subscription' };
@@ -32,7 +32,10 @@ const handler = async (event) => {
       sleep: sleep && typeof sleep === 'object' && JSON.stringify(sleep).length < 3000 ? sleep : {},
       // Adhkar reminders after Fajr and Asr, his spending this week and last (SAR, by category), today's phone-calendar events
       adhkar: !!adhkar, spend: spend && typeof spend === 'object' && JSON.stringify(spend).length < 2000 ? spend : null,
-      events: Array.isArray(events) ? events.slice(0, 12).map(e => ({ title: String(e.title || '').slice(0, 80), at: /^\d{2}:\d{2}$/.test(e.at || '') ? e.at : null })) : [] });
+      events: Array.isArray(events) ? events.slice(0, 12).map(e => ({ title: String(e.title || '').slice(0, 80), at: /^\d{2}:\d{2}$/.test(e.at || '') ? e.at : null })) : [],
+      // Water, bills, Gwen's top 3, the weekly photo: the app works out what and when, the server fires them on the minute
+      nudges: Array.isArray(nudges) ? nudges.filter(n => n && /^\d{4}-\d{2}-\d{2}$/.test(n.date || '') && hhmm(n.at)).slice(0, 20)
+        .map(n => ({ id: String(n.id || '').slice(0, 40), date: n.date, at: n.at, title: String(n.title || '⏰ DayTrack').slice(0, 50), text: String(n.text || '').slice(0, 240) })) : [] });
     // Finished every task today: a parcel goes to Gwen's house
     const today = localNow(tz).date;
     await parcelFor(today, completedDays, tasks.filter(t => (t.done || []).includes(today)).length).catch(e => console.error('Parcel:', e.message));

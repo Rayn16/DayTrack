@@ -23,6 +23,7 @@
       if(b.gwen){[b.gwenWake,'19:30','20:00'].forEach(s=>s&&hm.push(s));if(b.gwenBed){const[h,m]=b.gwenBed.split(':').map(Number),x=(h*60+m+1410)%1440;hm.push(`${Math.floor(x/60)}:${x%60}`);}}
       hm.forEach(s=>t.push(at(s,0),at(s,1)));
       if(b.gwenStudy)t.push(b.gwenStudy.end+70000);
+      (b.nudges||[]).forEach(n=>t.push(new Date(n.date+'T'+n.at+':00').getTime()+70000));
       if(b.prayers&&b.prayers.remind)Object.entries(b.prayers.days||{}).forEach(([d,o])=>Object.values(o||{}).forEach(s=>t.push(new Date(d+'T'+s+':00').getTime()+70000)));
       return t.filter(x=>x>Date.now()).sort((a,b)=>a-b).slice(0,60);
     }
@@ -295,6 +296,7 @@
         <div class="card hseg-log"><div class="cl">Season</div><div id="hero-season"></div></div>
         <div class="card hseg-log"><div class="cl">Ranked</div><div id="hero-ranked"></div></div>
         <div class="card hseg-log"><div class="cl">Friend duel</div><div id="hero-duel"></div></div>
+        <div class="card hseg-log"><div class="cl">Friends board</div><div id="life-friends"></div></div>
         <div class="card hseg-log"><div class="cl">Your year</div><div id="hero-heat"></div></div>
         <div class="card hseg-log"><div class="cl">Journal · one line a night</div><div id="hero-journal"></div></div>
       </div>
@@ -1022,7 +1024,7 @@ async function applyPendingDone(){
     for(const req of await c.keys()){
       const m=new URL(req.url).pathname.match(/__(done|move)\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/);
       const t=m&&tasks.find(x=>x.id===m[2]);
-      if(t&&m[1]==='done'&&!t.done.includes(m[3])){t.done.push(m[3]);n++;}
+      if(t&&m[1]==='done'&&!t.done.includes(m[3])){if(t.count)setCount(t,m[3],t.count.target);else t.done.push(m[3]);n++;}
       if(t&&m[1]==='move'&&!t.recurring&&!t.done.length){t.date=m[3];n++;} // Tomorrow on Gwen's nudge
       await c.delete(req);
     }
@@ -1442,7 +1444,7 @@ function checkTask(id,full){
     setCount(t,tod,n);if(navigator.vibrate)navigator.vibrate(8);
   }else t.done.includes(tod)?t.done=t.done.filter(d=>d!==tod):t.done.push(tod);
   justChecked=id;updateStreakAfterCheck();save();renderTaskList();
-  if(window.lifeTaskDone)lifeTaskDone();
+  if(window.lifeTaskDone)lifeTaskDone(id);
 }
 function countOf(t,tod){return t.done.includes(tod)?t.count.target:((t.counts||{})[tod]||0);}
 function setCount(t,tod,n){
@@ -1519,7 +1521,7 @@ function saveSession(){
   sesItems.forEach(it=>{const ni=document.getElementById('tn-'+it.id);if(ni)it.name=ni.value;if(it.running){it.accum+=Date.now()-it.startedAt;it.startedAt=null;it.running=false;}});
   const name=document.getElementById('ses-name').value.trim()||'Session';
   const total=sesItems.reduce((s,it)=>s+it.accum,0);
-  savedSessions.unshift({id:uid(),name,day:toDateStr(new Date()),date:new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),total,items:sesItems.map(it=>({name:it.name||'Timer',dur:it.accum}))});
+  savedSessions.unshift({id:uid(),name,day:toDateStr(new Date()),date:new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),total,items:sesItems.map(it=>({name:it.name||'Timer',dur:it.accum})),...(window.lifeFocusEnd?lifeFocusEnd():{})});
   sesItems=[];document.getElementById('ses-name').value='';
   save();renderTimerTab();showToast(`💾 "${name}" saved!`);
 }
@@ -2318,7 +2320,7 @@ function gwenStudyStop(early){
   clearInterval(gwenStudyTick);document.getElementById('gwen-study').style.display='none';
   gwenCfg.study=null;gwenStoreCfg();syncReminders();
   const ms=Math.max(0,Math.min(Date.now(),s.end)-s.start),mins=Math.round(ms/60e3);
-  if(mins>=1){savedSessions.unshift({id:uid(),name:`📚 ${s.what} with Gwen`,date:new Date(s.start).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),total:ms,items:[{name:s.what,dur:ms}]});save();renderPastSessions();}
+  if(mins>=1){savedSessions.unshift({id:uid(),name:`📚 ${s.what} with Gwen`,date:new Date(s.start).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),total:ms,items:[{name:s.what,dur:ms}],...(window.lifeFocusEnd?lifeFocusEnd():{})});save();renderPastSessions();}
   if(early&&mins<5)return gwenLine('Giving up already? 😏 Okay, we can try again later.','pout');
   gwenLine(early?`${mins} minutes of ${s.what}, not bad 💜 Take a little break.`:`🎉 ${s.mins} minutes of ${s.what} done! Take a 5 minute break, you earned it 💜`,'happy');
   gwenBond(3);
