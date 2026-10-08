@@ -212,6 +212,7 @@
   <link rel="stylesheet" href="levels.css">
 </head>
 <body data-tab="tasks">
+<script src="ar.js"></script>
 <div id="app">
 
   <div id="hdr">
@@ -254,11 +255,13 @@
       </div>
       <div class="card" id="prayer-card" style="display:none;"></div>
       <div class="card" id="mood-card"></div>
+      <div id="life-top"></div>
       </div>
       <div class="dcol"><div class="card" id="tasks-card"><div class="cl">Today's Tasks</div><div id="task-list"></div></div></div>
       <div class="dcol">
       <div class="card" id="goals-card"></div>
       <div class="card" id="lists-card"></div>
+      <div id="life-bottom"></div>
       </div>
     </div>
 
@@ -302,6 +305,7 @@
           <button onclick="calNav(1)" style="background:none;border:none;font-size:24px;color:var(--pri);cursor:pointer;padding:0 10px;font-family:inherit;">›</button>
         </div>
         <div style="display:flex;gap:6px;justify-content:center;margin:-4px 0 12px;"><button class="rb on" id="cv-month" onclick="setCalMode('month')">Month</button><button class="rb" id="cv-week" onclick="setCalMode('week')">Week</button></div>
+        <button onclick="planWeek()" style="width:100%;margin:-2px 0 12px;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">💜 Plan my week with Gwen</button>
         <div id="cal-week" style="display:none;"></div>
         <div id="cal-month">
         <div style="display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px;">
@@ -336,6 +340,7 @@
       <div class="card"><div class="cl">Habits — Last 30 Days</div><div id="habit-stats"></div></div>
       <div class="card"><div class="cl">Mood — Last 14 Days</div><div id="mood-chart"></div></div>
       <div class="card"><div class="cl">Sleep — Last 14 Days</div><div id="sleep-chart"></div></div>
+      <div class="card" id="spend-card"></div>
       <div class="card"><div class="cl">Recent Sessions</div><div id="sum-sess"></div></div>
     </div>
 
@@ -366,6 +371,8 @@
           <button class="gchip" onclick="gwenGifts()">🎁 Gift</button>
           <button class="gchip" onclick="openPostcards()">🖼 Postcards</button>
           <button class="gchip" onclick="openPc()">💻 PC</button>
+          <button class="gchip" onclick="peekHouse()">🏠 Peek</button>
+          <button class="gchip" onclick="planWeek()">🗓 Plan week</button>
         </div>
         <div id="gwen-msgs"></div>
         <div id="gwen-photo" style="display:none;align-items:center;gap:8px;margin-top:8px;"></div>
@@ -454,6 +461,7 @@
         <div style="font-size:12px;color:var(--sub);margin-bottom:8px;">Ask for your fingerprint when DayTrack opens.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="rb" id="lk-off" onclick="setLock('off')">Off</button><button class="rb" id="lk-app" onclick="setLock('app')">Whole app</button><button class="rb" id="lk-gwen" onclick="setLock('gwen')">Gwen tab only</button></div>
       </div>
+      <div id="life-settings"></div>
       <div class="card">
         <div class="cl">Cloud Sync</div>
         <div id="sync-box"></div>
@@ -573,6 +581,7 @@
       <button class="rb" id="ns-sound" onclick="setNotifStyle('sound')">🔊 Sound</button>
       <button class="rb" id="ns-both" onclick="setNotifStyle('both')">🔔+📳 Both</button>
     </div>
+    <div id="place-wrap"></div>
     <div class="sl">Notes (optional)</div>
     <textarea class="inp" id="new-notes" placeholder="Add any details…" style="min-height:56px;margin-bottom:4px;"></textarea>
     <div class="sl">Subtasks (optional)</div>
@@ -811,6 +820,7 @@ function save(){
   localUpdated=Date.now();
   writeLocal();heroTick();
   syncReminders();queueSync();
+  if(window.lifeSaved)lifeSaved();
 }
 function writeLocal(){
   try{
@@ -845,7 +855,7 @@ async function syncReminders(renewed){
         tz:Intl.DateTimeFormat().resolvedOptions().timeZone,gwen:!!gwenCfg.key&&gwenCfg.first!==false,gwenWake:gwenCfg.wake||null,gwenBed:gwenCfg.bed||null,gwenCheered:gwenCfg.cheered||null,gwenLoc:gwenCfg.loc||null,gwenStudy:gwenCfg.study||null,moods:Object.fromEntries(Object.entries(moods).filter(([d])=>d>=weekAgo)),
         prayers:prayerCfg.on&&prayerCfg.loc?{remind:!!prayerCfg.remind,days:prayerDays(3)}:null,
         goals:goals.map(g=>({name:g.name,done:g.steps.filter(x=>x.done).length,total:g.steps.length,lastAt:g.steps.map(x=>x.done).filter(Boolean).sort().pop()||null})),
-        sleep:Object.fromEntries(Object.entries(sleepLog).filter(([d])=>d>=weekAgo))})
+        sleep:Object.fromEntries(Object.entries(sleepLog).filter(([d])=>d>=weekAgo)),...(window.lifeReminders?lifeReminders():{})})
     });
     if(!renewed&&(await r.json().catch(()=>({}))).gone){await renewPush(reg,sub);return syncReminders(true);}
   }catch(e){}
@@ -880,7 +890,7 @@ const SYNC_URL='/.netlify/functions/sync';
 let syncCode=null,syncReady=false,syncTimer,localUpdated=0;
 function queueSync(){if(!syncCode)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncReady?pushSync():pullSync(),1500);}
 async function pushSync(){
-  try{await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:syncCode,data:{tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,player:heroP,updatedAt:localUpdated}})});}catch(e){}
+  try{await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:syncCode,data:{tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,player:heroP,life:window.lifeData?lifeData():undefined,updatedAt:localUpdated}})});}catch(e){}
 }
 async function pullSync(){
   try{
@@ -903,7 +913,7 @@ async function pullInbox(){
 }
 function applyData(d){
   tasks=d.tasks||[];savedSessions=d.savedSessions||[];calNotes=d.calNotes||{};completedDays=d.completedDays||[];moods=d.moods||{};
-  goals=d.goals||[];lists=d.lists||[];sleepLog=d.sleep||{};if(d.player)heroP=d.player;
+  goals=d.goals||[];lists=d.lists||[];sleepLog=d.sleep||{};if(d.player)heroP=d.player;if(d.life&&window.lifeApply)lifeApply(d.life);
   localUpdated=d.updatedAt;writeLocal();syncReminders();heroTick(true);
   renderTaskList();renderMood();renderCal();renderSummary();renderPastSessions();
 }
@@ -965,7 +975,7 @@ async function applyPendingDone(){
 
 // ── Export / Import ──────────────────────────────────────────────────────────
 function exportData(){
-  const data={tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,player:heroP,exportedAt:new Date().toISOString(),version:1};
+  const data={tasks,savedSessions,calNotes,completedDays,moods,goals,lists,sleep:sleepLog,player:heroP,life:window.lifeData?lifeData():undefined,exportedAt:new Date().toISOString(),version:1};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -987,7 +997,7 @@ function importData(inp){
       if(d.goals)goals=d.goals;
       if(d.lists)lists=d.lists;
       if(d.sleep)sleepLog=d.sleep;
-      if(d.player)heroP=d.player;
+      if(d.player)heroP=d.player;if(d.life&&window.lifeApply)lifeApply(d.life);
       heroTick(true);save();renderTaskList();renderMood();renderSummary();renderCal();
       showToast('📥 Imported!');
     }catch(err){showToast('❌ Invalid file');}
@@ -1197,7 +1207,7 @@ function openAddTask(){
   heroPickInit(null);
   document.getElementById('add-task-title').textContent='New Task';
   document.getElementById('save-task-btn').textContent='Add Task';
-  document.getElementById('add-task-ov').classList.add('on');
+  document.getElementById('add-task-ov').classList.add('on');if(window.lifeTaskSheet)lifeTaskSheet(editingTaskId?tasks.find(x=>x.id===editingTaskId):null);
   setTimeout(()=>document.getElementById('new-name').focus(),300);
 }
 function openEditTask(id){
@@ -1229,7 +1239,7 @@ function openEditTask(id){
   heroPickInit(t.stats);
   document.getElementById('add-task-title').textContent='Edit Task';
   document.getElementById('save-task-btn').textContent='Save Changes';
-  document.getElementById('add-task-ov').classList.add('on');
+  document.getElementById('add-task-ov').classList.add('on');if(window.lifeTaskSheet)lifeTaskSheet(editingTaskId?tasks.find(x=>x.id===editingTaskId):null);
   setTimeout(()=>document.getElementById('new-name').focus(),300);
 }
 function setRec(v){dRec=v;document.getElementById('rb-one').classList.toggle('on',!v);document.getElementById('rb-rec').classList.toggle('on',v);document.getElementById('days-wrap').style.display=v?'block':'none';document.getElementById('date-wrap').style.display=v?'none':'block';}
@@ -1256,7 +1266,7 @@ function saveTask(){
     t.name=name;t.notes=notes;t.icon=dIcon;t.iconType=dIconType;
     t.recurring=dRec;t.days=[...dDays];t.priority=dPriority;
     t.notifStyle=dNotifStyle;t.showInCal=dShowInCal;
-    t.reminder=reminder;t.date=date;t.count=count;t.stats=heroPick;
+    t.reminder=reminder;t.date=date;t.count=count;t.place=window.lifePlace?lifePlace():null;t.stats=heroPick;
     // preserve existing subtask done state, add new subtasks
     const existing=t.subtasks||[];
     t.subtasks=dSubtasks.map(s=>{const ex=existing.find(e=>e.id===s.id);return{id:s.id,name:s.name,done:ex?ex.done:[]};});
@@ -1268,7 +1278,7 @@ function saveTask(){
       priority:dPriority,notifStyle:dNotifStyle,showInCal:dShowInCal,
       createdAt:toDateStr(new Date()),
       subtasks:dSubtasks.map(s=>({id:s.id,name:s.name,done:[]})),
-      reminder,reminderLastFired:null,reminded:[],count,stats:heroPick
+      reminder,reminderLastFired:null,reminded:[],count,stats:heroPick,place:window.lifePlace?lifePlace():null
     });
     save();closeOv('add-task-ov');renderTaskList();
     const rl=remLabel(reminder);showToast(rl?`✅ Added · ${rl}`:'✅ Task added!');
@@ -1364,6 +1374,7 @@ function renderTaskList(){
   const multi=groups.filter(g=>g.length).length>1;
   el.innerHTML=groups.map((g,k)=>g.length?(multi?`<div class="tgrp">${TGROUPS[k]}</div>`:'')+g.map(row).join(''):'').join('');
   justChecked=null;
+  if(window.renderLife)renderLife();
 }
 function checkTask(id,full){
   const t=tasks.find(x=>x.id===id);if(!t)return;const tod=toDateStr(new Date());
@@ -1373,6 +1384,7 @@ function checkTask(id,full){
     setCount(t,tod,n);if(navigator.vibrate)navigator.vibrate(8);
   }else t.done.includes(tod)?t.done=t.done.filter(d=>d!==tod):t.done.push(tod);
   justChecked=id;updateStreakAfterCheck();save();renderTaskList();
+  if(window.lifeTaskDone)lifeTaskDone();
 }
 function countOf(t,tod){return t.done.includes(tod)?t.count.target:((t.counts||{})[tod]||0);}
 function setCount(t,tod,n){
@@ -1609,6 +1621,7 @@ function gwenContext(){
     sleepLog[tod]?`He slept ${sleepHours(sleepLog[tod]).toFixed(1)} hours last night (${sleepLog[tod].bed} to ${sleepLog[tod].wake}).`:'',
     `If he wants music, or a song would fit his mood, put this on its own line (the app shows a play button and hides the line):\nMUSIC: <song and artist, or a search like "lofi study music">\nWhen you share a song, hum a little (*hums*).`,
     g3.vrm?'If he asks for a selfie or a picture of you, put SELFIE on its own line (the app snaps you in 3D and hides the line).':'',
+    window.lifeContext?lifeContext():'',
     `If he asks you to add a task or remind him about something, put this on its own line (the app adds it and hides the line):\nADD_TASK: <short task name> | <YYYY-MM-DD, or empty for today> | <HH:MM 24-hour reminder time, or empty>\nOnly do this when he asks. For a plan at a set time (like "gym at 6"), use that time; you'll get to ask him how it went afterwards.`,
   ].filter(Boolean).join('\n\n');
 }
@@ -1622,6 +1635,7 @@ function gwenOutfitLine(){
 }
 function applyGwenActions(text){
   const added=[];let outfit=null,selfie=false,music=null;
+  if(window.lifeActions)text=lifeActions(text);
   const clean=text.replace(/^[ \t*-]*SELFIE\b.*$/gim,()=>{selfie=true;return'';}).replace(/^[ \t*-]*MUSIC:\s*(.+)$/gim,(_,q)=>{music=q.trim().replace(/^["“]|["”]$/g,'').slice(0,100)||null;return'';}).replace(/^[ \t*-]*OUTFIT:\s*(\w+).*$/gim,(_,o)=>{outfit=o.toLowerCase();return'';}).replace(/^[ \t*-]*ADD_TASK:\s*(.+)$/gim,(_,spec)=>{
     const[name,date,time]=spec.split('|').map(x=>(x||'').trim());
     if(!name)return'';
@@ -1635,7 +1649,7 @@ function applyGwenActions(text){
     return'';
   }).replace(/\n{3,}/g,'\n\n').trim();
   if(added.length){save();renderTaskList();}
-  if(outfit)gwenWear(outfit);
+  if(outfit){gwenWear(outfit);if(window.lifeOutfit)lifeOutfit(outfit==='usual'?'':outfit);}
   return{clean,added,selfie:selfie&&!!g3.vrm,music};
 }
 function fetchT(url,opts,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{...opts,signal:c.signal}).finally(()=>clearTimeout(t));}
@@ -2205,7 +2219,7 @@ async function gwenGames(){
       say:(t,g)=>{gwenGesture(g);gwenSpeak(t,!!g3.ping);},
       done:(name,r)=>{
         gwenChat.push({role:'assistant',content:r==='won'?`🎮 You beat me at ${name}… this time 😤`:r==='lost'?`🎮 I beat you at ${name} 😌`:`🎮 Our ${name} game was a draw 🤝`,brain:'cloud'});
-        gwenSaveChat();gwenBond(2);renderGwen();
+        gwenSaveChat();gwenBond(2);renderGwen();if(window.lifeGame)lifeGame(name,r);
       },
       close:()=>closeOv('gwen-ov')});
   }catch(e){body.innerHTML='<div style="text-align:center;color:var(--sub);padding:30px;">Couldn\'t load the games, check your connection</div>';}
@@ -2765,7 +2779,7 @@ function openList(id){
   sheet(`<div style="font-size:17px;font-weight:700;text-align:center;margin-bottom:10px;color:var(--txt);">${listIcon(l.name)} ${esc(l.name)}</div>
     <div style="display:flex;gap:8px;margin-bottom:8px;"><input class="inp" id="li-in" placeholder="Add… (Enter)" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addListItem('${l.id}');}"><button onclick="addListItem('${l.id}')" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:18px;cursor:pointer;">+</button></div>
     ${items.map(i=>`<div class="sub-row" style="border-bottom:1px solid var(--brd);padding:9px 0;"><div onclick="tickListItem('${l.id}','${i.id}')" class="chk${i.done?' on':''}">${i.done?'✓':''}</div><span onclick="tickListItem('${l.id}','${i.id}')" style="flex:1;font-size:14px;cursor:pointer;color:${i.done?'var(--sub)':'var(--txt)'};text-decoration:${i.done?'line-through':'none'};">${esc(i.text)}</span><button onclick="delListItem('${l.id}','${i.id}')" style="background:none;border:none;color:var(--sub);font-size:15px;cursor:pointer;">✕</button></div>`).join('')||'<div style="text-align:center;color:var(--sub);font-size:13px;padding:10px;">Nothing here yet</div>'}
-    <div style="display:flex;gap:8px;margin-top:8px;">${l.items.some(i=>i.done)?`<button class="mi" style="flex:1;" onclick="clearListDone('${l.id}')">🧹 Clear ticked</button>`:''}<button class="mi" style="flex:1;color:#EF4444;" onclick="delList('${l.id}')">🗑️ Delete list</button></div>${closeBtn}`);
+    <div style="display:flex;gap:8px;margin-top:8px;">${l.items.some(i=>i.done)?`<button class="mi" style="flex:1;" onclick="clearListDone('${l.id}')">🧹 Clear ticked</button>`:''}${window.lifeShareBtn?lifeShareBtn(l):''}<button class="mi" style="flex:1;color:#EF4444;" onclick="delList('${l.id}')">🗑️ Delete list</button></div>${closeBtn}`);
 }
 function listAdd(name,text){
   name=String(name).trim().slice(0,40);text=String(text).trim().slice(0,120);if(!name||!text)return;
@@ -2808,7 +2822,7 @@ function renderWeek(){
   document.getElementById('cal-week').innerHTML=days.map(ds=>{
     const list=weekTasks(ds,tod);
     return`<div class="wk-day" data-ds="${ds}"><div onclick="selectDay('${ds}')" style="font-size:12px;font-weight:700;cursor:pointer;color:${ds===tod?'var(--pri)':ds<tod?'var(--sub)':'var(--txt)'};">${ds===tod?'Today · ':''}${fmtDay(ds)}${calNotes[ds]?' 📝':''}</div>
-      <div>${list.map(t=>{const done=t.done.includes(ds),move=!t.recurring&&!t.done.length,tm=taskTime(t);
+      <div>${window.lifeDayEvents?lifeDayEvents(ds):''}${list.map(t=>{const done=t.done.includes(ds),move=!t.recurring&&!t.done.length,tm=taskTime(t);
         return`<span class="wk-chip${done?' done':''}${move?'':' fixed'}" data-id="${t.id}"${move?'':` onclick="openEditTask('${t.id}')"`}>${t.iconType==='image'?'':t.icon} ${esc(t.name)}${tm?` · ${fmt12(tm)}`:''}</span>`;}).join('')||'<span style="font-size:11px;color:var(--sub);">—</span>'}</div></div>`;
   }).join('');
   renderNotePanel();
@@ -2881,7 +2895,8 @@ async function openPc(){
   if(!gwenCfg.key)return sheet(head+'<div style="text-align:center;color:var(--sub);font-size:13px;padding:10px;">Add your Gwen key in Settings first.</div>'+closeBtn);
   if(window.DayTrackNative&&!gwenCfg.pc.trim())return sheet(head+'<div style="text-align:center;color:var(--sub);font-size:13px;padding:10px;">Add your PC address in Settings first.</div>'+closeBtn);
   try{const r=await fetchT('/.netlify/functions/pc?key='+encodeURIComponent(gwenCfg.key),{},8000);pcState=r.ok?await r.json():null;}catch(e){pcState=null;}
-  if(!pcState)return sheet(head+'<div style="text-align:center;color:var(--sub);font-size:13px;padding:14px 6px;line-height:1.5;">😴 Your PC isn\'t answering. It\'s off or asleep, or Tailscale is off on this phone.</div>'+closeBtn);
+  if(pcState&&window.lifePcSeen)lifePcSeen(pcState);
+  if(!pcState)return sheet(head+'<div style="text-align:center;color:var(--sub);font-size:13px;padding:14px 6px;line-height:1.5;">😴 Your PC isn\'t answering. It\'s off or asleep, or Tailscale is off on this phone.</div>'+(window.lifeWakeBtn?lifeWakeBtn():'')+closeBtn);
   const st=pcState,b=(on,ic,off)=>on?ic:off,pcBuild=Number(String(st.version||'').split('.')[2])||0,latest=await latestBuild('desktop');
   const btn='width:100%;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:8px;';
   sheet(head+`<div class="pc-grid"><div><b>✅</b>PC on</div><div><b>${b(st.gwen,'💜','💤')}</b>Gwen ${st.gwen?'on':'off'}</div><div><b>${b(st.airi,'🖥','➖')}</b>AIRI ${st.airi?'open':'closed'}</div><div><b>${st.game?'🎮':'➖'}</b>${st.game?esc(st.game):'No game'}</div></div>
@@ -3030,9 +3045,9 @@ function voiceTask(){
   rec.onend=()=>{
     fab.style.background='';
     if(!heard.trim())return showToast('I didn\'t hear a task, try again');
-    const p=parseSpokenTask(heard),tod=toDateStr(new Date());
+    const at=window.lifePlaceFromText?lifePlaceFromText(heard):{text:heard,place:null},p=parseSpokenTask(at.text),tod=toDateStr(new Date());
     tasks.push({id:uid(),name:p.name.slice(0,80),notes:'',icon:'🎤',iconType:'emoji',recurring:false,days:[],done:[],date:p.date,priority:'none',notifStyle:'default',showInCal:true,
-      createdAt:tod,subtasks:[],reminder:p.time?{type:'time',time:p.time}:null,reminderLastFired:null,reminded:[]});
+      createdAt:tod,subtasks:[],reminder:p.time?{type:'time',time:p.time}:null,reminderLastFired:null,reminded:[],place:at.place});
     save();renderTaskList();
     showToast(`🎤 Added: ${p.name}${p.date?' · '+fmtDay(p.date):''}${p.time?' · '+fmt12(p.time):''}`);
     const pw=p.time&&prayerClash(p.time,p.date);if(pw)setTimeout(()=>showToast(`🕌 Heads up: that's ${pw} time`),2700);
@@ -3071,6 +3086,7 @@ function reloadData(){
     moods=JSON.parse(localStorage.getItem('dt_moods')||'{}');goals=JSON.parse(localStorage.getItem('dt_goals')||'[]');
     lists=JSON.parse(localStorage.getItem('dt_lists')||'[]');sleepLog=JSON.parse(localStorage.getItem('dt_sleep')||'{}');
     localUpdated=Number(localStorage.getItem('dt_updated'))||0;
+    if(window.lifeReload)lifeReload();
   }catch(e){}
 }
 window.addEventListener('storage',e=>{if(e.key!=='dt_updated')return;reloadData();renderTaskList();renderMood();if(document.body.dataset.tab==='cal')renderCal();});
@@ -3079,5 +3095,6 @@ if(document.documentElement.classList.contains('panel'))document.addEventListene
 
 boot();
 </script>
+<script src="life.js"></script>
 </body>
 </html>

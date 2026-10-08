@@ -5,9 +5,9 @@ name: Desktop app
 on:
   push:
     branches: [main]
-    paths: ['desktop/**', 'netlify/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'netlify/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', 'life.js', 'ar.js', '.github/workflows/desktop.yml']
   pull_request:
-    paths: ['desktop/**', 'netlify/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'netlify/**', 'index.html', 'gwen-games.js', 'levels.js', 'levels.css', 'life.js', 'ar.js', '.github/workflows/desktop.yml']
   workflow_dispatch:
 
 permissions:
