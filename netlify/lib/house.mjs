@@ -92,8 +92,10 @@ export async function trophyParcels(list) {
   const house = blobStore('daytrack-house');
   let parcels = (await house.get('parcels', { type: 'json' })) || [];
   const have = new Set(parcels.map(p => p.id)), add = list.slice(0, 20)
-    .filter(t => t && /^[bw]-\d{4}-\d{2}-\d{2}$/.test(t.id) && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && !have.has('t' + t.id))
-    .map(t => ({ id: 't' + t.id, date: t.date, size: 'big', kind: 'trophy', reason: String(t.reason || 'Rayan beat a boss').slice(0, 80), status: 'waiting' }));
+    .filter(t => t && /^([bw]|f-[a-z]+)-\d{4}-\d{2}-\d{2}$/.test(t.id) && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && !have.has('t' + t.id))
+    .map(t => t.id[0] === 'f'
+      ? { id: 't' + t.id, date: t.date, size: 'big', kind: 'furniture', item: String(t.item || '').slice(0, 40), reason: String(t.reason || 'Rayan built something').slice(0, 80), status: 'waiting' }
+      : { id: 't' + t.id, date: t.date, size: 'big', kind: 'trophy', reason: String(t.reason || 'Rayan beat a boss').slice(0, 80), status: 'waiting' });
   if (!add.length) return;
   const lim = dayAdd(add[0].date, -30);
   await house.setJSON('parcels', [...parcels.filter(x => x.date >= lim), ...add]);

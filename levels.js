@@ -188,7 +188,7 @@ const tIcon=t=>t.iconType==='image'?'✅':t.icon||'✅';
 function heroTaskAwards(t,m=()=>1){
   const out=[],st=taskStats(t),base=taskXP(t),ic=tIcon(t),add=(d,x,what,k)=>{x=Math.round(x*m(d));if(d&&x>0)out.push({d,xp:x,sx:sx(x,st),what,ic,k});};
   const hb=d=>t.hard&&d>=(t.hardFrom||'')?2:1;
-  t.done.forEach(d=>add(d,base*hb(d),t.name,'task'));
+  t.done.forEach(d=>{const c=heroCrit(t,d);add(d,base*hb(d)*heroTaskBoost(t,d,st),c?`${t.name} · critical hit ×3`:t.name,'task');});
   if(t.boss&&!t.recurring&&t.done[0]){const w=Math.max(0,Math.round((new Date(t.done[0]+'T12:00:00')-new Date((t.createdAt||t.done[0])+'T12:00:00'))/864e5));add(t.done[0],Math.min(300,base*2+10*w),`Mini boss slain: ${t.name}${w?` (waited ${w} day${w>1?'s':''})`:''}`,'mboss');}
   if(t.count)Object.entries(t.counts||{}).forEach(([d,n])=>{if(!t.done.includes(d))add(d,base*hb(d)*n/t.count.target,`${t.name} (${n}/${t.count.target})`,'count');});
   // Hardcore: a scheduled day missed costs what it would have earned
@@ -198,13 +198,15 @@ function heroTaskAwards(t,m=()=>1){
   return out;
 }
 function heroAwards(){
-  const mm={},m=d=>mm[d]??=heroMult(d);
+  heroBoostMemo={};const mm={},m=d=>mm[d]??=heroMult(d);
   const out=tasks.flatMap(t=>heroTaskAwards(t,m)),add=(d,xp,st,what,ic,k,x)=>d&&xp>0&&out.push({d,xp,sx:sx(xp,st),what,ic,k,...x});
   completedDays.forEach(d=>add(d,30,{discipline:1},'Finished every task','🏆','day'));
   goals.forEach(g=>{const st={...heroDetect(g.name),discipline:.5};g.steps.forEach(s=>add(s.done,25,st,s.name,'🎯','goal'));});
   savedSessions.forEach(s=>add(sessDate(s),Math.min(120,Math.round(s.total/120000)),{...heroDetect(s.name),focus:1},s.name,'⏱️','focus',{min:Math.round(s.total/60000)}));
   Object.entries(heroP.skills||{}).forEach(([id,p])=>{const sk=heroSkill(id);if(sk)(p.at||[]).forEach((d,i)=>sk.steps[i]&&add(d,60*(i+1),sk.st,stepName(sk,i),sk.ic,'skill'));});
   Object.entries(heroP.claims||{}).forEach(([key,c])=>add(c.d,c.xp,c.st||{discipline:1},c.what,c.ic||'🎁','quest'));
+  savedSessions.forEach(s=>s.focus&&s.focus.slips===0&&add(sessDate(s),20,{focus:1,discipline:.5},'Focus lock: no slips','🔒','flock'));
+  if(typeof chainDoneDays==='function')chainDoneDays().forEach(c=>add(c.d,15+5*(c.n||0),{discipline:1},`Chain complete: ${c.name}`,'⛓️','chain'));
   heroStepAwards(add);heroWalkAwards(add);
   heroSkills().forEach(sk=>{const ds=heroStarDays(sk);if(ds)HERO_STARS.forEach((n,i)=>ds[n-1]&&add(ds[n-1],100*(i+1),sk.st,`${sk.name} mastery ★${i+1}`,'⭐','star'));});
   (heroP.bank||[]).forEach(b=>out.push(b));
@@ -248,21 +250,21 @@ function heroLevelUps(aw){
 // ── After every save: show what just went up ──
 let heroLast=null;
 function heroTick(silent){
-  const combo=heroCombo(silent);heroDgTick(silent);heroBetTick(silent);heroLoginCheck();
+  heroTickRec(silent);const combo=heroCombo(silent);heroDgTick(silent);heroForgeCheck(silent);heroHCCheck(silent);const crit=heroDropCheck(silent);heroBetTick(silent);heroLoginCheck();
   heroAchCheck(silent);heroDaily();heroStepWeekCheck();heroYearCheck();heroRecCheck(silent);heroBossSync();heroWrite();
   const s=heroSum(heroAwards()),prev=heroLast;heroLast=s;
   if(silent||!prev||s.total<=prev.total)return;
   s.total-=heroPrestigeXP();prev.total-=heroPrestigeXP();
   const gains=HERO_STATS.filter(x=>s.st[x.id]>prev.st[x.id]).map(x=>({...x,add:s.st[x.id]-prev.st[x.id],L0:heroLvl(prev.st[x.id],HERO_SB),L:heroLvl(s.st[x.id],HERO_SB)})).sort((a,b)=>b.add-a.add);
   const L0=heroLvl(prev.total,HERO_B),L=heroLvl(s.total,HERO_B);
-  heroPop(s.total-prev.total,gains,heroMult(toDateStr(new Date())),combo);
+  heroPop(s.total-prev.total,gains,heroMult(toDateStr(new Date())),combo,crit);
   s.total+=heroPrestigeXP();
   const ups=gains.filter(g=>g.L>g.L0);
   if(L>L0||ups.length)setTimeout(()=>heroLevelUp(L>L0?L:0,ups),900);
 }
-function heroPop(xp,gains,m=1,combo=0){
+function heroPop(xp,gains,m=1,combo=0,crit=''){
   const el=document.getElementById('hero-pop');if(!el)return;
-  el.innerHTML=`<b>+${xp} XP</b>${combo>1?`<span class="hp-combo">COMBO ×${combo}</span>`:''}${m!==1?`<span>${m>1?'⚡':'🔻'} ×${m.toFixed(2).replace(/0$/,'')}</span>`:''}${gains.slice(0,4).map(g=>`<span>${g.ic} ${g.name} +${g.add}</span>`).join('')}`;
+  el.innerHTML=`<b>+${xp} XP</b>${crit?`<span class="hp-combo crit">${crit}</span>`:''}${combo>1?`<span class="hp-combo">COMBO ×${combo}</span>`:''}${m!==1?`<span>${m>1?'⚡':'🔻'} ×${m.toFixed(2).replace(/0$/,'')}</span>`:''}${gains.slice(0,4).map(g=>`<span>${g.ic} ${g.name} +${g.add}</span>`).join('')}`;
   el.classList.remove('on');void el.offsetWidth;el.classList.add('on');heroSfx('coin');
   clearTimeout(heroPop.t);heroPop.t=setTimeout(()=>el.classList.remove('on'),2800);
 }
@@ -302,7 +304,7 @@ function renderHeroMini(){
   el.innerHTML=`<div class="hm-top"><div class="hm-av ${heroFrame(h)}">${heroAvHtml()}</div>${heroP.pet?`<span class="hm-pet">${heroPetSvg(heroP.pet.kind,heroPetInfo(h).st,heroPetInfo(h).mood,34)}</span>`:''}<div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div>${heroRankIc(h.L,40)}</div>`
     +(top.length?`<div class="hm-stats">${top.map(x=>`<span>${x.ic} ${x.name} <b>${x.L}</b></span>`).join('')}</div>`:'<div class="hm-sub" style="margin-top:8px;">Tick a task to earn your first XP.</div>')
     +heroHPHtml()+heroBuffChips(toDateStr(new Date()))+heroExtrasLine()+heroPinHtml(h);
-  const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=heroBossCard(true)+heroBetHtml()+`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d')
+  const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=heroOmenHtml()+heroRevtHtml(true)+heroBossCard(true)+heroBetHtml()+`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d')
     +(new Date().getHours()>=18&&!(heroP.journal||{})[heroTod()]?`<div class="cl" style="margin:12px 0 6px;">📝 Tonight's line</div>`+heroJournalHtml(true):'');
 }
 let heroSeg='stats';
@@ -327,6 +329,8 @@ function renderHero(){
   set('hero-perks',heroPerksHtml(h));set('hero-recs',heroRecsHtml(h));set('hero-ft',heroTestHtml());set('hero-bag',heroBagHtml(h));set('hero-gear',heroGearHtml());set('hero-party',heroPartyHtml(h));
   set('hero-steps',heroStepsHtml());set('hero-walks',heroWalksHtml());set('hero-book',heroBookHtml());set('hero-pass',heroPassHtml(h));set('hero-ghost',heroGhostHtml(h));set('hero-ranked',heroRankedHtml(h));set('hero-dg',heroDgHtml());set('hero-duel',heroDuelHtml());
   set('hero-bet',heroBetHtml(true));
+  set('hero-mana',heroManaHtml());set('hero-origin',heroOriginHtml(h));set('hero-profs',heroProfsHtml());set('hero-loot',heroLootHtml());set('hero-map',heroMapHtml(h));set('hero-vill',heroVillHtml(h));
+  set('hero-revt',heroRevtHtml());set('hero-rival',heroRivalHtml(h));set('hero-forge',heroForgeHtml());set('hero-base',heroBaseHtml(h));set('hero-hc',heroHCHtml());set('hero-guild',heroGuildHtml());
   set('hero-report',heroReportHtml(h));set('hero-vs',heroVsHtml(h));set('hero-season',heroSeasonHtml(h));set('hero-heat',heroHeatmap(h));set('hero-journal',heroJournalHtml());
   document.getElementById('hero-quests').innerHTML=[['d','☀️ Daily'],['w','📅 Weekly'],['m','🌙 Monthly']].map(([k,n])=>`<div class="hs-g hq-h"><span>${n}</span><small>${left(Q.p[k].b)}</small></div>`+(k==='w'?heroBoss(Q.w,Q.p.w):'')+heroQuestRows(Q[k],k)).join('');
   document.getElementById('hero-stats').innerHTML=Object.keys(HERO_GROUPS).map(g=>`<div class="hs-g">${g}</div>`+HERO_STATS.filter(x=>x.g===g).map(x=>{const sb=heroBar(h.s.st[x.id],HERO_SB);return`<div class="hs-row" onclick="heroStat('${x.id}')"><span class="hs-ic">${sIc(x,24,'hex')}</span><span class="hs-n">${x.name}</span><div class="bar"><i style="width:${sb.pct}%"></i></div><span class="hs-l">Lv ${sb.L}</span></div>`;}).join('')).join('');
@@ -471,6 +475,7 @@ function heroBuffs(d){
   const ev=heroEvent(d);if(ev&&ev.id==='golden')fx('🌟','Golden day',.5,'A rare event: +50% XP all day');
   const b=heroDBoss(d);if(b&&b.state==='gone')fx('💀','Boss curse',-.1,`${b.name} escaped`);
   if((heroP.quits||[]).some(q=>(q.slips||[]).includes(d)))fx('🩹','Slipped',-.05,'A slip on a habit you\'re quitting. Back on track tomorrow');
+  if(heroHC(d))fx('💀','Hardcore run',.25,'Big rewards, real risk');
   if(pk('iron'))out.forEach(b=>{if(b.fx<0)b.fx/=2;});
   return out;
 }
@@ -626,7 +631,7 @@ const HERO_TITLES={arms:'Iron Arms',chest:'Steel Chest',back:'Eagle Back',core:'
 function heroBestStreak(){const s=[...heroDoneDays()].sort();let best=0,run=0,prev='';s.forEach(d=>{run=prev&&dAdd(prev,1)===d?run+1:1;best=Math.max(best,run);prev=d;});return best;}
 function heroAchievements(h=heroState()){
   const tk=h.aw.filter(a=>a.k==='task').length,str=heroBestStreak(),cl=Object.keys(heroP.claims||{}),mastered=heroSkills().filter(s=>heroDone(s.id)>=s.steps.length);
-  const gl=g=>HERO_STATS.filter(x=>x.g===g).reduce((n,x)=>n+heroLvl(h.s.st[x.id],HERO_SB),0)/HERO_STATS.filter(x=>x.g===g).length;
+  const kar=heroKarma(h),gl=g=>HERO_STATS.filter(x=>x.g===g).reduce((n,x)=>n+heroLvl(h.s.st[x.id],HERO_SB),0)/HERO_STATS.filter(x=>x.g===g).length;
   const list=[
     ['first','🌱','First step','Complete your first task',tk,1],['t100','✅','Centurion','Complete 100 tasks',tk,100,'Centurion'],['t500','💯','Relentless','Complete 500 tasks',tk,500,'Relentless'],
     ['s7','🔥','On a roll','Finish every task 7 days in a row',str,7],['s30','☄️','Unstoppable','Finish every task 30 days in a row',str,30,'Unstoppable'],
@@ -638,12 +643,16 @@ function heroAchievements(h=heroState()){
     ['cb5','⚡','Combo master','Reach a ×5 combo',heroP.comboBest||0,5,'Combo Master'],['jr30','📝','Chronicler','Write 30 journal lines',Object.keys(heroP.journal||{}).length,30,'Chronicler'],
     ['ch3','📜','Storyteller','Finish 3 story chapters',heroP.ch||0,3,'Storyteller'],['quit30','🛡️','Free','30 clean days from a habit',Math.max(0,...(heroP.quits||[]).map(heroClean)),30,'Free Spirit'],
     ['pet','🐾','Tamer','Raise your pet to Adult',heroP.pet?heroPetInfo(h).st:0,3,'Tamer'],['pr','★','Reborn','Prestige once',h.P,1,'Reborn'],
+    ['k-light','☀️','Lightbringer','Reach 100 light karma',kar.light,100,'Lightbringer'],['k-dark','🌑','Shadow walker','Gather 30 dark karma',kar.dark,30,'Shadow Walker'],
+    ['rival','🏆','Rival slayer','Beat your rival over a month',Object.keys(heroP.rivalWon||{}).length,1,'Rival Slayer'],['forge','⚒️','Weaponsmith','Forge a legendary weapon',(heroP.forged||[]).length,1,'Weaponsmith'],
+    ['mount3','🐉','Dragon rider','Unlock the dragon mount',heroMount().got.length,3,'Dragon Rider'],
+    ...heroProfs().map(p=>['pf-'+p.id,'🔨',`Master ${p.name}`,`Reach Master rank as a ${p.name}`,p.n,150,`Master ${p.name}`]),
     ...HERO_STATS.map(x=>['st-'+x.id,x.ic,HERO_TITLES[x.id],`${x.name} level 10`,heroLvl(h.s.st[x.id],HERO_SB),10,HERO_TITLES[x.id]]),
     ...mastered.map(s=>['m-'+s.id,s.ic,`Master of ${s.name}`,'Mastered every step',1,1,`${s.name} Master`]),
     ...Object.entries(heroP.pass||{}).filter(([,p])=>(p.got||[]).includes(30)).map(([m])=>['pass-'+m,'👑',heroPassTitle(m),'Finished a monthly pass',1,1,heroPassTitle(m)]),
   ];
   const AG={first:['check','green'],t100:['check','silver'],t500:['check','gold'],s7:['flame','orange'],s30:['flame','red'],l10:['star','silver'],l25:['star','gold'],l50:['crown','gold'],q10:['swords','blue'],qm:['moon','purple'],
-    sk:['trophy','gold'],bal:['gem','teal'],db1:['skull','bronze'],db10:['skull','silver'],db50:['skull','gold'],cb5:['bolt','orange'],jr30:['pen','blue'],ch3:['scroll','purple'],quit30:['shield','teal'],pet:['paw','orange'],pr:['star','legend']};
+    sk:['trophy','gold'],bal:['gem','teal'],db1:['skull','bronze'],db10:['skull','silver'],db50:['skull','gold'],cb5:['bolt','orange'],jr30:['pen','blue'],ch3:['scroll','purple'],quit30:['shield','teal'],pet:['paw','orange'],pr:['star','legend'],'k-light':['sun','gold'],'k-dark':['moon','dark'],rival:['swords','red'],forge:['swords','legend'],mount3:['wings','green']};
   return list.map(([id,ic,name,desc,v,n,title])=>{const st=HERO_BY[id.slice(3)],sk=id.startsWith('m-')&&heroSkill(id.slice(2)),[gl,col]=AG[id]||(st?[st.gl,'gold']:sk?[skGl(sk),'purple']:['star','gold']);
     return{id,ic,gl,col,f:st?'hex':sk?'burst':'shield',name,desc,v:Math.min(v,n),n,title,got:v>=n};});
 }
@@ -864,11 +873,12 @@ const HERO_GEAR=[['gloves','hands','Training gloves','hand','bronze',.01,'first'
   ['helm','head','Iron helm','helm','silver',.02,'t100'],['crown','head','Crown of focus','crown','gold',.04,'l25'],
   ['cloak','body','Cloak of dawn','cloak','orange',.02,'s7'],['armor','body','Legend armor','cloak','purple',.05,'l50'],
   ['qbadge','badge','Quester badge','medal','blue',.02,'q10'],['seal','badge','Master seal','medal','gold',.03,'sk'],
-  ['balance','badge','Balance medal','medal','teal',.03,'bal'],['slayer','badge','Slayer medal','medal','red',.03,'db10']];
-const HERO_SLOTS={head:'Head',body:'Body',hands:'Hands',badge:'Badge'};
+  ['balance','badge','Balance medal','medal','teal',.03,'bal'],['slayer','badge','Slayer medal','medal','red',.03,'db10'],
+  ['blade','weapon','Blade of Dawn','swords','orange',.05,'fg'],['hammer','weapon','Hammer of Will','dumbbell','red',.05,'fg'],['staff','weapon','Staff of Insight','spark','blue',.05,'fg'],['bow','weapon','Bow of Focus','target','green',.05,'fg']];
+const HERO_SLOTS={head:'Head',body:'Body',hands:'Hands',badge:'Badge',weapon:'Weapon'};
 let heroGotCache=[];
-const heroGearOk=g=>heroGotCache.includes(g[6]);
-function heroGearFx(){const eq=heroP.gear||{};return Object.values(eq).reduce((n,id)=>{const g=HERO_GEAR.find(x=>x[0]===id);return n+(g&&heroGearOk(g)?g[5]:0);},0);}
+const heroGearOk=g=>!heroGearLost()&&(g[6]==='fg'?(heroP.forged||[]).includes(g[0]):heroGotCache.includes(g[6]));
+function heroGearFx(){const eq=heroP.gear||{};return Object.values(eq).reduce((n,id)=>{const g=HERO_GEAR.find(x=>x[0]===id);return n+(g&&heroGearOk(g)?g[5]+.01*((heroP.ench||{})[id]||0):0);},0);}
 function heroEquip(id){const g=HERO_GEAR.find(x=>x[0]===id);if(!g||!heroGearOk(g))return;const eq=heroP.gear=heroP.gear||{};eq[g[1]]=eq[g[1]]===id?'':id;heroDaily();save();renderHero();}
 
 // ── Prestige: at Legend you can start again from level 1 with a star and +5% XP for good ──
@@ -900,7 +910,7 @@ function heroBossAt(b,d,min,len){
   const rec=(heroP.bosses||{})[b.key]||{},t=new Date(d+'T00:00:00');t.setMinutes(min);
   const at=t.getTime(),until=at+(len+(rec.ext||0))*6e4,now=Date.now(),won=rec.won;
   if(at<heroBossCfg().onAt&&!won)return null; // no boss (and no curse) before bosses were switched on
-  return{...b,d,at,until,won,ext:rec.ext||0,hits:rec.hits||[],state:won?'won':now<at?'soon':now<until?'on':'gone'};
+  return{...b,d,at,until,won,ext:rec.ext||0,hits:rec.hits||[],dmg:rec.dmg||0,state:won?'won':now<at?'soon':now<until?'on':'gone'};
 }
 function heroDBoss(d){
   const c=heroBossCfg();if(!c.on)return null;
@@ -964,7 +974,7 @@ function heroBossOpen(alarm,key){
     :`<div class="hbx-task">${esc(b.task)}</div>`;
   el.innerHTML=`<div class="hbx${b.kind==='n'?' night':b.kind==='w'?' world':b.elite?' elite':''}"><div class="hbx-t">${b.kind==='w'?'🌍 WORLD BOSS 🌍':b.kind==='n'?'🌙 A NIGHTMARE CRAWLS IN 🌙':b.elite?'⚠ AN ELITE BOSS APPEARED ⚠':'⚠ A BOSS APPEARED ⚠'}</div><div class="hbx-em">${hIc(b.g,b.col,'burst',120)}</div><div class="hbx-n">${esc(b.name)}</div>
     <div class="hbx-q">“${esc(line)}”</div>
-    <div class="boss-hp hbx-hp"><i id="hbx-hp" style="width:${b.kind==='w'?100-b.hits.length/3*100:100}%"></i></div>${strike}<div class="hbx-time" id="hbx-time"></div>
+    <div class="boss-hp hbx-hp"><i id="hbx-hp" style="width:${(b.kind==='w'?100-b.hits.length/3*100:100)*(1-Math.min(.9,(b.dmg||0)/100))}%"></i></div>${heroBossAtkHtml(b)}${strike}<div class="hbx-time" id="hbx-time"></div>
     ${b.kind==='w'?'':`<button class="hbx-go" onclick="heroBossWin('${b.key}')">⚔️ I did it! Strike!</button>`}${help?`<button class="hbx-later hbx-gwen" onclick="heroGwenHelp('${b.key}')">💜 Gwen, help! (+5 minutes, once a day)</button>`:''}<button class="hbx-later" onclick="heroBossClose()">Not yet</button>
     <div class="hbx-r">Win: +${heroBossXP(b,heroState().L)} XP and ${heroBossLoot(b)>1?heroBossLoot(b)+' loot':'loot'}${b.kind==='d'?` · Run out of time: −10% XP today`:' · No curse if it gets away'}</div></div>`;
   el.classList.add('on');
@@ -1005,12 +1015,13 @@ function heroBossWin(key,hit){
   const lim=dAdd(b.d,-60);for(const d in heroP.bosses)if(d<lim)delete heroP.bosses[d];
   const bk=heroBook(),e=bk[b.base]=bk[b.base]||{n:0,first:b.d};e.n++;if(b.elite)e.el=(e.el||0)+1;if(!e.best||now-b.at<e.best)e.best=now-b.at;
   heroBonus(b.d,xp,{[b.stat]:1,discipline:.3},`Beat ${b.name}`,'⚔️','dboss');
+  const ax=Math.round(xp*Math.min(100,rec.dmg||0)/200);if(ax)heroBonus(b.d,ax,{[b.stat]:1},`Battle damage on ${b.name}`,'🗡️','dboss');
   let loot=[];for(let i=0;i<heroBossLoot(b);i++)loot=loot.concat(heroLoot(b.d));
   const hp=document.getElementById('hbx-hp');if(hp)hp.style.width='0%';
   const box=document.querySelector('#hero-boss .hbx');if(box)box.classList.add('hit');
   heroSay(heroBossLine(b,'die'));
   setTimeout(()=>{heroBossClose();save();renderTaskList();renderHero();heroSfx('fanfare');
-    heroShow(`<div class="hl-t">${b.kind==='w'?'WORLD BOSS DOWN':'BOSS DEFEATED'}</div><div class="hl-em">${hIc('trophy','gold','burst',96)}</div><div class="hl-big" style="font-size:24px;">${esc(b.name)}</div><div class="hl-row">+${xp} XP · beaten in ${Math.max(1,Math.round((now-b.at)/6e4))} min</div>${loot.map(heroItemLine).join('')}`,5000,true);
+    heroShow(`<div class="hl-t">${b.kind==='w'?'WORLD BOSS DOWN':'BOSS DEFEATED'}</div><div class="hl-em">${hIc('trophy','gold','burst',96)}</div><div class="hl-big" style="font-size:24px;">${esc(b.name)}</div><div class="hl-row">+${xp+ax} XP · beaten in ${Math.max(1,Math.round((now-b.at)/6e4))} min</div>${loot.map(heroItemLine).join('')}`,5000,true);
     if(typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLine==='function')gwenLine(`You beat ${b.name}! That's my hero 💜`,'happy');},900);
 }
 // What a boss says: a taunt when it shows up, a groan when it falls (read out where the device can speak)
@@ -1065,6 +1076,7 @@ const c12=hm=>{const[h,m]=hm.split(':').map(Number);return`${(h+11)%12+1}${m?':'
 // Bosses beaten, for Gwen's house: each becomes a trophy parcel
 function heroTrophies(){
   const lim=dAdd(heroTod(),-14),out=Object.entries(heroP.bosses||{}).filter(([d,b])=>b.won&&d.slice(0,10)>=lim).map(([d,b])=>({id:'b-'+d,date:d.slice(0,10),reason:`Rayan beat ${b.name||'a daily boss'}`}));
+  (heroP.base||[]).forEach(b=>{const x=HERO_BASE.find(y=>y[0]===b.id);if(x&&b.d>=lim)out.push({id:`f-${b.id}-${b.d}`,date:b.d,reason:`Rayan built a ${x[1].toLowerCase()} for his hero's home`,item:x[1]});});
   Object.entries(heroP.claims||{}).forEach(([k,c])=>{if(k[0]==='w'&&c.d>=lim&&/^Quest: Earn \d+ XP$/.test(c.what||''))out.push({id:'w-'+k.slice(1,11),date:c.d,reason:'Rayan defeated the weekly boss'});});
   return out;
 }
@@ -1324,12 +1336,15 @@ async function heroShare(){
   else try{x.drawImage(img,410,60,260,260);}catch(e){}
   x.textAlign='center';x.fillStyle='#fff';x.font='800 80px system-ui,sans-serif';x.fillText((heroP.name||'Rayan').toUpperCase(),540,400);
   x.font='600 38px system-ui,sans-serif';x.fillStyle='#FCD34D';const t=heroTitle(heroAchievements(h));x.fillText(`${t?'「'+t+'」 ':''}${h.rank} ${h.cls}`,540,460);
+  {const og=heroP.origin&&HERO_ORIGINS[heroP.origin.id],mt=heroMount().cur,k=heroKarma(h),bits=[og&&og[0],`${k.tier} karma`,mt&&`rides a ${mt[1].toLowerCase()}`].filter(Boolean);x.font='500 28px system-ui,sans-serif';x.fillStyle='rgba(255,255,255,.85)';x.fillText(bits.join(' · '),540,500);x.fillStyle='#FCD34D';}
   x.font='800 120px system-ui,sans-serif';x.fillText(`LEVEL ${h.L}`,540,600);
   const b=heroBar(h.xp,HERO_B);x.fillStyle='rgba(255,255,255,.18)';x.fillRect(140,640,800,22);x.fillStyle='#F59E0B';x.fillRect(140,640,8*b.pct,22);
   x.font='500 30px system-ui,sans-serif';x.fillStyle='rgba(255,255,255,.8)';x.fillText(`${h.s.total.toLocaleString()} XP · ${heroBossWins()} boss${heroBossWins()===1?'':'es'} beaten · ${heroBestStreak()}-day best streak`,540,710);
   x.textAlign='left';HERO_STATS.forEach((s,i)=>{const cx=i<7?110:580,cy=790+(i%7)*70,L=heroLvl(h.s.st[s.id],HERO_SB),sb=heroBar(h.s.st[s.id],HERO_SB);
     x.fillStyle='#fff';x.font='600 30px system-ui,sans-serif';x.fillText(s.name,cx,cy);x.fillStyle='#FCD34D';x.textAlign='right';x.fillText('Lv '+L,cx+390,cy);x.textAlign='left';
     x.fillStyle='rgba(255,255,255,.15)';x.fillRect(cx,cy+14,390,10);x.fillStyle={Body:'#EF4444',Mind:'#3B82F6',Spirit:'#A855F7',Life:'#22C55E'}[s.g];x.fillRect(cx,cy+14,3.9*sb.pct,10);});
+  {const eq=Object.values(heroP.gear||{}).map(id=>HERO_GEAR.find(g=>g[0]===id)).filter(g=>g&&heroGearOk(g)).map(g=>g[2]+((heroP.ench||{})[g[0]]?' ✦'+heroP.ench[g[0]]:'')),pf=heroProfs().filter(p=>p.n).sort((a,b)=>b.n-a.n)[0];
+    x.textAlign='center';x.fillStyle='#FDE68A';x.font='600 26px system-ui,sans-serif';x.fillText([eq.slice(0,3).join(' · '),pf&&`${pf.rank} ${pf.name}`].filter(Boolean).join('  |  ').slice(0,80),540,1268);}
   x.textAlign='center';x.fillStyle='rgba(255,255,255,.55)';x.font='500 26px system-ui,sans-serif';x.fillText(`DayTrack · ${fmtDay(heroTod())}`,540,1310);
   saveImage(c.toDataURL('image/jpeg',.92),`${(heroP.name||'rayan').toLowerCase().replace(/[^a-z0-9]+/g,'-')}-level-${h.L}.jpg`);
 }
@@ -1342,6 +1357,8 @@ function heroExtrasLine(){
   if(ev)out.push(`<span class="hx-ev">${hIc(ev.gl,ev.col,'circle',18)} ${ev.name}: ${ev.what}</span>`);
   if(cl&&c.n>=1)out.push(`<span class="hx-ev">⚡ Combo ×${c.n} · next task within ${cl} min for ×${c.n+1}</span>`);
   if(pot)out.push('<span class="hx-ev">🧪 XP potion active</span>');
+  const om=heroOmen(tod);if(om.drawn)out.push(`<span class="hx-ev">${hIc(om.gl,om.col,'circle',18)} ${om.name}: ${om.what}</span>`);
+  const dx=heroCast('dxh');if(dx&&Date.now()<dx.at+36e5)out.push(`<span class="hx-ev">⚡ Double XP: ${Math.ceil((dx.at+36e5-Date.now())/6e4)} min left</span>`);
   return out.length?`<div class="hx-line">${out.join('')}</div>`:'';
 }
 function heroPerksHtml(h){
@@ -1366,7 +1383,7 @@ function heroBagHtml(h){
 function heroGearHtml(){
   const eq=heroP.gear||{},ach=heroAchievements();
   return`<div class="hm-sub" style="margin-bottom:8px;">Achievements unlock gear. Equip one piece per slot: +${Math.round(heroGearFx()*100)}% XP now.</div>`+Object.entries(HERO_SLOTS).map(([sl,nm])=>`<div class="hs-g">${nm}</div><div class="gear-row">${HERO_GEAR.filter(g=>g[1]===sl).map(g=>{const ok=heroGearOk(g),on=eq[sl]===g[0],a=ach.find(x=>x.id===g[6]);
-    return`<button class="gear${on?' on':''}${ok?'':' lock'}" ${ok?`onclick="heroEquip('${g[0]}')"`:''} title="${ok?'':'Unlocks with '+esc(a?a.name:'')}">${hIc(ok?g[3]:'lock',ok?g[4]:'dark','shield',34)}<b>${g[2]}</b><small>${ok?`+${Math.round(g[5]*100)}% XP${on?' · on':''}`:`🔒 ${esc(a?a.desc:'')}`}</small></button>`;}).join('')}</div>`).join('');
+    return`<button class="gear${on?' on':''}${ok?'':' lock'}" ${ok?`onclick="heroEquip('${g[0]}')"`:''} title="${ok?'':'Unlocks with '+esc(a?a.name:'')}">${hIc(ok?g[3]:'lock',ok?g[4]:'dark','shield',34)}<b>${g[2]}</b><small>${ok?`+${Math.round(g[5]*100)+((heroP.ench||{})[g[0]]||0)}% XP${(heroP.ench||{})[g[0]]?` ✦${heroP.ench[g[0]]}`:''}${on?' · on':''}`:heroGearLost()?'🔒 Lost in hardcore':g[6]==='fg'?'🔒 Forge it in World':`🔒 ${esc(a?a.desc:'')}`}</small></button>`;}).join('')}</div>`).join('');
 }
 // Task sheet: hardcore and mini boss switches
 function heroFlagsInit(t){const a=document.getElementById('hero-flag-hard'),b=document.getElementById('hero-flag-boss');if(a)a.checked=!!(t&&t.hard);if(b)b.checked=!!(t&&t.boss);}
@@ -1536,45 +1553,48 @@ function heroBetHtml(full){
 
 // ── Friend duel: race a friend's DayTrack to the most XP this week. Your PC hosts it like a shared list (same link, same /s/ path) ──
 const heroDuelText=()=>{const tod=heroTod(),ws=heroWeekStart(tod),xp=heroState().aw.filter(a=>a.d>=ws&&a.d<=tod).reduce((n,a)=>n+a.xp,0);return`${(heroP.name||'Rayan').replace(/\|/g,'')}|${xp}|${ws}`;};
-let heroDuelData=null,heroDuelAt=0;
-async function heroDuelPush(force){
-  const D=heroP.duel;if(!D||(!force&&Date.now()-heroDuelAt<6e4))return;heroDuelAt=Date.now();
+const heroDuelData={duel:null,guild:null},heroDuelAt={};
+// k: 'duel' (race a friend) or 'guild' (a team against a weekly raid boss); both use the same shared-list link
+async function heroDuelPush(force,k='duel'){
+  const D=heroP[k];if(!D||(!force&&Date.now()-(heroDuelAt[k]||0)<6e4))return;heroDuelAt[k]=Date.now();
   const opts={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{id:D.me,text:heroDuelText(),done:false,at:Date.now()}]})};
   try{const r=D.host?await lifeApi('share?code='+D.code,opts):await fetch(D.url+'/data',opts);
-    heroDuelData=r.status===404?{gone:1}:r.ok?{items:((await r.json()).items||[]).filter(i=>!i.del)}:{err:1};}catch(e){heroDuelData={err:1};}
-  const el=document.getElementById('hero-duel');if(el)el.innerHTML=heroDuelHtml();
+    heroDuelData[k]=r.status===404?{gone:1}:r.ok?{items:((await r.json()).items||[]).filter(i=>!i.del)}:{err:1};}catch(e){heroDuelData[k]={err:1};}
+  const el=document.getElementById('hero-'+k);if(el)el.innerHTML=k==='duel'?heroDuelHtml():heroGuildHtml();
 }
 const heroHex=()=>[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
-async function heroDuelNew(){
+async function heroDuelNew(k='duel'){
   const url=typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof shareLink==='function'?shareLink('x'):'';
   if(!url)return showToast('Add your PC address (https://…ts.net) and Gwen key in Settings first');
   const code=heroHex(),me='p'+uid();
-  try{const r=await lifeApi('share?code='+code,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'⚔️ DayTrack duel',items:[{id:me,text:heroDuelText(),done:false,at:Date.now()}]})});if(!r.ok)throw 0;}
-  catch(e){return showToast('❌ Your PC needs to be on to start a duel');}
-  heroP.duel={code,url:shareLink(code),me,host:true};save();await heroDuelPush(true);heroDuelShare();renderHero();
+  try{const r=await lifeApi('share?code='+code,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:k==='duel'?'⚔️ DayTrack duel':'🛡️ DayTrack guild',items:[{id:me,text:heroDuelText(),done:false,at:Date.now()}]})});if(!r.ok)throw 0;}
+  catch(e){return showToast(`❌ Your PC needs to be on to start a ${k}`);}
+  heroP[k]={code,url:shareLink(code),me,host:true};save();await heroDuelPush(true,k);heroDuelShare(k);renderHero();
 }
-function heroDuelShare(){
-  const D=heroP.duel;if(!D)return;const msg=`Duel me in DayTrack: most XP this week wins! In DayTrack go to Level → Story → Friend duel → Join one, and paste this link: ${D.url}`;
-  if(navigator.share)navigator.share({title:'DayTrack duel',text:msg}).catch(()=>{});else navigator.clipboard.writeText(msg).then(()=>showToast('📋 Invite copied'));
+function heroDuelShare(k='duel'){
+  const D=heroP[k];if(!D)return;const msg=k==='duel'?`Duel me in DayTrack: most XP this week wins! In DayTrack go to Level → Story → Friend duel → Join one, and paste this link: ${D.url}`
+    :`Join my DayTrack guild: we fight a raid boss together every week with our XP. In DayTrack go to Level → World → Guild → Join one, and paste this link: ${D.url}`;
+  if(navigator.share)navigator.share({title:k==='duel'?'DayTrack duel':'DayTrack guild',text:msg}).catch(()=>{});else navigator.clipboard.writeText(msg).then(()=>showToast('📋 Invite copied'));
 }
-async function heroDuelJoin(){
-  const m=((await ask('Paste the duel link your friend sent','https://…/s/…'))||'').trim().match(/https:\/\/[^\s]+?\/s\/([a-f0-9]{32})/);
-  if(!m)return showToast('That doesn\'t look like a duel link');
-  const name=((await ask('Your name in the duel','e.g. Sami'))||'').trim().slice(0,20);if(!name)return;
-  heroP.name=name;heroP.duel={code:m[1],url:m[0],me:'p'+uid()};heroDuelData=null;save();await heroDuelPush(true);renderHero();
+async function heroDuelJoin(k='duel'){
+  const m=((await ask(`Paste the ${k} link your friend sent`,'https://…/s/…'))||'').trim().match(/https:\/\/[^\s]+?\/s\/([a-f0-9]{32})/);
+  if(!m)return showToast(`That doesn't look like a ${k} link`);
+  const name=((await ask(`Your name in the ${k}`,'e.g. Sami'))||'').trim().slice(0,20);if(!name)return;
+  heroP.name=name;heroP[k]={code:m[1],url:m[0],me:'p'+uid()};heroDuelData[k]=null;save();await heroDuelPush(true,k);renderHero();
 }
-function heroDuelLeave(){if(!confirm('Leave this duel?'))return;heroP.duel=null;heroDuelData=null;save();renderHero();}
-function heroDuelHtml(){
-  const D=heroP.duel;
-  if(!D)return`<div class="hm-sub" style="margin-bottom:8px;">Race a friend to the most XP this week (Sunday to Saturday). They need the DayTrack app too. Your PC hosts the duel, like a shared list.</div><div style="display:flex;gap:8px;"><button class="hk-btn pri" onclick="heroDuelNew()">⚔️ Start a duel</button><button class="hk-btn" onclick="heroDuelJoin()">🔗 Join one</button></div>`;
-  if(!heroDuelData){setTimeout(()=>heroDuelPush(true),0);return'<div class="hm-sub">Loading the duel…</div>';}
-  if(heroDuelData.gone)return`<div class="hm-sub" style="margin-bottom:8px;">This duel has ended.</div><button class="minibtn" onclick="heroP.duel=null;heroDuelData=null;save();renderHero();">OK</button>`;
-  const ws=heroWeekStart(heroTod()),ps=(heroDuelData.items||[]).map(i=>{const[n,x,w]=String(i.text).split('|');return{me:i.id===D.me,n:n||'?',x:w===ws?+x||0:0};}).sort((a,b)=>b.x-a.x),mx=Math.max(1,...ps.map(p=>p.x));
-  return(heroDuelData.err?'<div class="hm-sub" style="margin-bottom:6px;">Couldn\'t reach the duel right now (is the host\'s PC on?).</div>':'')
-    +ps.map((p,i)=>`<div class="duel${p.me?' me':''}"><b>${i===0&&p.x?'👑 ':''}${esc(p.n)}${p.me?' (you)':''}</b><div class="bar"><i style="width:${p.x/mx*100}%"></i></div><span>${p.x.toLocaleString()}</span></div>`).join('')
-    +(ps.length<2&&!heroDuelData.err?'<div class="hm-sub" style="margin:6px 0;">Waiting for your friend to join…</div>':'')
-    +`<div style="display:flex;gap:8px;margin-top:8px;">${D.host?'<button class="minibtn" onclick="heroDuelShare()">📤 Invite</button>':''}<button class="minibtn" onclick="heroDuelPush(true)">↻ Refresh</button><button class="minibtn" onclick="heroDuelLeave()">Leave</button></div>`;
+function heroDuelLeave(k='duel'){if(!confirm(`Leave this ${k}?`))return;heroP[k]=null;heroDuelData[k]=null;save();renderHero();}
+function heroDuelHtml(k='duel'){
+  const D=heroP[k],X=heroDuelData[k],G=k==='guild';
+  if(!D)return`<div class="hm-sub" style="margin-bottom:8px;">${G?'Team up with friends: everyone\'s XP this week hits one raid boss. Beat it together and each of you claims a reward.':'Race a friend to the most XP this week (Sunday to Saturday).'} They need the DayTrack app too. Your PC hosts it, like a shared list.</div><div style="display:flex;gap:8px;"><button class="hk-btn pri" onclick="heroDuelNew('${k}')">${G?'🛡️ Start a guild':'⚔️ Start a duel'}</button><button class="hk-btn" onclick="heroDuelJoin('${k}')">🔗 Join one</button></div>`;
+  if(!X){setTimeout(()=>heroDuelPush(true,k),0);return`<div class="hm-sub">Loading the ${k}…</div>`;}
+  if(X.gone)return`<div class="hm-sub" style="margin-bottom:8px;">This ${k} has ended.</div><button class="minibtn" onclick="heroP['${k}']=null;heroDuelData['${k}']=null;save();renderHero();">OK</button>`;
+  const ws=heroWeekStart(heroTod()),ps=(X.items||[]).map(i=>{const[n,x,w]=String(i.text).split('|');return{me:i.id===D.me,n:n||'?',x:w===ws?+x||0:0};}).sort((a,b)=>b.x-a.x),mx=Math.max(1,...ps.map(p=>p.x));
+  return(X.err?`<div class="hm-sub" style="margin-bottom:6px;">Couldn't reach the ${k} right now (is the host's PC on?).</div>`:'')+(G?heroRaidHtml():'')
+    +ps.map((p,i)=>`<div class="duel${p.me?' me':''}"><b>${i===0&&p.x&&!G?'👑 ':''}${esc(p.n)}${p.me?' (you)':''}</b><div class="bar"><i style="width:${p.x/mx*100}%"></i></div><span>${p.x.toLocaleString()}</span></div>`).join('')
+    +(ps.length<2&&!X.err?`<div class="hm-sub" style="margin:6px 0;">Waiting for ${G?'friends':'your friend'} to join…</div>`:'')
+    +`<div style="display:flex;gap:8px;margin-top:8px;">${D.host?`<button class="minibtn" onclick="heroDuelShare('${k}')">📤 Invite</button>`:''}<button class="minibtn" onclick="heroDuelPush(true,'${k}')">↻ Refresh</button><button class="minibtn" onclick="heroDuelLeave('${k}')">Leave</button></div>`;
 }
+const heroGuildHtml=()=>heroDuelHtml('guild');
 
 // ── For the phone's home-screen widget: level bar, HP and today's boss (the widget works out the boss state itself) ──
 function heroWidget(){
@@ -1887,6 +1907,360 @@ async function heroWalkShare(id){
   const pbs=heroWalkPBs(w);if(pbs.length){x.fillStyle='#FACC15';x.font='bold 44px system-ui,sans-serif';x.fillText('🏅 '+pbs.join(' · '),540,1170);}
   x.fillStyle='#94A3B8';x.font='40px system-ui,sans-serif';x.fillText(`${esc(heroP.name||'Rayan')} · ${fmtDay(w.d)} · DayTrack`,540,1280);
   saveImage(c.toDataURL('image/jpeg',.92),`walk-${w.d}.jpg`);
+}
+
+// ════════ Round 6: loot, mana, omens, real boss fights, the world ════════
+// Loot, crits and omens only count from the day this round arrived (heroP.r6), so XP already earned never changes.
+
+// ── When each task was ticked today (ms; -1 = ticked somewhere we can't time). Double XP hour, crits and ambushes read it ──
+function heroTickRec(silent){
+  const tod=heroTod(),T=heroP.tick=heroP.tick||{},m=T[tod]=T[tod]||{};if(!heroP.r6)heroP.r6=tod;
+  tasks.forEach(t=>{if(t.done.includes(tod)&&!m[t.id])m[t.id]=silent?-1:Date.now();});
+  const lim=dAdd(tod,-40);for(const d in T)if(d<lim)delete T[d];
+}
+const heroTickAt=(t,d)=>Math.max(0,((heroP.tick||{})[d]||{})[t.id]||0);
+
+// ── Origin: picked once, +5% XP for one group ──
+const HERO_ORIGINS={nomad:['Desert nomad','Born under the dunes','Life','sun','orange'],elf:['Forest elf','Raised among old trees','Mind','leaf','green'],
+  dwarf:['Mountain dwarf','Forged in the deep halls','Body','shield','bronze'],sea:['Sea folk','A child of the tides','Spirit','moon','teal']};
+function heroOrigin(id){
+  const o=HERO_ORIGINS[id];if(!o||heroP.origin)return;
+  if(!confirm(`Become a ${o[0]}? +5% ${o[2]} XP from today. Your origin is for good.`))return;
+  heroP.origin={id,d:heroTod()};save();renderHero();
+  heroShow(`<div class="hl-t">YOUR ORIGIN</div><div class="hl-em">${hIc(o[3],o[4],'burst',90)}</div><div class="hl-big" style="font-size:26px;">${o[0]}</div><div class="hl-rank">${o[1]} · +5% ${o[2]} XP</div>`,4000,true);
+}
+
+// ── Daily omen: draw a card each day; it changes which XP is boosted ──
+const HERO_OMENS=[['fire','Fire day','Body XP +50%',{Body:.5},'flame','red'],['water','Water day','Mind XP +50%',{Mind:.5},'leaf','blue'],['wind','Wind day','Spirit XP +50%',{Spirit:.5},'wings','purple'],
+  ['earth','Earth day','Life XP +50%',{Life:.5},'leaf','green'],['star','Star day','All XP +20%',{'*':.2},'star','gold'],['moon','Moon day','Loot drops twice as often, Mind XP −10%',{Mind:-.1},'moon','teal'],
+  ['storm','Storm day','Body and Spirit XP +30%, Mind XP −20%',{Body:.3,Spirit:.3,Mind:-.2},'bolt','orange']];
+function heroOmen(d){const r=heroRng(heroBossCfg().seed+'omen'+d),o=HERO_OMENS[Math.floor(r()*HERO_OMENS.length)];return{d,id:o[0],name:o[1],what:o[2],st:o[3],gl:o[4],col:o[5],drawn:!!(heroP.omen||{})[d]&&d>=(heroP.r6||'9')};}
+function heroOmenDraw(){
+  const tod=heroTod(),O=heroP.omen=heroP.omen||{};if(O[tod])return;O[tod]=1;const lim=dAdd(tod,-60);for(const d in O)if(d<lim)delete O[d];
+  const o=heroOmen(tod);save();renderHero();renderHeroMini();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">TODAY'S OMEN</div><div class="omen-card">${hIc(o.gl,o.col,'burst',96)}<b>${o.name}</b><small>${o.what}</small></div>`,4500,true);
+}
+const heroOmenHtml=()=>{const o=heroOmen(heroTod());return o.drawn?'':`<button class="omen-draw" onclick="heroOmenDraw()">🃏 Draw today's omen card</button>`;};
+
+// ── Per-stat boosts for a day (origin, omen): {stat: extra} ──
+let heroBoostMemo={};
+function heroStatBoost(d){
+  if(heroBoostMemo[d])return heroBoostMemo[d];
+  const o={},add=(g,f)=>HERO_STATS.forEach(s=>{if(g==='*'||s.g===g)o[s.id]=(o[s.id]||0)+f;});
+  const og=heroP.origin&&HERO_ORIGINS[heroP.origin.id];if(og&&heroP.origin.d<=d)add(og[2],.05);
+  const om=heroOmen(d);if(om.drawn)for(const g in om.st)add(g,om.st[g]);
+  return heroBoostMemo[d]=o;
+}
+// What a task tick is worth on top: stat boosts, a critical hit (×3), double XP hour (×2)
+function heroTaskBoost(t,d,st){
+  const b=heroStatBoost(d);let w=0,f=0;for(const k in st){w+=st[k];f+=st[k]*(b[k]||0);}
+  let m=1+(w?f/w:0);if(heroCrit(t,d))m*=3;const at=heroTickAt(t,d);if(at&&heroDxh(at))m*=2;return m;
+}
+// ── Critical hits: 1 in 20 ticks gives triple XP; 1 in 10 before noon ──
+function heroCrit(t,d){if(!heroP.r6||d<heroP.r6)return false;const at=heroTickAt(t,d);return heroRng(t.id+d+'crit')()<(at&&new Date(at).getHours()<12?.1:.05);}
+
+// ── Loot drops: a 1 in 4 chance on every task you tick, with a rarity ──
+const HERO_RAR=[['common','Common','Iron shard','silver',.6],['rare','Rare','Silver ore','blue',.28],['epic','Epic','Mana crystal','purple',.1],['legend','Legendary','Dragon scale','legend',.02]];
+const HERO_RBY=Object.fromEntries(HERO_RAR.map(r=>[r[0],r]));
+const heroRarity=x=>{let a=0;for(const r of HERO_RAR){a+=r[4];if(x<a)return r[0];}return'common';};
+function heroDrops(){
+  const out=[],r6=heroP.r6,moon={};if(!r6)return out;
+  tasks.forEach(t=>t.done.forEach(d=>{if(d<r6)return;const r=heroRng(t.id+d+'drop'),p=(moon[d]??=heroOmen(d).drawn&&heroOmen(d).id==='moon')?.5:.25;if(r()<p)out.push({d,id:t.id,name:t.name,r:heroRarity(r())});}));
+  return out;
+}
+function heroMats(){
+  const o={common:0,rare:0,epic:0,legend:0},u=heroP.matUse||{};heroDrops().forEach(x=>o[x.r]++);(heroP.matGot||[]).forEach(g=>o[g.r]+=g.n||1);
+  for(const k in o)o[k]=Math.max(0,o[k]-(u[k]||0));return o;
+}
+function heroMatSpend(c){const m=heroMats();for(const k in c)if((m[k]||0)<c[k])return false;const u=heroP.matUse=heroP.matUse||{};for(const k in c)u[k]=(u[k]||0)+c[k];return true;}
+const heroMatGive=(r,n,why)=>{heroP.matGot=(heroP.matGot||[]).concat({d:heroTod(),r,n,why});};
+const heroMatLine=(r,n=1)=>`<div class="hl-row loot-${r}">${hIc('gem',HERO_RBY[r][3],'hex',26)} <b>${n>1?n+'× ':''}${HERO_RBY[r][2]}</b> <small>${HERO_RBY[r][1]}</small></div>`;
+const heroCostTxt=c=>Object.entries(c).filter(([,n])=>n).map(([k,n])=>`${n} ${HERO_RBY[k][2]}${n>1?'s':''}`).join(' + ');
+let heroDropLast=null,heroCritLast=null;
+function heroDropCheck(silent){
+  const tod=heroTod(),dr=heroDrops().filter(x=>x.d===tod),cr=tasks.filter(t=>t.done.includes(tod)&&heroCrit(t,tod)).map(t=>t.id);
+  const pd=heroDropLast,pc=heroCritLast;heroDropLast=dr.map(x=>x.id);heroCritLast=cr;
+  if(silent||!pd)return'';
+  dr.filter(x=>!pd.includes(x.id)).forEach(x=>{if(x.r==='common')return showToast(`🎁 Loot: ${HERO_RBY.common[2]}`);
+    heroShow(`<div class="hl-t">${HERO_RBY[x.r][1].toUpperCase()} DROP!</div><div class="hl-em loot-glow loot-${x.r}">${hIc('gem',HERO_RBY[x.r][3],'burst',96)}</div><div class="hl-big" style="font-size:24px;">${HERO_RBY[x.r][2]}</div><div class="hl-rank">from “${esc(x.name)}”</div>`,4000,x.r!=='rare');});
+  return cr.some(id=>!pc.includes(id))?'CRITICAL ×3':'';
+}
+
+// ── Enchanting: spend materials on a piece of gear, +1% XP a level (up to 5) ──
+const heroEnchCost=l=>({common:3+2*l,rare:l,epic:Math.max(0,l-2),legend:l>=4?1:0});
+function heroEnchant(id){
+  const g=HERO_GEAR.find(x=>x[0]===id),E=heroP.ench=heroP.ench||{},l=E[id]||0;if(!g||!heroGearOk(g)||l>=5)return;
+  const c=heroEnchCost(l);if(!confirm(`Enchant ${g[2]} to ✦${l+1} for ${heroCostTxt(c)}?`))return;
+  if(!heroMatSpend(c))return showToast('You need more materials');
+  E[id]=l+1;heroDaily();save();renderHero();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">ENCHANTED</div><div class="hl-em loot-glow loot-epic">${hIc(g[3],g[4],'burst',90)}</div><div class="hl-big" style="font-size:24px;">${g[2]} ✦${l+1}</div><div class="hl-rank">+${Math.round(g[5]*100)+l+1}% XP while equipped</div>`,3500,true);
+}
+function heroLootHtml(){
+  const m=heroMats(),own=HERO_GEAR.filter(heroGearOk),E=heroP.ench||{};
+  return`<div class="bag" style="grid-template-columns:repeat(4,1fr);">${HERO_RAR.map(([k,n,item,col])=>`<div class="bag-i loot-${k}">${hIc('gem',m[k]?col:'dark','hex',40)}<b>${item} ×${m[k]}</b><small>${n}</small></div>`).join('')}</div>
+    <div class="hm-sub" style="margin:8px 0;">Every task you tick has a 1 in 4 chance to drop one. Spend them on enchanting.</div><div class="sl">Enchanting</div>`
+    +(own.length?own.map(g=>{const l=E[g[0]]||0,c=heroEnchCost(l);return`<div class="shop">${hIc(g[3],g[4],'shield',26)}<span>${g[2]} ${l?`<b class="ench">✦${l}</b>`:''}<small style="display:block;color:var(--sub);">${l>=5?'Fully enchanted':heroCostTxt(c)}</small></span>${l<5?`<button class="minibtn" onclick="heroEnchant('${g[0]}')">Enchant</button>`:''}</div>`;}).join('')
+      :'<div class="hm-sub">Unlock gear first (achievements and the forge give it).</div>');
+}
+
+// ── Mana: a daily pool from sleep and prayer, spent on powers ──
+const HERO_POWERS={dxh:['Double XP hour','Everything you finish in the next hour gives double XP',5,'bolt','gold'],
+  rest:['Rest day','Today keeps your streak alive even if you don\'t finish everything',6,'moon','blue'],
+  cry:['Battle cry','Your attacks in today\'s boss fights hit twice as hard',3,'swords','red']};
+function heroMana(d=heroTod()){
+  const sl=sleepLog[d],h=sl&&typeof sleepHours==='function'?sleepHours(sl):0,faith=tasks.filter(t=>t.done.includes(d)&&(taskStats(t).faith||0)>=.5).length;
+  const max=Math.min(10,3+(h>=7?3:h>=6?1:0)+Math.min(4,2*faith)),cast=(heroP.mana||{})[d]||[],used=cast.reduce((n,c)=>n+(HERO_POWERS[c.id]||[0,0,0])[2],0);
+  return{max,left:Math.max(0,max-used),h,faith,cast};
+}
+const heroCast=(id,d=heroTod())=>((heroP.mana||{})[d]||[]).find(c=>c.id===id);
+const heroDxh=at=>{const c=heroCast('dxh',toDateStr(new Date(at)));return!!c&&at>=c.at&&at<c.at+36e5;};
+function heroCastPower(id){
+  const tod=heroTod(),m=heroMana(tod),p=HERO_POWERS[id];if(!p)return;
+  if(heroCast(id))return showToast('🔮 Already cast today');if(m.left<p[2])return showToast(`🔮 Not enough mana (${m.left}/${p[2]})`);
+  if(!confirm(`Cast ${p[0]} for ${p[2]} mana? ${p[1]}.`))return;
+  const M=heroP.mana=heroP.mana||{};(M[tod]=M[tod]||[]).push({id,at:Date.now()});const lim=dAdd(tod,-40);for(const d in M)if(d<lim)delete M[d];
+  if(id==='rest'){const u=heroP.used=heroP.used||{};u.freeze=[...new Set([...(u.freeze||[]),tod])];}
+  save();renderHero();renderHeroMini();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">POWER CAST</div><div class="hl-em">${hIc(p[3],p[4],'burst',90)}</div><div class="hl-big" style="font-size:24px;">${p[0]}</div><div class="hl-rank">${p[1]}</div>`,3500,true);
+}
+function heroManaHtml(){
+  const m=heroMana(),now=Date.now(),dx=heroCast('dxh');
+  return`<div class="mana"><div class="bar"><i style="width:${m.max?m.left/m.max*100:0}%"></i></div><b>${m.left}/${m.max}</b></div>
+    <div class="hm-sub" style="margin:4px 0 8px;">Refills every day: 3 base, +3 for 7 h of sleep (+1 for 6 h), +2 for each prayer or faith task done (up to +4).${m.h?` Last night: ${m.h.toFixed(1)} h.`:' Log your sleep to fill it more.'}</div>`
+    +Object.entries(HERO_POWERS).map(([id,[n,d,c,g,col]])=>{const on=heroCast(id),live=id==='dxh'&&dx&&now<dx.at+36e5;
+      return`<div class="shop">${hIc(g,on?col:'dark','hex',28)}<span><b>${n}</b><small style="display:block;color:var(--sub);">${live?`Active: ${Math.ceil((dx.at+36e5-now)/6e4)} min left`:on?'Cast today':d}</small></span>${on?'':`<button class="minibtn" ${m.left<c?'disabled':''} onclick="heroCastPower('${id}')">🔮 ${c}</button>`}</div>`;}).join('');
+}
+
+// ── Karma: kind deeds build light, escaped bosses and slips build dark ──
+const HERO_KIND=/help|family|mom\b|mum|mother|dad\b|father|parent|grand|visit|charity|sadaq|donat|volunteer|kind|gift|brother|sister|call .*(friend|uncle|aunt)|neighbo|صدقة|والد|أمي|أبوي|زيارة|مساعدة|اهل|أهل/i;
+function heroKarma(h){
+  const light=3*tasks.reduce((n,t)=>n+(HERO_KIND.test(t.name)?t.done.length:0),0)+heroBossWins()+Object.keys(heroP.journal||{}).length;
+  let gone=0;const tod=heroTod();for(let i=1;i<=60;i++){const b=heroDBoss(dAdd(tod,-i));if(b&&b.state==="gone")gone++;}
+  const dark=2*gone+2*(heroP.quits||[]).reduce((n,q)=>n+(q.slips||[]).length,0)+2*h.aw.filter(a=>a.k==='hard').length,v=light-dark;
+  const tier=v<=-30?['Shadow','dark','moon']:v<0?['Dusk','purple','moon']:v<30?['Balanced','silver','gem']:v<100?['Light','gold','sun']:['Radiant','legend','sun'];
+  return{light,dark,v,tier:tier[0],col:tier[1],gl:tier[2]};
+}
+
+// ── Mounts: walking unlocks them ──
+const HERO_MOUNTS=[['horse','Horse','🐎',10,2],['wolf','Dire wolf','🐺',50,4],['dragon','Dragon','🐉',150,8]];
+function heroMount(){
+  const km=(heroP.walks||[]).reduce((s,w)=>s+(w.m||0),0)/1000,cur=heroWalkStreak();if(cur>(heroP.walkBest||0))heroP.walkBest=cur;
+  const best=heroP.walkBest||0,got=HERO_MOUNTS.filter(m=>km>=m[3]||best>=m[4]);return{km,best,got,cur:got[got.length-1],next:HERO_MOUNTS[got.length]};
+}
+
+// ── Professions: real life skills as jobs ──
+const HERO_PROFS=[['cook','Cook',/cook|meal|recipe|bake|breakfast|lunch|dinner|kitchen|طبخ/i,'flask','orange'],['scholar','Scholar',/study|read|learn|course|homework|exam|book|lesson|lecture|مذاكرة|قراءة|دراسة/i,'book','blue'],
+  ['smith','Smith',/fix|repair|build|assemble|install|tool|\bcar\b|bike|إصلاح|تصليح/i,'hand','bronze'],['healer','Healer',/doctor|medicine|pill|vitamin|stretch|first aid|dentist|health|دواء|طبيب/i,'plus','green'],
+  ['merchant','Merchant',/money|budget|saving|invest|sell|\bpay|bill|bank|salary|riyal|مال|فلوس/i,'coin','gold'],['bard','Bard',/music|guitar|piano|oud|sing|draw|paint|write|poem|\bart\b|design|رسم|كتابة/i,'spark','pink'],
+  ['keeper','Housekeeper',/clean|tidy|laundry|dishes|vacuum|trash|organi[sz]e|room|ترتيب|تنظيف|غسيل/i,'leaf','teal']];
+const HERO_PROF_RK=[[0,'Novice'],[10,'Apprentice'],[30,'Journeyman'],[75,'Expert'],[150,'Master'],[300,'Grandmaster']];
+function heroProfs(){return HERO_PROFS.map(([id,name,re,gl,col])=>{const n=tasks.reduce((s,t)=>s+(re.test(t.name)?t.done.length:0),0),i=HERO_PROF_RK.filter(r=>n>=r[0]).length-1;return{id,name,gl,col,n,i,rank:HERO_PROF_RK[i][1],next:HERO_PROF_RK[i+1]};});}
+function heroProfsHtml(){
+  return`<div class="prof-grid">${heroProfs().map(p=>`<div class="prof">${hIc(p.gl,p.n?p.col:'dark','hex',34)}<div style="min-width:0;flex:1;"><b>${p.name}</b><small>${p.rank}${p.next?` · ${p.next[0]-p.n} to ${p.next[1]}`:''}</small><div class="bar"><i style="width:${p.next?Math.round((p.n-HERO_PROF_RK[p.i][0])/(p.next[0]-HERO_PROF_RK[p.i][0])*100):100}%"></i></div></div></div>`).join('')}</div><div class="hm-sub" style="margin-top:6px;">Ranks come from the words in your task names: cooking, studying, fixing, health, money, art and cleaning.</div>`;
+}
+function heroOriginHtml(h){
+  const k=heroKarma(h),og=heroP.origin&&HERO_ORIGINS[heroP.origin.id];
+  const ka=`<div class="karma"><span>🌑 ${k.dark}</span><div class="kbar"><i style="left:${Math.max(0,Math.min(100,50+k.v/4))}%"></i></div><span>☀️ ${k.light}</span></div><div class="hm-sub">Karma: <b>${k.tier}</b>. Kind deeds (family, helping, sadaqah, visits) and beaten bosses build light; escaped bosses, slips and missed hardcore days build dark.</div>`;
+  if(og)return`<div class="pty">${hIc(og[3],og[4],'burst',44)}<div style="flex:1;min-width:0;"><b>${og[0]}</b><small>${og[1]} · +5% ${og[2]} XP</small></div></div>`+ka;
+  return`<div class="hm-sub" style="margin-bottom:8px;">Where does your hero come from? Pick once: it gives +5% XP to one group.</div><div class="og-pick">${Object.entries(HERO_ORIGINS).map(([id,[n,d,g,gl,col]])=>`<button onclick="heroOrigin('${id}')">${hIc(gl,col,'burst',40)}<b>${n}</b><small>+5% ${g}</small></button>`).join('')}</div>`+ka;
+}
+
+// ── Rival: levels up a little every day; beat him over the month for a big prize ──
+const HERO_RIVALS=['Kael','Vex','Draven','Riku','Zara'];
+function heroRival(h,m=heroTod().slice(0,7)){
+  const seed=heroBossCfg().seed,name=HERO_RIVALS[Math.floor(heroRng(seed+'rival')()*HERO_RIVALS.length)],start=m+'-01',by={},tod=heroTod();h.aw.forEach(a=>by[a.d]=(by[a.d]||0)+a.xp);
+  let base=0;for(let i=1;i<=28;i++)base+=by[dAdd(start,-i)]||0;base=Math.max(60,base/28);
+  const nx=new Date(start+'T12:00:00');nx.setMonth(nx.getMonth()+1);const end=dAdd(toDateStr(nx),-1),cur=m===tod.slice(0,7);
+  let rv=0,me=0;for(let d=start;d<=(cur?tod:end);d=dAdd(d,1)){const f=d===tod?new Date().getHours()/24:1;rv+=Math.round(base*(.85+.35*heroRng(seed+'rv'+d)())*f);me+=by[d]||0;}
+  return{name,rv,me,m,end,cur};
+}
+function heroRivalClaim(m){
+  const h=heroState(),r=heroRival(h,m),W=heroP.rivalWon=heroP.rivalWon||{};if(W[m]||r.cur||r.me<=r.rv)return;
+  W[m]=heroTod();heroBonus(heroTod(),400,{discipline:1,focus:.5},`Beat ${r.name} for ${m}`,'🏆','rival');heroMatGive('legend',1,'rival');save();renderHero();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">RIVAL DEFEATED</div><div class="hl-em">${hIc('trophy','gold','burst',96)}</div><div class="hl-big" style="font-size:24px;">${r.name} bows to you</div><div class="hl-row">+400 XP</div>${heroMatLine('legend')}`,5000,true);
+}
+function heroRivalHtml(h){
+  const r=heroRival(h),lm=dAdd(heroTod().slice(0,8)+'01',-1).slice(0,7),p=heroRival(h,lm),W=heroP.rivalWon||{},ahead=r.me>=r.rv,diff=Math.abs(r.me-r.rv),q=heroRng(heroTod()+'taunt')();
+  const say=ahead?[`Enjoy the lead while it lasts.`,`Lucky week. I'm coming for you.`,`${diff} XP? I've lost more than that in my sleep.`][Math.floor(q*3)]:[`You call that training? I'm ${diff} XP ahead.`,`Too slow, ${heroP.name||'Rayan'}. Too slow.`,`Another lazy day? Good. Easier for me.`][Math.floor(q*3)];
+  const mx=Math.max(1,r.me,r.rv);
+  return`<div class="pty">${hIc('swords','red','burst',44)}<div style="flex:1;min-width:0;"><b>${r.name} the Rival</b><small>“${esc(say)}”</small></div></div>
+    <div class="duel me"><b>You</b><div class="bar"><i style="width:${r.me/mx*100}%"></i></div><span>${r.me.toLocaleString()}</span></div><div class="duel"><b>${r.name}</b><div class="bar"><i style="width:${r.rv/mx*100}%;background:#EF4444;"></i></div><span>${r.rv.toLocaleString()}</span></div>
+    <div class="hm-sub" style="margin-top:6px;">XP this month. Beat ${r.name} by the end of the month for +400 XP and 1 Dragon scale.</div>`
+    +(!W[lm]&&p.me>p.rv&&p.me>0?`<button class="hk-btn pri" style="width:100%;margin-top:8px;" onclick="heroRivalClaim('${lm}')">🏆 You beat ${p.name} last month! Claim</button>`:W[lm]?`<div class="hm-sub" style="margin-top:4px;">Last month: you won 🏆</div>`:'');
+}
+
+// ── Random events: on about half the days, something shows up for an hour ──
+const HERO_REVTS=[['merchant','A wandering merchant','Rare goods, for one hour only','bag','gold'],['chest','A treasure chest','Open it before it vanishes','chest','orange'],['ambush','Ambush!','Finish 2 tasks within the hour to fight them off','swords','red']];
+const HERO_OFFERS=[['mat','epic',90],['mat','rare',35],['item','potion',60],['item','freeze',75]];
+function heroRevt(d=heroTod()){
+  const c=heroBossCfg();if(!c.on||!heroP.r6||d<heroP.r6)return null;const r=heroRng(c.seed+'revt'+d);if(r()>.5)return null;
+  const a=heroHM(c.from),b=Math.max(a+61,heroHM(c.to))-60,min=a+Math.floor(r()*(b-a)),e=HERO_REVTS[Math.floor(r()*3)],of=HERO_OFFERS[Math.floor(r()*HERO_OFFERS.length)];
+  const t=new Date(d+'T00:00:00');t.setMinutes(min);const at=t.getTime(),until=at+36e5,rec=(heroP.revt||{})[d]||{},now=Date.now();
+  if(at<c.onAt&&!rec.done)return null;
+  const n=tasks.filter(x=>{const w=heroTickAt(x,d);return w>=at&&w<until;}).length;
+  return{d,id:e[0],name:e[1],what:e[2],gl:e[3],col:e[4],at,until,rec,of,n,state:rec.done?'done':now<at?'soon':now<until?'on':'gone'};
+}
+function heroRevtAct(){
+  const e=heroRevt();if(!e||e.state!=='on')return;const R=heroP.revt=heroP.revt||{},tod=heroTod();let html='';
+  if(e.id==='chest'){const r=heroRng(tod+'chest'),got=[heroRarity(r()),heroRarity(r())];got.forEach(k=>heroMatGive(k,1,'chest'));html=`<div class="hl-t">TREASURE!</div><div class="hl-em">${hIc('chest','gold','burst',90)}</div>${got.map(k=>heroMatLine(k)).join('')}`;}
+  else if(e.id==='merchant'){const[k,what,cost]=e.of,h=heroState();if(heroCoins(h)<cost)return showToast(`🪙 You need ${cost-heroCoins(h)} more coins`);
+    const name=k==='mat'?HERO_RBY[what][2]:HERO_ITEMS[what][0];if(!confirm(`Buy ${name} for ${cost} coins?`))return;
+    heroP.spent=(heroP.spent||0)+cost;if(k==='mat')heroMatGive(what,1,'merchant');else heroInv()[what]=(heroInv()[what]||0)+1;html=`<div class="hl-t">A FINE DEAL</div><div class="hl-em">${hIc('bag','gold','burst',90)}</div><div class="hl-big" style="font-size:24px;">${name}</div>`;}
+  else{if(e.n<2)return showToast(`⚔️ ${e.n}/2 tasks so far. Keep going!`);heroBonus(tod,80,{discipline:1,endurance:.3},'Survived an ambush','⚔️','ambush');heroMatGive('rare',1,'ambush');html=`<div class="hl-t">AMBUSH SURVIVED</div><div class="hl-em">${hIc('swords','red','burst',90)}</div><div class="hl-row">+80 XP</div>${heroMatLine('rare')}`;}
+  R[tod]={done:Date.now()};const lim=dAdd(tod,-30);for(const d in R)if(d<lim)delete R[d];
+  save();renderHero();renderHeroMini();heroSfx('fanfare');heroShow(html,4000,true);
+}
+function heroRevtHtml(mini){
+  const e=heroRevt();if(!e||e.state==='soon'&&mini)return mini?'':`<div class="hm-sub">${e?'Something stirs on the road today… keep an eye out.':'A quiet day on the road. Merchants, treasure and ambushes turn up on some days, inside your boss hours.'}</div>`;
+  if(mini&&e.state!=='on')return'';
+  const left=Math.max(0,Math.ceil((e.until-Date.now())/6e4)),offer=e.id==='merchant'?`${e.of[0]==='mat'?HERO_RBY[e.of[1]][2]:HERO_ITEMS[e.of[1]][0]} for 🪙 ${e.of[2]}`:'';
+  const body={soon:`<b>Something stirs on the road…</b><small>An event turns up later today.</small>`,
+    on:`<b>${e.name}</b><small>${e.id==='merchant'?offer:e.id==='ambush'?`${Math.min(2,e.n)}/2 tasks finished`:e.what} · ${left} min left</small>`,
+    done:`<b>${e.name}</b><small>${e.id==='merchant'?'You bought something':e.id==='chest'?'Opened':'Survived'}. Done for today.</small>`,
+    gone:`<b>${e.name}</b><small>It's gone. Maybe tomorrow.</small>`}[e.state];
+  const btn=e.state==='on'?`<button class="hq-claim" onclick="event.stopPropagation();heroRevtAct()">${e.id==='merchant'?'Buy':e.id==='chest'?'Open':e.n>=2?'Claim':'Fight'}</button>`:'';
+  return`<div class="dboss ${e.state==='on'?'on':e.state==='done'?'won':'soon'}">${hIc(e.state==='soon'?'spark':e.gl,e.state==='gone'?'dark':e.col,'burst',mini?40:50)}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;">${body}</div>${btn}</div>`;
+}
+let heroRevtSeen='';
+if(typeof document!=='undefined')setInterval(()=>{try{
+  const e=heroRevt();if(!e||e.state!=='on'||heroRevtSeen===e.d||document.visibilityState!=='visible')return;heroRevtSeen=e.d;
+  heroShow(`<div class="hl-t">${e.id==='ambush'?'⚔ AMBUSH ⚔':'ON THE ROAD'}</div><div class="hl-em">${hIc(e.gl,e.col,'burst',90)}</div><div class="hl-big" style="font-size:24px;">${e.name}</div><div class="hl-rank">${e.what}. Find it in Level → World.</div>`,6000,true);
+}catch(x){}},20000);
+
+// ── Legendary weapon: 30 strong days (3+ tasks finished) forge it, a piece every 10 ──
+const HERO_WEAPONS={blade:['Blade of Dawn','swords','orange'],hammer:['Hammer of Will','dumbbell','red'],staff:['Staff of Insight','spark','blue'],bow:['Bow of Focus','target','green']};
+function heroForge(){
+  const f=heroP.forge;if(!f)return null;const c={};tasks.forEach(t=>t.done.forEach(d=>{if(d>=f.from)c[d]=(c[d]||0)+1;}));
+  const n=f.done?30:Math.min(30,Object.values(c).filter(v=>v>=3).length);return{...f,n,pieces:Math.floor(n/10)};
+}
+function heroForgeStart(w){
+  if(heroP.forge&&!heroP.forge.done||!HERO_WEAPONS[w])return;if((heroP.forged||[]).includes(w))return showToast('You already forged that one');
+  if(!confirm(`Start forging the ${HERO_WEAPONS[w][0]}? Every day you finish 3 or more tasks heats the forge. 10 days make a piece, 3 pieces make the weapon.`))return;
+  heroP.forge={w,from:heroTod(),got:0};save();renderHero();
+}
+function heroForgeCheck(silent){
+  const f=heroForge();if(!f||f.done||f.pieces<=(heroP.forge.got||0))return;heroP.forge.got=f.pieces;const W=HERO_WEAPONS[f.w];
+  if(f.pieces>=3){heroP.forge.done=heroTod();heroP.forged=[...new Set([...(heroP.forged||[]),f.w])];heroBonus(heroTod(),300,{discipline:1},`Forged the ${W[0]}`,'⚒️','forge');}
+  if(silent)return;heroSfx('fanfare');
+  heroShow(f.pieces>=3?`<div class="hl-t">LEGENDARY WEAPON FORGED</div><div class="hl-em loot-glow loot-legend">${hIc(W[1],'legend','burst',110)}</div><div class="hl-big" style="font-size:26px;">${W[0]}</div><div class="hl-row">+300 XP · equip it in Bag → Gear for +5% XP</div>`
+    :`<div class="hl-t">THE FORGE GLOWS</div><div class="hl-em">${hIc(W[1],W[2],'burst',90)}</div><div class="hl-big" style="font-size:24px;">Piece ${f.pieces} of 3</div><div class="hl-rank">${W[0]}</div>`,5000,true);
+}
+function heroForgeHtml(){
+  const f=heroForge(),done=heroP.forged||[];
+  if(!f||f.done)return`<div class="hm-sub" style="margin-bottom:8px;">${f?`You forged the ${HERO_WEAPONS[f.w][0]}! `:''}Pick a weapon to forge. 30 strong days (3 or more tasks finished) make it, a piece every 10 days. No time limit.</div><div class="og-pick">${Object.entries(HERO_WEAPONS).map(([id,[n,g,c]])=>`<button ${done.includes(id)?'class="got"':`onclick="heroForgeStart('${id}')"`}>${hIc(g,done.includes(id)?'legend':c,'burst',40)}<b>${n}</b><small>${done.includes(id)?'Forged':'+5% XP'}</small></button>`).join('')}</div>`;
+  const W=HERO_WEAPONS[f.w];
+  return`<div class="pty">${hIc(W[1],W[2],'burst',48)}<div style="flex:1;min-width:0;"><b>${W[0]}</b><small>${f.n}/30 strong days · piece ${Math.min(3,f.pieces+1)} of 3 in the fire</small></div></div><div class="forge">${[0,1,2].map(i=>`<div class="${f.pieces>i?'got':''}"><div class="bar"><i style="width:${Math.max(0,Math.min(10,f.n-10*i))*10}%"></i></div><small>${['Hilt','Core','Edge'][i]}</small></div>`).join('')}</div><div class="hm-sub">A strong day is a day you finish 3 or more tasks.</div>`;
+}
+
+// ── The world: a map that opens as you level, with villagers who give weekly side quests ──
+// [level, region, villager, stats they ask for, symbol, colour, what they say]
+const HERO_REGIONS=[[1,'Village of Beginnings','Elder Mira',['discipline','vitality'],'flag','bronze','Show me you can keep a routine, young one.'],
+  [5,'Whispering Forest','Sylas the hermit',['creativity','intellect'],'leaf','green','My songs have gone stale. Bring me something new.'],
+  [10,'Sunscorch Desert','Tariq the trader',['wealth','endurance'],'sun','orange','The desert takes the careless. Prove you\'re not.'],
+  [20,'Iron Mountains','Brom the blacksmith',['arms','chest','back','legs','core'],'dumbbell','red','The forge needs a strong arm. Is yours?'],
+  [35,'Frozen North','Sister Alva',['faith','focus'],'snow','teal','Out here only a steady heart keeps you warm.'],
+  [50,'Shadow Castle','Captain Roderic',['focus','charisma','discipline'],'crown','purple','The siege needs a sharp mind and a loud voice.'],
+  [75,'Sky Citadel','The Oracle',['intellect','faith','discipline'],'star','legend','Show me what all those years have taught you.']];
+const HERO_MAP_XY=[[44,196],[122,166],[58,116],[160,92],[262,122],[312,66],[206,30]];
+function heroVillQ(i,ws){
+  const R=HERO_REGIONS[i],st=R[3][Math.floor(heroRng(ws+'vq'+i)()*R[3].length)],n=30+15*i;
+  return{key:ws+':'+i,i,st,n,xp:80+40*i,mat:i<2?'common':i<4?'rare':i<6?'epic':'legend'};
+}
+function heroVillHtml(h){
+  const ws=heroWeekStart(heroTod()),C=heroP.vq||{},wk=h.aw.filter(a=>a.d>=ws);
+  return HERO_REGIONS.map((R,i)=>{
+    if(h.L<R[0])return`<div class="vill lock">${hIc('lock','dark','circle',36)}<div style="flex:1;min-width:0;"><b>${R[1]}</b><small>Opens at level ${R[0]}</small></div></div>`;
+    const q=heroVillQ(i,ws),p=wk.reduce((s,a)=>s+Math.max(0,a.sx[q.st]||0),0),S=HERO_BY[q.st];
+    return`<div class="vill">${hIc(R[4],R[5],'circle',36)}<div style="flex:1;min-width:0;"><b>${R[2]} <span>· ${R[1]}</span></b><small>“${R[6]}” Earn ${q.n} ${S.name} XP this week.</small><div class="bar"><i style="width:${Math.min(100,p/q.n*100)}%"></i></div><small>${Math.min(p,q.n)}/${q.n} · reward +${q.xp} XP and 1 ${HERO_RBY[q.mat][2]}</small></div>${C[q.key]?'<span class="hq-done">✓</span>':p>=q.n?`<button class="hq-claim" onclick="heroVillClaim(${i})">Claim</button>`:''}</div>`;
+  }).join('');
+}
+function heroVillClaim(i){
+  const h=heroState(),ws=heroWeekStart(heroTod()),q=heroVillQ(i,ws),C=heroP.vq=heroP.vq||{};if(C[q.key]||h.L<HERO_REGIONS[i][0])return;
+  const p=h.aw.filter(a=>a.d>=ws).reduce((s,a)=>s+Math.max(0,a.sx[q.st]||0),0);if(p<q.n)return;
+  C[q.key]=heroTod();for(const k in C)if(k.slice(0,10)<dAdd(ws,-60))delete C[k];
+  heroBonus(heroTod(),q.xp,{[q.st]:1},`${HERO_REGIONS[i][2]}'s quest`,'📜','vill');heroMatGive(q.mat,1,'villager');save();renderHero();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">QUEST COMPLETE</div><div class="hl-em">${hIc(HERO_REGIONS[i][4],HERO_REGIONS[i][5],'burst',90)}</div><div class="hl-big" style="font-size:22px;">${HERO_REGIONS[i][2]} thanks you</div><div class="hl-row">+${q.xp} XP</div>${heroMatLine(q.mat)}`,4500,true);
+}
+function heroMapHtml(h){
+  const n=HERO_REGIONS.filter(R=>h.L>=R[0]).length,i=n-1,nx=HERO_REGIONS[n],f=nx?Math.max(0,Math.min(1,(h.L-HERO_REGIONS[i][0])/(nx[0]-HERO_REGIONS[i][0]))):0;
+  const[a,b]=[HERO_MAP_XY[i],HERO_MAP_XY[Math.min(n,6)]],px=a[0]+(b[0]-a[0])*f,py=a[1]+(b[1]-a[1])*f,mt=heroMount();
+  const nodes=HERO_REGIONS.map((R,k)=>{const[x,y]=HERO_MAP_XY[k],ok=h.L>=R[0];return`<g transform="translate(${x-17} ${y-17})">${hIc(ok?R[4]:'lock',ok?R[5]:'dark','circle',34)}</g><text x="${x}" y="${y+28}" class="mp-t${ok?'':' off'}">${R[1]}</text>`;}).join('');
+  const av=heroP.avImg?`<clipPath id="mp-av"><circle cx="${px}" cy="${py-24}" r="13"/></clipPath><image href="${heroP.avImg}" x="${px-13}" y="${py-37}" width="26" height="26" clip-path="url(#mp-av)"/>`:`<text x="${px}" y="${py-18}" font-size="18" text-anchor="middle">${esc(heroP.av||'🧑')}</text>`;
+  return`<svg viewBox="0 0 360 236" class="wmap"><defs><linearGradient id="wm-bg" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#7c9a4b"/><stop offset=".35" stop-color="#3f6b3a"/><stop offset=".55" stop-color="#c79a52"/><stop offset=".75" stop-color="#6b7280"/><stop offset=".9" stop-color="#cbd5e1"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>
+    <rect width="360" height="236" rx="14" fill="url(#wm-bg)"/><path d="M${HERO_MAP_XY.map(p=>p.join(' ')).join(' L')}" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="3" stroke-dasharray="2 7" stroke-linecap="round"/>${nodes}
+    <circle cx="${px}" cy="${py-24}" r="15" fill="#fff" stroke="#F5B82E" stroke-width="3"/>${av}${mt.cur?`<text x="${px+20}" y="${py-14}" font-size="20" text-anchor="middle">${mt.cur[2]}</text>`:''}</svg>
+    <div class="hm-sub" style="margin-top:6px;">You're in <b>${HERO_REGIONS[i][1]}</b>${nx?`. ${nx[1]} opens at level ${nx[0]}.`:'. You\'ve seen the whole world.'} ${mt.cur?`Riding your ${mt.cur[1].toLowerCase()} ${mt.cur[2]}.`:''}</div>
+    <div class="mounts">${HERO_MOUNTS.map(m=>`<span class="${mt.got.includes(m)?'got':''}">${m[2]} <b>${m[1]}</b><small>${mt.got.includes(m)?'Yours':`Walk ${m[3]} km or ${m[4]} weeks in a row`}</small></span>`).join('')}</div>
+    <div class="hm-sub">Walked ${mt.km.toFixed(1)} km in Walk mode · best run ${mt.best} week${mt.best===1?'':'s'} with 3+ walks.</div>`;
+}
+
+// ── Your base: build up your hero's home with coins; each piece goes to Gwen's house as a parcel too ──
+const HERO_BASE=[['bed','Cozy bed',150,'moon','blue'],['desk','Study desk',250,'pen','bronze'],['shelf','Bookshelf',300,'book','orange'],['garden','Herb garden',400,'leaf','green'],
+  ['forge','Forge',500,'flame','red'],['trophy','Trophy wall',600,'trophy','gold'],['fire','Fireplace',800,'flame','orange'],['throne','Throne',2000,'crown','legend']];
+function heroBuild(id){
+  const b=HERO_BASE.find(x=>x[0]===id),h=heroState(),c=heroCoins(h);if(!b||(heroP.base||[]).some(x=>x.id===id))return;
+  if(c<b[2])return showToast(`🪙 You need ${b[2]-c} more coins`);if(!confirm(`Build a ${b[1]} for ${b[2]} coins?`))return;
+  heroP.spent=(heroP.spent||0)+b[2];heroP.base=(heroP.base||[]).concat({id,d:heroTod()});save();renderHero();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">BUILT</div><div class="hl-em">${hIc(b[3],b[4],'burst',90)}</div><div class="hl-big" style="font-size:24px;">${b[1]}</div><div class="hl-rank">It's on its way to Gwen's house as a parcel too 💜</div>`,4000,true);
+}
+function heroBaseHtml(h){
+  const own=new Set((heroP.base||[]).map(x=>x.id)),c=heroCoins(h);
+  return`<div class="hm-sub" style="margin-bottom:8px;">${own.size}/${HERO_BASE.length} built · 🪙 ${c.toLocaleString()} coins. Whatever you build is sent to Gwen's house as a parcel.</div><div class="perk-grid">`
+    +HERO_BASE.map(([id,n,cost,g,col])=>`<button class="perk${own.has(id)?' got':c>=cost?' can':''}" ${own.has(id)?'':`onclick="heroBuild('${id}')"`}>${hIc(g,own.has(id)?col:'dark','hex',36)}<b>${n}</b><small>${own.has(id)?'Built':`🪙 ${cost}`}</small></button>`).join('')+'</div>';
+}
+
+// ── Hardcore run: +25% XP, but 3 days in a row with no task done and you lose your gear for a week ──
+// heroP.hc = {runs:[{from,to}], lost:[days], lock}: every run is kept so past days keep their XP
+const heroHCRun=d=>((heroP.hc||{}).runs||[]).find(r=>d>=r.from&&(!r.to||d<r.to));
+const heroHC=d=>!!heroHCRun(d);
+const heroGearLost=()=>{const c=heroP.hc;return!!c&&!!c.lock&&heroTod()<c.lock;};
+function heroHCToggle(){
+  const c=heroP.hc=heroP.hc||{runs:[]},tod=heroTod(),r=heroHCRun(tod);c.runs=c.runs||[];
+  if(r){if(!confirm('End your hardcore run? The +25% XP stops from today.'))return;if(r.from===tod)c.runs=c.runs.filter(x=>x!==r);else r.to=tod;}
+  else{if(!confirm('Start a hardcore run? +25% XP on everything. But if you go 3 days in a row without finishing a single task, you lose all your gear for 7 days.'))return;c.runs.push({from:tod});}
+  save();renderHero();
+}
+function heroHCCheck(silent){
+  const c=heroP.hc,tod=heroTod(),r=heroHCRun(tod);if(!r)return;const y=dAdd(tod,-1),any=d=>tasks.some(t=>t.done.includes(d));
+  if([0,1,2].some(i=>any(dAdd(y,-i))||dAdd(y,-i)<r.from)||(c.lost||[]).some(x=>x>=dAdd(y,-2)))return;
+  c.lost=(c.lost||[]).concat(y).slice(-20);c.lock=dAdd(tod,7);heroP.gear={};heroDaily();
+  if(!silent)heroShow(`<div class="hl-t">HARDCORE</div><div class="hl-em">${hIc('skull','dark','burst',90)}</div><div class="hl-big" style="font-size:24px;">Your gear is lost</div><div class="hl-rank">3 days without a finished task. It comes back on ${fmtDay(c.lock)}.</div>`,6000);
+}
+function heroHCHtml(){
+  const r=heroHCRun(heroTod()),on=!!r,c=heroP.hc;
+  return`<div class="hm-sub" style="margin-bottom:8px;">${on?`Hardcore run since ${fmtDay(r.from)}: +25% XP on everything. Go 3 days in a row without finishing a task and your gear is gone for 7 days.`:'Opt in for +25% XP on everything. The catch: 3 days in a row without finishing a single task and you lose all your gear for 7 days.'}${heroGearLost()?` <b>Gear lost until ${fmtDay(c.lock)}.</b>`:''}</div><button class="hk-btn${on?'':' pri'}" style="width:100%;" onclick="heroHCToggle()">${on?'End the hardcore run':'💀 Start a hardcore run'}</button>`;
+}
+
+// ── Real boss fights: today's finished tasks are your attacks, Gwen fights beside you; the challenge is the finishing blow ──
+function heroBossAtkList(b){
+  const tod=heroTod(),used=((heroP.bosses||{})[b.key]||{}).used||[],h=heroState();
+  return tasks.filter(t=>t.done.includes(tod)&&!used.includes(String(t.id))).map(t=>{const st=taskStats(t),k=Object.keys(st).sort((x,y)=>st[y]-st[x])[0];return{t,k,dmg:8+Math.min(30,heroLvl(h.s.st[k]||0,HERO_SB))};});
+}
+const heroGwenLv=()=>typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLevel==='function'?gwenLevel(gwenBondPts()):0;
+function heroBossAtk(key,id){
+  const b=heroBossGet(key);if(!b||b.state!=='on')return;const a=heroBossAtkList(b).find(x=>String(x.t.id)===String(id));if(!a)return;
+  const rec=(heroP.bosses=heroP.bosses||{})[key]=heroP.bosses[key]||{},crit=heroRng(key+id)()<.15,cry=!!heroCast('cry');
+  const d=Math.round(a.dmg*(crit?2:1)*(cry?2:1)),gl=typeof gwenCfg!=='undefined'&&gwenCfg.key?4+heroGwenLv():0;
+  rec.used=(rec.used||[]).concat(String(id));rec.dmg=(rec.dmg||0)+d+gl;heroSfx('hit');save();heroBossOpen(false,key);
+  const box=document.querySelector('#hero-boss .hbx'),pop=(txt,cls,ms)=>setTimeout(()=>{if(!box)return;const s=document.createElement('span');s.className='hbx-dmg '+cls;s.textContent=txt;box.appendChild(s);box.classList.remove('shake');void box.offsetWidth;box.classList.add('shake');setTimeout(()=>s.remove(),1400);},ms);
+  pop(`${crit?'CRIT! ':''}−${d}`,crit?'crit':'',0);if(gl)pop(`💜 Gwen −${gl}`,'gwen',650);
+}
+function heroBossAtkHtml(b){
+  const atk=heroBossAtkList(b),gw=typeof gwenCfg!=='undefined'&&gwenCfg.key;
+  return`<div class="hbx-atk"><small>${atk.length?`Attack with what you finished today${gw?', Gwen strikes after you':''}. Damage before the finishing blow = bonus XP${b.dmg?` (${Math.min(100,b.dmg)}% so far)`:''}.`:'Finish a task today to attack with it before the finishing blow.'}${heroCast('cry')?' 🔮 Battle cry: double damage.':''}</small>`
+    +atk.slice(0,8).map(a=>`<button onclick="heroBossAtk('${b.key}','${esc(String(a.t.id))}')">${hIc(HERO_BY[a.k].gl,HERO_BY[a.k].col,'circle',20)}<span>${esc(a.t.name)}</span><b>${a.dmg}</b></button>`).join('')+'</div>';
+}
+// ── Guild: a team of friends on one share link, pooling XP against a weekly raid boss ──
+const HERO_RAIDS=[['The Hollow King','crown','purple'],['Mother of Sloth','skull','dark'],['The Storm Leviathan','bolt','blue'],['Ashen Behemoth','flame','red']];
+function heroRaidHtml(){
+  const D=heroDuelData.guild;if(!D||!D.items)return'';const ws=heroWeekStart(heroTod()),ps=D.items.map(i=>{const[n,x,w]=String(i.text).split('|');return{n,x:w===ws?+x||0:0};}),hp=1500*Math.max(2,ps.length),dm=ps.reduce((s,p)=>s+p.x,0);
+  const[name,g,col]=HERO_RAIDS[Math.floor(heroRng(ws+'raid')()*HERO_RAIDS.length)],won=(heroP.raid||{})[ws];
+  return`<div class="boss${dm>=hp?' dead':''}" style="margin-bottom:8px;"><span class="boss-ic">${hIc(dm>=hp?'trophy':g,dm>=hp?'gold':col,'burst',44)}</span><div style="flex:1;min-width:0;"><b>${dm>=hp?`${name} has fallen!`:`Raid boss: ${name}`}</b><div class="boss-hp"><i style="width:${Math.max(0,100-dm/hp*100)}%"></i></div><small>${Math.max(0,hp-dm).toLocaleString()} of ${hp.toLocaleString()} HP left · every XP anyone in the guild earns this week hits it</small></div>${dm>=hp&&!won?`<button class="hq-claim" onclick="heroRaidClaim()">Claim</button>`:won?'<span class="hq-done">✓</span>':''}</div>`;
+}
+function heroRaidClaim(){
+  const ws=heroWeekStart(heroTod()),R=heroP.raid=heroP.raid||{};if(R[ws])return;R[ws]=heroTod();for(const k in R)if(k<dAdd(ws,-60))delete R[k];
+  heroBonus(heroTod(),150,{charisma:1,discipline:.5},'Guild raid victory','🛡️','raid');heroMatGive('epic',1,'raid');save();renderHero();heroSfx('fanfare');
+  heroShow(`<div class="hl-t">RAID VICTORY</div><div class="hl-em">${hIc('trophy','gold','burst',90)}</div><div class="hl-row">+150 XP</div>${heroMatLine('epic')}`,4500,true);
 }
 
 if(typeof document!=='undefined'){document.addEventListener('DOMContentLoaded',heroDefs);document.addEventListener('DOMContentLoaded',()=>setTimeout(heroWalkResume,1500));}

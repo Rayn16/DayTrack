@@ -273,7 +273,7 @@
 
     <!-- LEVEL TAB: you as a game character (levels.js) -->
     <div id="tab-hero" class="tab" data-seg="stats">
-      <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="quests" onclick="heroSetSeg('quests')">⚔️ Quests</button><button class="rb" data-s="bag" onclick="heroSetSeg('bag')">🎒 Bag</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
+      <div id="hero-seg"><button class="rb on" data-s="stats" onclick="heroSetSeg('stats')">📊 Stats</button><button class="rb" data-s="skills" onclick="heroSetSeg('skills')">🧩 Skills</button><button class="rb" data-s="quests" onclick="heroSetSeg('quests')">⚔️ Quests</button><button class="rb" data-s="bag" onclick="heroSetSeg('bag')">🎒 Bag</button><button class="rb" data-s="world" onclick="heroSetSeg('world')">🗺️ World</button><button class="rb" data-s="log" onclick="heroSetSeg('log')">📜 Story</button></div>
       <div class="dcol">
         <div class="card" id="hero-card"></div>
         <div class="card hseg-stats"><div class="cl">Steps</div><div id="hero-steps"></div></div>
@@ -282,12 +282,24 @@
         <div class="card hseg-stats"><div class="cl">Your shape</div><div id="hero-radar"></div></div>
         <div class="card hseg-stats"><div class="cl">Stats · tap one to see what trained it</div><div id="hero-stats"></div></div>
         <div class="card hseg-stats"><div class="cl">Perks</div><div id="hero-perks"></div></div>
+        <div class="card hseg-stats"><div class="cl">Mana and powers</div><div id="hero-mana"></div></div>
+        <div class="card hseg-stats"><div class="cl">Origin and karma</div><div id="hero-origin"></div></div>
         <div class="card hseg-stats"><div class="cl">Personal records</div><div id="hero-recs"></div></div>
+        <div class="card hseg-stats"><div class="cl">Professions</div><div id="hero-profs"></div></div>
         <div class="card hseg-bag"><div class="cl">Party</div><div id="hero-party"></div></div>
         <div class="card hseg-bag"><div class="cl">Inventory</div><div id="hero-bag"></div></div>
         <div class="card hseg-bag"><div class="cl">Gear</div><div id="hero-gear"></div></div>
+        <div class="card hseg-bag"><div class="cl">Loot and enchanting</div><div id="hero-loot"></div></div>
       </div>
       <div class="dcol">
+        <div class="card hseg-world"><div class="cl">World map</div><div id="hero-map"></div></div>
+        <div class="card hseg-world"><div class="cl">Villagers · weekly side quests</div><div id="hero-vill"></div></div>
+        <div class="card hseg-world"><div class="cl">On the road</div><div id="hero-revt"></div></div>
+        <div class="card hseg-world"><div class="cl">Rival</div><div id="hero-rival"></div></div>
+        <div class="card hseg-world"><div class="cl">Legendary weapon</div><div id="hero-forge"></div></div>
+        <div class="card hseg-world"><div class="cl">Your home</div><div id="hero-base"></div></div>
+        <div class="card hseg-world"><div class="cl">Guild</div><div id="hero-guild"></div></div>
+        <div class="card hseg-world"><div class="cl">Hardcore run</div><div id="hero-hc"></div></div>
         <div class="card hseg-skills"><div class="cl">Skill tree · tap a node</div><div id="hero-skills"></div></div>
         <div class="card hseg-skills"><div class="cl">Monthly fitness test</div><div id="hero-ft"></div></div>
         <div class="card hseg-log"><div class="cl">Weekly report card</div><div id="hero-report"></div></div>
