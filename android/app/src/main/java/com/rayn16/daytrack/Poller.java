@@ -90,6 +90,8 @@ final class Poller {
 
     // Fetch and show what's waiting on the PC (runs off the main thread)
     static void poll(Context c) {
+        Phone.steps(c); // a reading for today's step count
+        Phone.screenCheckin(c); // first, so Gwen's answer to it comes with this fetch
         String server = prefs(c).getString("server", "");
         if (!server.isEmpty()) {
             try {
@@ -105,7 +107,7 @@ final class Poller {
         schedule(c);
     }
 
-    // The next exact wake-up from the times the app gave, and the 15-minute one
+    // The next exact wake-up from the times the app gave, the screen check-in, and the 15-minute one
     static void schedule(Context c) {
         AlarmManager am = c.getSystemService(AlarmManager.class);
         long now = System.currentTimeMillis(), next = 0;
@@ -121,6 +123,14 @@ final class Poller {
         if (next > 0) {
             if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, exact);
             else am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, exact);
+        }
+        // The daily screen-time check-in, the same way
+        long screen = Phone.screenTime(c);
+        PendingIntent sc = wake(c, 3);
+        am.cancel(sc);
+        if (screen > now) { // overdue (PC was off): the 15-minute wake-ups retry it
+            if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, screen, sc);
+            else am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, screen, sc);
         }
         am.setInexactRepeating(AlarmManager.RTC_WAKEUP, now + AlarmManager.INTERVAL_FIFTEEN_MINUTES, AlarmManager.INTERVAL_FIFTEEN_MINUTES, wake(c, 2));
     }

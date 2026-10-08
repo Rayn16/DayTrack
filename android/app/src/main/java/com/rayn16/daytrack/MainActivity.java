@@ -20,11 +20,20 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.hardware.biometrics.BiometricManager;
 import android.hardware.biometrics.BiometricPrompt;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.media.ExifInterface;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -49,19 +58,26 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.HttpURLConnection;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 // DayTrack's own window: the web app from the APK's assets in a WebView, with the phone standing in
 // for what Chrome used to give it (notifications, speech, file picker, location). See the
 // window.DayTrackNative shim at the top of index.html for the other side. Also: self-update, the home-screen
-// widget's data, share-into-DayTrack, fingerprint lock and wallpaper.
+// widget's data, share-into-DayTrack, fingerprint lock and wallpaper, and the phone features in Phone.java.
 public class MainActivity extends Activity {
     private static final String START = "https://appassets.androidplatform.net/assets/web/index.html";
     private static final String APK = "https://github.com/Rayn16/DayTrack/releases/download/app/DayTrack.apk";
-    private static final int REQ_MIC = 1, REQ_NOTIF = 2, REQ_LOC = 3, REQ_FILE = 4;
+    private static final int REQ_MIC = 1, REQ_NOTIF = 2, REQ_LOC = 3, REQ_FILE = 4, REQ_PERM = 10;
+    private static final String[] PERMS = {"location", "locationAlways", "calendar", "steps"}; // askPerm's request code is REQ_PERM + index
 
     private WebView web;
     private SpeechRecognizer speech;
@@ -72,6 +88,9 @@ public class MainActivity extends Activity {
     private String geoOrigin;
     private volatile int installSession = -1;
     private final AtomicReference<String> share = new AtomicReference<>(""); // waiting for takeShare()
+    private String settingsFor; // askPerm sent her to Settings for this; answered when she's back
+    private String tile; // a Quick Settings tile tapped before the page was ready
+    private boolean loaded;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -93,6 +112,9 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { return assets.shouldInterceptRequest(r.getUrl()); }
+
+            @Override
+            public void onPageFinished(WebView v, String url) { loaded = true; openTile(null); }
 
             // Links out of the app (music, maps) open in their own apps
             @Override
@@ -132,8 +154,18 @@ public class MainActivity extends Activity {
         handle(i);
     }
 
+    // The "Add task" tile: the page opens its add box once it's loaded
+    private void openTile(String t) {
+        if (t != null) tile = t;
+        if (!loaded || tile == null) return;
+        web.evaluateJavascript("window.dtTile&&dtTile(" + JSONObject.quote(tile) + ")", null);
+        tile = null;
+    }
+
     // Something shared into DayTrack, or word back from installing an update
     private void handle(Intent i) {
+        String t = i.getStringExtra("tile");
+        if (t != null) openTile(t);
         if (Intent.ACTION_SEND.equals(i.getAction())) {
             CharSequence text = i.getCharSequenceExtra(Intent.EXTRA_TEXT), subject = i.getCharSequenceExtra(Intent.EXTRA_SUBJECT);
             Uri img = i.getType() != null && i.getType().startsWith("image/") ? (Uri) i.getParcelableExtra(Intent.EXTRA_STREAM) : null;
@@ -254,6 +286,7 @@ public class MainActivity extends Activity {
         web.onResume();
         web.evaluateJavascript("window.__dtResume&&__dtResume()", null);
         getSystemService(NotificationManager.class).cancel(Poller.GWEN_ID);
+        if (settingsFor != null) { perm2(settingsFor); settingsFor = null; }
     }
 
     @Override
@@ -280,6 +313,116 @@ public class MainActivity extends Activity {
         if (req == REQ_MIC) { if (ok) startListening(); else { emit("error", "not-allowed"); emit("end", null); } }
         else if (req == REQ_NOTIF) js("window.__dtPerm&&__dtPerm(" + ok + ")");
         else if (req == REQ_LOC && geoCallback != null) { geoCallback.invoke(geoOrigin, ok, false); geoCallback = null; }
+        else if (req >= REQ_PERM && req < REQ_PERM + PERMS.length) {
+            String which = PERMS[req - REQ_PERM];
+            // "All the time" is asked after a yes to "while using the app"
+            if ("locationAlways".equals(which) && perms.length > 0 && Manifest.permission.ACCESS_FINE_LOCATION.equals(perms[0])
+                    && granted(Manifest.permission.ACCESS_FINE_LOCATION) && !hasPerm(which)) askPerm(which);
+            else perm2(which);
+        }
+    }
+
+    private boolean hasPerm(String which) {
+        switch (String.valueOf(which)) {
+            case "location": return granted(Manifest.permission.ACCESS_FINE_LOCATION);
+            case "locationAlways": return granted(Manifest.permission.ACCESS_FINE_LOCATION)
+                    && (Build.VERSION.SDK_INT < 29 || granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION));
+            case "calendar": return granted(Manifest.permission.READ_CALENDAR);
+            case "steps": return Build.VERSION.SDK_INT < 29 || granted(Manifest.permission.ACTIVITY_RECOGNITION);
+            case "usage": return Phone.usageAccess(this);
+            default: return false;
+        }
+    }
+
+    // Asks Android (or opens the Settings page for it); the answer goes to window.__dtPerm2(which, ok)
+    private void askPerm(String which) {
+        int code = Arrays.asList(PERMS).indexOf(which);
+        if (hasPerm(which) || (code < 0 && !"usage".equals(which))) { perm2(which); return; }
+        if ("usage".equals(which)) {
+            settingsFor = which;
+            try { startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); } catch (Exception e) { settingsFor = null; perm2(which); }
+            return;
+        }
+        String[] p = "calendar".equals(which) ? new String[]{Manifest.permission.READ_CALENDAR}
+                : "steps".equals(which) ? new String[]{Manifest.permission.ACTIVITY_RECOGNITION}
+                : "locationAlways".equals(which) && granted(Manifest.permission.ACCESS_FINE_LOCATION) ? new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}
+                : new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}; // Android 12+ wants both
+        requestPermissions(p, REQ_PERM + code);
+    }
+
+    private void perm2(String which) { js("window.__dtPerm2&&__dtPerm2(" + JSONObject.quote(which) + "," + hasPerm(which) + ")"); }
+
+    // One fresh location (GPS, else the network's), or null after 20 seconds
+    @SuppressWarnings({"deprecation", "MissingPermission"})
+    private void here() {
+        LocationManager lm = getSystemService(LocationManager.class);
+        boolean fine = granted(Manifest.permission.ACCESS_FINE_LOCATION);
+        String p = fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ? LocationManager.GPS_PROVIDER
+                : lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ? LocationManager.NETWORK_PROVIDER : null;
+        if (p == null || (!fine && !granted(Manifest.permission.ACCESS_COARSE_LOCATION))) { hereDone(null); return; }
+        AtomicBoolean done = new AtomicBoolean();
+        CancellationSignal cancel = new CancellationSignal();
+        LocationListener l = new LocationListener() {
+            public void onLocationChanged(Location x) { if (done.compareAndSet(false, true)) hereDone(x); }
+            public void onStatusChanged(String s, int st, Bundle b) { } // abstract before Android 11
+            public void onProviderEnabled(String s) { }
+            public void onProviderDisabled(String s) { }
+        };
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!done.compareAndSet(false, true)) return;
+            cancel.cancel();
+            lm.removeUpdates(l);
+            hereDone(null);
+        }, 20000);
+        try {
+            if (Build.VERSION.SDK_INT >= 30) lm.getCurrentLocation(p, cancel, getMainExecutor(), x -> { if (done.compareAndSet(false, true)) hereDone(x); });
+            else lm.requestSingleUpdate(p, l, Looper.getMainLooper());
+        } catch (Exception e) { if (done.compareAndSet(false, true)) hereDone(null); }
+    }
+
+    private void hereDone(Location x) {
+        String j = "null";
+        if (x != null) try { j = new JSONObject().put("lat", x.getLatitude()).put("lon", x.getLongitude()).put("acc", x.getAccuracy()).toString(); }
+        catch (Exception ignored) { }
+        js("window.__dtHere&&__dtHere(" + j + ")");
+    }
+
+    private boolean onWifi() {
+        ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+        NetworkCapabilities n = cm.getActiveNetwork() == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
+        return n != null && n.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+    }
+
+    // Wake-on-LAN: the magic packet (6 x FF, then the MAC 16 times) to every broadcast address on the Wi-Fi, ports 9 and 7, three times
+    private boolean wol(String mac) {
+        if (mac == null || !mac.trim().matches("([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}") || !onWifi()) return false;
+        String[] h = mac.trim().split("[:-]");
+        byte[] pkt = new byte[102];
+        for (int i = 0; i < 6; i++) pkt[i] = (byte) 0xFF;
+        for (int i = 6; i < pkt.length; i++) pkt[i] = (byte) Integer.parseInt(h[i % 6], 16);
+        ArrayList<InetAddress> to = new ArrayList<>();
+        try {
+            to.add(InetAddress.getByName("255.255.255.255"));
+            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+            LinkProperties lp = cm.getLinkProperties(cm.getActiveNetwork());
+            if (lp != null) for (LinkAddress a : lp.getLinkAddresses()) {
+                if (!(a.getAddress() instanceof Inet4Address)) continue;
+                byte[] b = a.getAddress().getAddress(); // the subnet's broadcast: every host bit set
+                for (int i = 0; i < 4; i++) b[i] |= (byte) (0xFF >> Math.max(0, Math.min(8, a.getPrefixLength() - 8 * i)));
+                to.add(InetAddress.getByAddress(b));
+            }
+        } catch (Exception ignored) { }
+        new Thread(() -> {
+            try (DatagramSocket s = new DatagramSocket()) {
+                s.setBroadcast(true);
+                for (int k = 0; k < 3; k++) {
+                    for (InetAddress a : to) for (int port : new int[]{9, 7})
+                        try { s.send(new DatagramPacket(pkt, pkt.length, a, port)); } catch (Exception ignored) { }
+                    Thread.sleep(300);
+                }
+            } catch (Exception ignored) { }
+        }).start();
+        return true;
     }
 
     private boolean granted(String p) { return checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED; }
@@ -451,6 +594,42 @@ public class MainActivity extends Activity {
                 WallpaperManager.getInstance(MainActivity.this).setBitmap(b, null, true, WallpaperManager.FLAG_SYSTEM);
                 return true;
             } catch (Exception e) { return false; }
+        }
+
+        // ---- The phone's own: Wi-Fi wake-up, permissions, location, places, calendar, steps, screen time ----
+
+        @JavascriptInterface public boolean onWifi() { return MainActivity.this.onWifi(); }
+
+        // false at once for a bad MAC or when not on Wi-Fi; the packets go out in the background
+        @JavascriptInterface public boolean wol(String mac) { return MainActivity.this.wol(mac); }
+
+        // which: "location", "locationAlways", "calendar", "steps" or "usage"
+        @JavascriptInterface public boolean hasPerm(String which) { return MainActivity.this.hasPerm(which); }
+
+        @JavascriptInterface public void askPerm(String which) { runOnUiThread(() -> MainActivity.this.askPerm(which)); }
+
+        // The answer goes to window.__dtHere({"lat","lon","acc"} or null)
+        @JavascriptInterface public void here() { runOnUiThread(MainActivity.this::here); }
+
+        // [{"id","lat","lon","radius","title","body"}] replaces every place reminder ("[]" clears them)
+        @JavascriptInterface public void places(String json) { Phone.places(MainActivity.this, json == null ? "[]" : json); }
+
+        // [{"title","start","end","allDay"}] from the phone's calendars
+        @JavascriptInterface public String calendar(long fromMs, long toMs) { return Phone.calendar(MainActivity.this, fromMs, toMs); }
+
+        // {"today": n, "days": {"YYYY-MM-DD": n}} or "null"
+        @JavascriptInterface public String steps() { return Phone.steps(MainActivity.this); }
+
+        // {"minutes": n, "apps": [{"name","minutes"}]} or "null"
+        @JavascriptInterface public String usage() {
+            JSONObject u = Phone.usage(MainActivity.this);
+            return u == null ? "null" : u.toString();
+        }
+
+        // "21:00" sends today's screen time to Gwen once a day from then on; "" turns it off
+        @JavascriptInterface public void setScreenCheckin(String hm, String key) {
+            Poller.prefs(MainActivity.this).edit().putString("screenAt", hm == null ? "" : hm).putString("screenKey", key == null ? "" : key).apply();
+            Poller.schedule(MainActivity.this);
         }
     }
 }
