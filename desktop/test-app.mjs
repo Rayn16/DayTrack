@@ -34,7 +34,7 @@ assert.deepEqual(lv.heroDetect('Buy a lamp'), {});
 assert.equal(lv.heroLvl(0, 50), 1); assert.equal(lv.heroLvl(99, 50), 1); assert.equal(lv.heroLvl(100, 50), 2);
 for (const L of [2, 7, 30]) { assert.equal(lv.heroLvl(lv.heroAt(L, 50), 50), L); assert.equal(lv.heroLvl(lv.heroAt(L, 50) - 1, 50), L - 1); }
 // Buffs: a 7-day streak and 7 h sleep raise XP, short sleep and an overdue task lower it
-const bf = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'sleepHours', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nreturn {heroBuffs, heroMult};');
+const bf = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'sleepHours', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nheroP.bossCfg={on:false,seed:"t"};return {heroBuffs, heroMult, heroP, heroTaskAwards, heroDBoss, heroEvent, isTodayTask:typeof isTodayTask};');
 const toDateStr = new Function(html.match(/function pad\(.*/)[0] + html.match(/function toDateStr\(.*/)[0] + 'return toDateStr;')();
 const days7 = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07'];
 const hrs = s => { const m = t => +t.slice(0, 2) * 60 + +t.slice(3); return ((m(s.wake) - m(s.bed) + 1440) % 1440) / 60; };
@@ -44,4 +44,25 @@ assert.equal(b.heroMult('2026-10-08'), 1.3);
 b = bf(toDateStr, [], {'2026-10-08': {bed: '02:00', wake: '06:30'}}, {}, [{recurring: false, date: '2026-10-06', done: []}], hrs);
 assert.deepEqual(b.heroBuffs('2026-10-08').map(x => x.name), ['Tired', 'Early bird', 'Overdue']);
 assert.equal(b.heroMult('2026-10-08'), 0.9);
+// Rare events land on about 12% of days
+assert.ok(b.heroEvent('2026-10-08') === null || b.heroEvent('2026-10-08').id);
+const ev = Array.from({length: 1000}, (_, i) => b.heroEvent(toDateStr(new Date(2026, 0, 1 + i)))).filter(Boolean).length;
+assert.ok(ev > 80 && ev < 170, 'events ' + ev);
+// Daily boss: always inside the hours he picked, the same on every device, 30 minutes to beat it
+b.heroP.bossCfg = {on: true, from: '10:00', to: '22:00', seed: 'abc', onAt: 1};
+for (let i = 0; i < 200; i++) {
+  const d = toDateStr(new Date(2026, 0, 1 + i)), x = b.heroDBoss(d), t = new Date(x.at), m = t.getHours() * 60 + t.getMinutes();
+  assert.ok(m >= 600 && m <= 1290, d + ' ' + m); assert.equal(x.until - x.at, 30 * 60000); assert.equal(b.heroDBoss(d).at, x.at);
+}
+b.heroP.bossCfg.onAt = new Date(2026, 5, 1).getTime(); assert.equal(b.heroDBoss('2026-05-20'), null); // none before they were switched on
+b.heroP.bossCfg.on = false; assert.equal(b.heroDBoss('2026-10-08'), null);
+// Hardcore doubles task XP; a mini boss pays more the longer it waited
+const isT = (t, d, dow) => t.recurring ? (t.days.length === 0 || t.days.includes(dow)) : true;
+const hb = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'sleepHours', 'isTodayTask', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8') + '\nheroP.bossCfg={on:false};return {heroTaskAwards};')(toDateStr, [], {}, {}, [], hrs, isT);
+const t0 = {name: 'Push-ups', recurring: true, days: [], done: ['2026-01-05'], subtasks: [], hard: true, hardFrom: '2026-01-01', createdAt: '2026-01-01'};
+const aw = hb.heroTaskAwards(t0);
+assert.equal(aw.find(a => a.k === 'task').xp, 40);
+assert.ok(aw.filter(a => a.k === 'hard').length > 200 && aw.filter(a => a.k === 'hard').every(a => a.xp === -20 && a.d !== '2026-01-05'));
+const mb = hb.heroTaskAwards({name: 'Fix the car', recurring: false, days: [], done: ['2026-01-11'], subtasks: [], boss: true, createdAt: '2026-01-01'});
+assert.equal(mb.find(a => a.k === 'mboss').xp, 140); // 20 × 2 + 10 days × 10
 console.log('All app checks passed');

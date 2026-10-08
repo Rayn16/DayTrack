@@ -22,6 +22,8 @@ What the house should know right now. Poll it when the house starts and every fe
 }
 ```
 - `parcels` (idea 2): one per day Rayan finishes every DayTrack task. `size` is `"big"` on every 7th day of a streak.
+  Added 2026-10-08 (level system): `kind: "trophy"`, `size: "big"`, id `tb-<date>` (he beat that day's daily boss) or `tw-<week start>`
+  (he beat the weekly boss). The house should put a trophy on a shelf; `reason` says which boss.
   `kind` is a suggestion (`decoration`, `plant` or `book`); the house picks the actual item. `status` is `waiting`
   until the house says it's at the door (`delivered`); opened parcels drop off the list. Kept 30 days.
 - Added 2026-10-08 (ideas 1-6 of the second round; every field is optional to read, unknown ones can be ignored):

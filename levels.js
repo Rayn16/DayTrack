@@ -9,6 +9,9 @@ const HERO_STATS=[
   {id:'faith',name:'Faith',ic:'🕌',g:'Spirit'},{id:'discipline',name:'Discipline',ic:'⚔️',g:'Spirit'},
   {id:'vitality',name:'Vitality',ic:'🍎',g:'Life'},{id:'charisma',name:'Charisma',ic:'🗣️',g:'Life'},{id:'wealth',name:'Wealth',ic:'💰',g:'Life'},
 ];
+const HERO_GL={arms:'dumbbell',chest:'shield',back:'wings',core:'flame',legs:'bolt',endurance:'heart',intellect:'book',focus:'target',creativity:'spark',faith:'moon',discipline:'swords',vitality:'leaf',charisma:'chat',wealth:'gem'};
+const HERO_GCOL={Body:'red',Mind:'blue',Spirit:'purple',Life:'green'};
+HERO_STATS.forEach(s=>{s.gl=HERO_GL[s.id];s.col=HERO_GCOL[s.g];});
 const HERO_BY=Object.fromEntries(HERO_STATS.map(s=>[s.id,s]));
 const HERO_GROUPS={Body:'Fighter',Mind:'Scholar',Spirit:'Monk',Life:'Adventurer'}; // class = strongest group
 const HERO_RANKS=[[75,'Legend'],[50,'Grandmaster'],[40,'Master'],[30,'Elite'],[20,'Veteran'],[15,'Warrior'],[10,'Adept'],[5,'Apprentice'],[1,'Novice']];
@@ -164,7 +167,7 @@ const heroSkills=()=>HERO_SKILLS.concat((heroP.custom||[]).map(c=>({...c,cat:'My
 const heroSkill=id=>heroSkills().find(s=>s.id===id);
 
 // Saved per device and synced: XP kept from deleted tasks, skill progress, own skills, avatar
-let heroP={bank:[],skills:{},custom:[],av:'🧑',q:{},claims:{}};
+let heroP={bank:[],skills:{},custom:[],av:'🧑',q:{},claims:{},bonus:[],inv:{},used:{},perks:[],daily:{},bosses:{},rec:{},journal:{}};
 function heroLoad(){try{heroP={...heroP,...JSON.parse(localStorage.getItem('dt_player')||'{}')};}catch(e){}}
 function heroWrite(){try{localStorage.setItem('dt_player',JSON.stringify(heroP));}catch(e){}}
 
@@ -184,8 +187,13 @@ const tIcon=t=>t.iconType==='image'?'✅':t.icon||'✅';
 // Every XP award, oldest first: {d: date, xp, sx: {stat: xp}, what, ic, k: kind}. Task XP is scaled by that day's buffs (m).
 function heroTaskAwards(t,m=()=>1){
   const out=[],st=taskStats(t),base=taskXP(t),ic=tIcon(t),add=(d,x,what,k)=>{x=Math.round(x*m(d));if(d&&x>0)out.push({d,xp:x,sx:sx(x,st),what,ic,k});};
-  t.done.forEach(d=>add(d,base,t.name,'task'));
-  if(t.count)Object.entries(t.counts||{}).forEach(([d,n])=>{if(!t.done.includes(d))add(d,base*n/t.count.target,`${t.name} (${n}/${t.count.target})`,'count');});
+  const hb=d=>t.hard&&d>=(t.hardFrom||'')?2:1;
+  t.done.forEach(d=>add(d,base*hb(d),t.name,'task'));
+  if(t.boss&&!t.recurring&&t.done[0]){const w=Math.max(0,Math.round((new Date(t.done[0]+'T12:00:00')-new Date((t.createdAt||t.done[0])+'T12:00:00'))/864e5));add(t.done[0],Math.min(300,base*2+10*w),`Mini boss slain: ${t.name}${w?` (waited ${w} day${w>1?'s':''})`:''}`,'mboss');}
+  if(t.count)Object.entries(t.counts||{}).forEach(([d,n])=>{if(!t.done.includes(d))add(d,base*hb(d)*n/t.count.target,`${t.name} (${n}/${t.count.target})`,'count');});
+  // Hardcore: a scheduled day missed costs what it would have earned
+  if(t.hard&&t.recurring&&t.hardFrom){const y=dAdd(toDateStr(new Date()),-1),a=[t.hardFrom,t.createdAt||'',dAdd(y,-365)].sort().pop();for(let d=a;d<=y;d=dAdd(d,1))
+    if(isTodayTask(t,d,new Date(d+'T12:00:00').getDay())&&!t.done.includes(d))out.push({d,xp:-base,sx:sx(-base,st),what:`💀 Missed hardcore: ${t.name}`,ic:'💀',k:'hard'});}
   (t.subtasks||[]).forEach(s=>(s.done||[]).forEach(d=>add(d,5,s.name,'sub')));
   return out;
 }
@@ -198,6 +206,11 @@ function heroAwards(){
   Object.entries(heroP.skills||{}).forEach(([id,p])=>{const sk=heroSkill(id);if(sk)(p.at||[]).forEach((d,i)=>sk.steps[i]&&add(d,60*(i+1),sk.st,stepName(sk,i),sk.ic,'skill'));});
   Object.entries(heroP.claims||{}).forEach(([key,c])=>add(c.d,c.xp,c.st||{discipline:1},c.what,c.ic||'🎁','quest'));
   (heroP.bank||[]).forEach(b=>out.push(b));
+  (heroP.bonus||[]).forEach(b=>out.push(b));
+  Object.entries(heroP.journal||{}).forEach(([d,t])=>t&&add(d,10,{intellect:1},'Journal: '+String(t).slice(0,40),'📝','journal'));
+  (heroP.bounties||[]).forEach(b=>b.done&&add(b.done,b.xp,b.st||{discipline:1},'Bounty: '+b.text,'📌','bounty'));
+  const y=dAdd(toDateStr(new Date()),-1);
+  (heroP.quits||[]).forEach(q=>{const sl=new Set(q.slips||[]);let d=q.from;const lim=dAdd(y,-365);if(d<lim)d=lim;for(;d<=y;d=dAdd(d,1))if(!sl.has(d))add(d,15,{discipline:1,vitality:.3},`Clean day: ${q.name}`,'🛡️','quit');});
   return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
 }
 // Sessions only keep "Wed, Oct 8": that date in the last 12 months
@@ -212,10 +225,11 @@ function heroSum(awards){
   return s;
 }
 function heroState(){
-  const aw=heroAwards(),s=heroSum(aw),L=heroLvl(s.total,HERO_B),tod=toDateStr(new Date());
+  const aw=heroAwards(),s=heroSum(aw),xp=Math.max(0,s.total-heroPrestigeXP()),L=heroLvl(xp,HERO_B),tod=toDateStr(new Date());
   const groups={};HERO_STATS.forEach(x=>groups[x.g]=(groups[x.g]||0)+s.st[x.id]);
   const top=Object.entries(groups).sort((a,b)=>b[1]-a[1])[0];
-  return{aw,s,L,rank:HERO_RANKS.find(r=>L>=r[0])[1],cls:top[1]?HERO_GROUPS[top[0]]:'Beginner',
+  const best=top[1]?HERO_STATS.filter(x=>x.g===top[0]).sort((a,b)=>s.st[b.id]-s.st[a.id])[0]:null,evo=L>=20&&best?HERO_EVOLVE[best.id]:'';
+  return{aw,s,xp,L,P:(heroP.prestige||[]).length,rank:HERO_RANKS.find(r=>L>=r[0])[1],base:top[1]?HERO_GROUPS[top[0]]:'Beginner',cls:evo||(top[1]?HERO_GROUPS[top[0]]:'Beginner'),evo,
     today:aw.filter(a=>a.d===tod).reduce((n,a)=>n+a.xp,0)};
 }
 // Each time something reached a new level, replayed from the start: [{d, what, ic, L, via}]
@@ -224,7 +238,7 @@ function heroLevelUps(aw){
   aw.forEach(a=>{
     const step=(k,add,b,name,ic)=>{xp[k]=(xp[k]||0)+add;const L=heroLvl(xp[k],b);if(L>(lv[k]||1)){lv[k]=L;out.push({d:a.d,name,ic,L,via:a.what});}};
     step('total',a.xp,HERO_B,'Level','⭐');
-    for(const k in a.sx)if(HERO_BY[k])step(k,a.sx[k],HERO_SB,HERO_BY[k].name,HERO_BY[k].ic);
+    for(const k in a.sx)if(HERO_BY[k]&&a.sx[k]>0)step(k,a.sx[k],HERO_SB,HERO_BY[k].name,HERO_BY[k].ic);
   });
   return out.reverse();
 }
@@ -232,26 +246,27 @@ function heroLevelUps(aw){
 // ── After every save: show what just went up ──
 let heroLast=null;
 function heroTick(silent){
-  heroAchCheck(silent);
+  const combo=heroCombo(silent);heroLoginCheck();
+  heroAchCheck(silent);heroDaily();heroRecCheck(silent);heroBossSync();heroWrite();
   const s=heroSum(heroAwards()),prev=heroLast;heroLast=s;
   if(silent||!prev||s.total<=prev.total)return;
+  s.total-=heroPrestigeXP();prev.total-=heroPrestigeXP();
   const gains=HERO_STATS.filter(x=>s.st[x.id]>prev.st[x.id]).map(x=>({...x,add:s.st[x.id]-prev.st[x.id],L0:heroLvl(prev.st[x.id],HERO_SB),L:heroLvl(s.st[x.id],HERO_SB)})).sort((a,b)=>b.add-a.add);
   const L0=heroLvl(prev.total,HERO_B),L=heroLvl(s.total,HERO_B);
-  heroPop(s.total-prev.total,gains,heroMult(toDateStr(new Date())));
+  heroPop(s.total-prev.total,gains,heroMult(toDateStr(new Date())),combo);
+  s.total+=heroPrestigeXP();
   const ups=gains.filter(g=>g.L>g.L0);
   if(L>L0||ups.length)setTimeout(()=>heroLevelUp(L>L0?L:0,ups),900);
 }
-function heroPop(xp,gains,m=1){
+function heroPop(xp,gains,m=1,combo=0){
   const el=document.getElementById('hero-pop');if(!el)return;
-  el.innerHTML=`<b>+${xp} XP</b>${m!==1?`<span>${m>1?'⚡':'🔻'} ×${m.toFixed(2).replace(/0$/,'')}</span>`:''}${gains.slice(0,4).map(g=>`<span>${g.ic} ${g.name} +${g.add}</span>`).join('')}`;
+  el.innerHTML=`<b>+${xp} XP</b>${combo>1?`<span class="hp-combo">COMBO ×${combo}</span>`:''}${m!==1?`<span>${m>1?'⚡':'🔻'} ×${m.toFixed(2).replace(/0$/,'')}</span>`:''}${gains.slice(0,4).map(g=>`<span>${g.ic} ${g.name} +${g.add}</span>`).join('')}`;
   el.classList.remove('on');void el.offsetWidth;el.classList.add('on');
   clearTimeout(heroPop.t);heroPop.t=setTimeout(()=>el.classList.remove('on'),2800);
 }
 function heroLevelUp(L,ups){
-  const el=document.getElementById('hero-lvl');if(!el)return;
-  el.innerHTML=`<div class="hl-box"><div class="hl-t">LEVEL UP!</div>${L?`<div class="hl-big">⭐ Level ${L}</div><div class="hl-rank">${HERO_RANKS.find(r=>L>=r[0])[1]}</div>`:''}${ups.map(g=>`<div class="hl-row">${g.ic} ${g.name} <b>Lv ${g.L0} → ${g.L}</b></div>`).join('')}<div class="hl-tap">tap to close</div></div>`;
-  el.classList.add('on');confetti();if(navigator.vibrate)navigator.vibrate([30,60,30]);
-  clearTimeout(heroLevelUp.t);heroLevelUp.t=setTimeout(()=>el.classList.remove('on'),4500);
+  heroShow(`<div class="hl-t">LEVEL UP!</div>${L?`<div class="hl-em">${heroRankIc(L,96)}</div><div class="hl-big">Level ${L}</div><div class="hl-rank">${HERO_RANKS.find(r=>L>=r[0])[1]}</div>`:''}${ups.map(g=>`<div class="hl-row">${hIc(g.gl,g.col,'circle',22)} ${g.name} <b>Lv ${g.L0} → ${g.L}</b></div>`).join('')}`,4500,true);
+  if(navigator.vibrate)navigator.vibrate([30,60,30]);
   if(L&&typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLine==='function')gwenLine(`Level ${L}! Look at you getting stronger every day 💜`,'happy');
 }
 // Deleting a task keeps the XP it earned
@@ -267,44 +282,50 @@ function heroLine(){
   const best=HERO_STATS.map(x=>[x,heroLvl(h.s.st[x.id],HERO_SB)]).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([x,l])=>`${x.name} ${l}`).join(', ');
   const learning=Object.entries(heroP.skills||{}).filter(([,p])=>p.on).map(([id,p])=>{const sk=heroSkill(id);return sk&&sk.steps[(p.at||[]).length]?`${sk.name} (next: ${sk.steps[(p.at||[]).length][0]})`:null;}).filter(Boolean);
   const bf=heroBuffs(toDateStr(new Date())).map(b=>`${b.name} (${b.why})`),qs=heroQuests(h).d.filter(q=>!q.claimed).map(q=>q.text);
-  return`DayTrack turns his life into a game: he is Level ${h.L} (${h.rank} ${h.cls}), ${h.today} XP today. Strongest stats: ${best}.${learning.length?` Skills he's learning: ${learning.join('; ')}.`:''}${bf.length?` Today's buffs and debuffs: ${bf.join(', ')}.`:''}${qs.length?` Daily quests still open: ${qs.join('; ')}.`:''} Cheer his level-ups.`;
+  return`DayTrack turns his life into a game: he is Level ${h.L} (${h.rank} ${h.cls}), ${h.today} XP today. Strongest stats: ${best}.${learning.length?` Skills he's learning: ${learning.join('; ')}.`:''}${bf.length?` Today's buffs and debuffs: ${bf.join(', ')}.`:''}${qs.length?` Daily quests still open: ${qs.join('; ')}.`:''} ${(()=>{const b=heroDBoss(heroTod());return b&&b.state!=='soon'?` Today's surprise boss: ${b.name} (${b.state==='on'?'here now, he has to: '+b.task:b.state==='won'?'he beat it':'it escaped'}).`:'';})()}${(()=>{const j=Object.entries(heroP.journal||{}).sort().slice(-3);return j.length?` His recent journal lines: ${j.map(([d,t])=>`${d}: "${t}"`).join('; ')}.`:'';})()}${heroP.pet?` His pet ${HERO_PETS[heroP.pet.kind][0].toLowerCase()} is called ${heroP.pet.name}.`:''} Cheer his level-ups.`;
 }
 
 // ── UI ──
 const heroBar=(xp,b)=>{const L=heroLvl(xp,b),lo=heroAt(L,b),hi=heroAt(L+1,b);return{L,pct:Math.round((xp-lo)/(hi-lo)*100),left:hi-xp};};
 function renderHeroChip(h){
   const el=document.getElementById('hero-chip');if(!el)return;
-  const b=heroBar(h.s.total,HERO_B);el.innerHTML=`⭐ Lv ${h.L}<i style="width:${b.pct}%"></i>`;el.title=`${b.left} XP to level ${h.L+1}`;
+  const b=heroBar(h.xp,HERO_B);el.innerHTML=`⭐ Lv ${h.L}<i style="width:${b.pct}%"></i>`;el.title=`${b.left} XP to level ${h.L+1}`;
 }
 // Small character card on the Tasks tab / dashboard
 function renderHeroMini(){
   const h=heroState();renderHeroChip(h);
-  const el=document.getElementById('hero-mini');if(!el)return;
-  const b=heroBar(h.s.total,HERO_B);
+  const el=document.getElementById('hero-mini');if(!el)return;heroDefs();
+  const b=heroBar(h.xp,HERO_B);
   const top=HERO_STATS.map(x=>({...x,L:heroLvl(h.s.st[x.id],HERO_SB)})).filter(x=>h.s.st[x.id]).sort((a,c)=>c.L-a.L||h.s.st[c.id]-h.s.st[a.id]).slice(0,4);
-  el.innerHTML=`<div class="hm-top"><div class="hm-av">${esc(heroP.av)}</div><div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div><div style="color:var(--pri);font-size:20px;">›</div></div>`
+  el.innerHTML=`<div class="hm-top"><div class="hm-av ${heroFrame(h)}">${esc(heroP.av)}</div><div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div>${heroRankIc(h.L,40)}</div>`
     +(top.length?`<div class="hm-stats">${top.map(x=>`<span>${x.ic} ${x.name} <b>${x.L}</b></span>`).join('')}</div>`:'<div class="hm-sub" style="margin-top:8px;">Tick a task to earn your first XP.</div>')
-    +heroBuffChips(toDateStr(new Date()));
-  const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d');
+    +heroBuffChips(toDateStr(new Date()))+heroExtrasLine();
+  const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=heroBossCard(true)+`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d')
+    +(new Date().getHours()>=18&&!(heroP.journal||{})[heroTod()]?`<div class="cl" style="margin:12px 0 6px;">📝 Tonight's line</div>`+heroJournalHtml(true):'');
 }
 let heroSeg='stats';
 function heroSetSeg(s){heroSeg=s;document.getElementById('tab-hero').dataset.seg=s;if(s==='skills')setTimeout(heroTreeFit,0);document.querySelectorAll('#hero-seg button').forEach(b=>b.classList.toggle('on',b.dataset.s===s));}
 function renderHero(){
-  const h=heroState(),b=heroBar(h.s.total,HERO_B),tab=document.getElementById('tab-hero');if(!tab)return;
+  const h=heroState(),b=heroBar(h.xp,HERO_B),tab=document.getElementById('tab-hero');if(!tab)return;heroDefs();
   tab.dataset.seg=heroSeg;renderHeroChip(h);
   document.getElementById('hero-card').innerHTML=`
-    <div class="hc-top"><button class="hc-av" onclick="heroAvatar()" title="Change">${esc(heroP.av)}</button>
+    <div class="hc-top"><button class="hc-av ${heroFrame(h)}" onclick="heroAvatar()" title="Change">${esc(heroP.av)}</button>
       <div style="flex:1;min-width:0;"><div class="hc-name">Rayan</div><div class="hc-cls">${heroTitle(heroAchievements(h))?`<b class="hc-title">「${esc(heroTitle(heroAchievements(h)))}」</b> `:''}${h.rank} ${h.cls}</div></div>
-      <div class="hc-lv"><small>LEVEL</small>${h.L}</div></div>
+      <div class="hc-rk">${heroRankIc(h.L,58)}<div class="hc-lv"><small>LEVEL</small>${h.L}</div></div></div>
     <div class="bar hc-bar"><i style="width:${b.pct}%"></i></div>
     <div class="hc-xp"><span>${h.s.total.toLocaleString()} XP</span><span>${b.left} to level ${h.L+1}</span></div>
-    <div class="hc-today">${h.today?`+${h.today} XP today`:'No XP yet today'}</div>`;
+    <div class="hc-today">${h.today?`+${h.today} XP today`:'No XP yet today'}${h.P?` · ${'★'.repeat(Math.min(10,h.P))}`:''}</div>${heroExtrasLine()}
+    <div class="hc-btns"><button onclick="heroShare()">📤 Share card</button><span>🪙 ${heroCoins(h).toLocaleString()}</span></div>`;
   document.getElementById('hero-card').insertAdjacentHTML('beforeend',heroBuffChips(toDateStr(new Date()),true));
   document.getElementById('hero-radar').innerHTML=heroRadar(h);
   document.getElementById('hero-body').innerHTML=heroBody(h);
   const Q=heroQuests(h),left=b=>{const ms=new Date(b+'T23:59:59')-new Date(),dd=Math.ceil(ms/864e5);return dd<=1?`resets in ${Math.max(1,Math.ceil(ms/36e5))} h`:`${dd} days left`;};
+  const set=(id,html)=>{const e=document.getElementById(id);if(e)e.innerHTML=html;};
+  set('hero-dboss',heroBossCard());set('hero-story',heroStoryHtml(h));set('hero-bounty',heroBountyHtml());set('hero-mboss',heroMiniBossHtml());set('hero-quit',heroQuitHtml());
+  set('hero-perks',heroPerksHtml(h));set('hero-recs',heroRecsHtml(h));set('hero-ft',heroTestHtml());set('hero-bag',heroBagHtml(h));set('hero-gear',heroGearHtml());set('hero-party',heroPartyHtml(h));
+  set('hero-report',heroReportHtml(h));set('hero-vs',heroVsHtml(h));set('hero-season',heroSeasonHtml(h));set('hero-heat',heroHeatmap(h));set('hero-journal',heroJournalHtml());
   document.getElementById('hero-quests').innerHTML=[['d','☀️ Daily'],['w','📅 Weekly'],['m','🌙 Monthly']].map(([k,n])=>`<div class="hs-g hq-h"><span>${n}</span><small>${left(Q.p[k].b)}</small></div>`+(k==='w'?heroBoss(Q.w,Q.p.w):'')+heroQuestRows(Q[k],k)).join('');
-  document.getElementById('hero-stats').innerHTML=Object.keys(HERO_GROUPS).map(g=>`<div class="hs-g">${g}</div>`+HERO_STATS.filter(x=>x.g===g).map(x=>{const sb=heroBar(h.s.st[x.id],HERO_SB);return`<div class="hs-row" onclick="heroStat('${x.id}')"><span class="hs-ic">${x.ic}</span><span class="hs-n">${x.name}</span><div class="bar"><i style="width:${sb.pct}%"></i></div><span class="hs-l">Lv ${sb.L}</span></div>`;}).join('')).join('');
+  document.getElementById('hero-stats').innerHTML=Object.keys(HERO_GROUPS).map(g=>`<div class="hs-g">${g}</div>`+HERO_STATS.filter(x=>x.g===g).map(x=>{const sb=heroBar(h.s.st[x.id],HERO_SB);return`<div class="hs-row" onclick="heroStat('${x.id}')"><span class="hs-ic">${sIc(x,24,'hex')}</span><span class="hs-n">${x.name}</span><div class="bar"><i style="width:${sb.pct}%"></i></div><span class="hs-l">Lv ${sb.L}</span></div>`;}).join('')).join('');
   const ups=heroLevelUps(h.aw).slice(0,15),tod=toDateStr(new Date());
   const days=[...new Set(h.aw.map(a=>a.d))].sort().reverse().slice(0,7);
   document.getElementById('hero-log').innerHTML=
@@ -329,7 +350,7 @@ function heroStat(id){
   const from={};h.aw.forEach(a=>{if(a.sx[id]){const k=a.what.replace(/ \(\d+\/\d+\)$/,'');from[k]=from[k]||{ic:a.ic,xp:0,n:0};from[k].xp+=a.sx[id];from[k].n++;}});
   const list=Object.entries(from).sort((a,c)=>c[1].xp-a[1].xp).slice(0,12);
   const sk=heroSkills().filter(s=>s.st[id]>=.5);
-  sheet(`<div style="text-align:center;font-size:40px;">${x.ic}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">${x.name} · Lv ${b.L}</div>
+  sheet(`<div style="text-align:center;">${sIc(x,64,'hex')}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">${x.name} · Lv ${b.L}</div>
     <div class="bar" style="height:8px;margin:10px 0 4px;"><i style="width:${b.pct}%"></i></div><div class="hm-sub" style="text-align:right;">${h.s.st[id]} XP · ${b.left} to Lv ${b.L+1}</div>
     <div class="sl">What trained it</div>${list.length?list.map(([k,v])=>`<div class="hl-g" style="padding:7px 0;border-bottom:1px solid var(--brd);"><span>${v.ic} ${esc(k)} <small style="color:var(--sub)">×${v.n}</small></span><b>+${v.xp}</b></div>`).join(''):`<div class="hm-sub">Nothing yet. Add a task with a word like "${{arms:'push-ups',chest:'push-ups',back:'pull-ups',core:'plank',legs:'squats',endurance:'run',intellect:'study',focus:'deep work',creativity:'draw',faith:'Quran',discipline:'clean room',vitality:'drink water',charisma:'call a friend',wealth:'budget'}[id]}" in its name, or pick ${x.name} under "Levels up" when you add one.</div>`}
     ${sk.length?`<div class="sl">Skills that train it</div><div class="hk-chips">${sk.map(s=>`<button class="gchip" onclick="heroOpenSkill('${s.id}')">${s.ic} ${esc(s.name)}</button>`).join('')}</div>`:''}${closeBtn}`);
@@ -343,7 +364,7 @@ async function heroAvatar(){
 function heroOpenSkill(id){
   const s=heroSkill(id);if(!s)return;const p=heroP.skills[id]||{},n=(p.at||[]).length,tod=toDateStr(new Date());
   const st=Object.keys(s.st).map(k=>HERO_BY[k]&&`${HERO_BY[k].ic} ${HERO_BY[k].name}`).filter(Boolean).join(' · ');
-  sheet(`<div style="text-align:center;font-size:40px;">${s.ic}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">${esc(s.name)}</div>
+  sheet(`<div style="text-align:center;">${hIc(skGl(s),HERO_CAT_COL[s.cat]==='#F97316'?'orange':s.custom?'purple':'teal','burst',64)}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">${esc(s.name)}</div>
     <div class="hm-sub" style="text-align:center;margin:2px 0 10px;">Trains ${st} · ${n}/${s.steps.length} mastered</div>
     ${s.steps.map((x,i)=>{const[nm,goal,how]=Array.isArray(x)?x:[x.name||x,'',''];const state=i<n?'done':i===n?'now':'lock';
       return`<div class="hk-step ${state}"><div class="hk-dot">${i<n?'✓':i+1}</div><div style="flex:1;min-width:0;"><b>${esc(nm)}</b>${goal?`<div class="hk-goal">🎯 ${esc(goal)}</div>`:''}${state==='now'&&how?`<div class="hk-how">${esc(how)}</div>`:''}${i<n&&p.at[i]?`<div class="hm-sub">Mastered ${p.at[i]===tod?'today':fmtDay(p.at[i])} · +${60*(i+1)} XP</div>`:state!=='done'?`<div class="hm-sub">+${60*(i+1)} XP</div>`:''}</div></div>`;}).join('')}
@@ -409,18 +430,28 @@ function heroPickTog(id){
 // Worked out for each day from the days before it plus that day's sleep and mood, so XP already earned never shifts later.
 const dAdd=(d,n)=>{const x=new Date(d+'T12:00:00');x.setDate(x.getDate()+n);return toDateStr(x);};
 function heroBuffs(d){
-  const out=[],cd=new Set(completedDays),y=dAdd(d,-1),fx=(ic,name,f,why)=>out.push({ic,name,fx:f,why,bad:f<0});
+  const out=[],cd=heroDoneDays(),y=dAdd(d,-1),fx=(ic,name,f,why)=>out.push({ic,name,fx:f,why,bad:f<0}),pk=id=>heroPerk(id,d);
   let st=0;for(let x=y;cd.has(x)&&st<400;x=dAdd(x,-1))st++;
-  if(st>=7)fx('🔥','Blazing',.2,`${st}-day streak`);else if(st>=3)fx('🔥','On fire',.1,`${st}-day streak`);
+  const sb=pk('streak')?.1:0;
+  if(st>=7)fx('🔥','Blazing',.2+sb,`${st}-day streak`);else if(st>=3)fx('🔥','On fire',.1+sb,`${st}-day streak`);
   else if(!cd.has(y)&&cd.has(dAdd(y,-1))&&cd.has(dAdd(y,-2))&&cd.has(dAdd(y,-3)))fx('💔','Streak broken',-.05,'Yesterday wasn\'t finished. Finish today to start again');
   const sl=sleepLog[d];
   if(sl&&typeof sleepHours==='function'){const h=sleepHours(sl);
-    if(h>=7)fx('😴','Well rested',.1,`Slept ${h.toFixed(1)} h`);else if(h<6)fx('🥱','Tired',-.1,`Only ${h.toFixed(1)} h of sleep`);
-    if(String(sl.wake).padStart(5,'0')<'07:00')fx('🌅','Early bird',.05,`Up at ${sl.wake}`);}
+    if(h>=7)fx('😴','Well rested',pk('rest')?.2:.1,`Slept ${h.toFixed(1)} h`);else if(h<6)fx('🥱','Tired',-.1,`Only ${h.toFixed(1)} h of sleep`);
+    if(String(sl.wake).padStart(5,'0')<'07:00')fx('🌅','Early bird',pk('dawn')?.15:.05,`Up at ${sl.wake}`);}
   const md=moods[d];if(md&&md<=2)fx('🦁','Brave',.1,'Getting things done on a hard day');else if(md>=4)fx('✨','Good vibes',.05,'Feeling good today');
   const od=tasks.filter(t=>!t.recurring&&t.date&&t.date<d&&!(t.done[0]&&t.done[0]<=d)).length;
   if(od)fx('⏳','Overdue',-Math.min(.15,.05*od),`${od} task${od>1?'s':''} past ${od>1?'their':'its'} day`);
   if(Object.entries(heroP.claims||{}).some(([k,c])=>k[0]==='w'&&c.d<d&&c.d>=dAdd(d,-3)))fx('⚡','Quest momentum',.15,'You finished a weekly quest');
+  if(pk('xp'))fx('✨','Fast learner',.05,'Your perk');
+  const pr=(heroP.prestige||[]).filter(p=>p.d<=d).length;if(pr)fx('★','Prestige',.05*pr,`${pr} prestige star${pr>1?'s':''}`);
+  if(heroP.evolved&&heroP.evolved.d<=d)fx('🦋','Evolved',.05,`${heroP.evolved.cls} class`);
+  const dl=(heroP.daily||{})[d]||{};if(dl.party)fx('💜','Party: Gwen',dl.party,'Your bond with Gwen');if(dl.gear)fx('🛡️','Gear',dl.gear,'What you have equipped');
+  if(((heroP.used||{}).potion||[]).includes(d))fx('🧪','XP potion',1,'Double XP today');
+  const ev=heroEvent(d);if(ev&&ev.id==='golden')fx('🌟','Golden day',.5,'A rare event: +50% XP all day');
+  const b=heroDBoss(d);if(b&&b.state==='gone')fx('💀','Boss curse',-.1,`${b.name} escaped`);
+  if((heroP.quits||[]).some(q=>(q.slips||[]).includes(d)))fx('🩹','Slipped',-.05,'A slip on a habit you\'re quitting. Back on track tomorrow');
+  if(pk('iron'))out.forEach(b=>{if(b.fx<0)b.fx/=2;});
   return out;
 }
 const heroMult=d=>Math.max(.5,1+heroBuffs(d).reduce((n,b)=>n+b.fx,0));
@@ -480,17 +511,20 @@ function heroQuests(h=heroState()){
 }
 function heroQuestRows(list,k){
   const all=list.length&&list.every(q=>q.claimed),chest=`${heroPeriods()[k].id}:chest`,got=(heroP.claims||{})[chest];
-  return list.map(q=>`<div class="hq${q.claimed?' got':''}"${q.go&&!q.ready?` onclick="${q.go}" style="cursor:pointer;"`:''}><div style="flex:1;min-width:0;"><div class="hq-t">${esc(q.text)}</div><div class="hq-b"><span class="bar"><i style="width:${q.prog/q.n*100}%"></i></span><small>${q.prog}/${q.n}</small></div></div>`
+  const QG={tasks:'check',xp:'bolt',perfect:'trophy',mood:'sun',focus:'target',skill:'star',goal:'flag',sleep:'moon',gwen:'heart'},QC={d:'teal',w:'blue',m:'purple'};
+  return list.map(q=>`<div class="hq${q.claimed?' got':''}"${q.go&&!q.ready?` onclick="${q.go}" style="cursor:pointer;"`:''}>${q.t==='stat'&&HERO_BY[q.stat]?sIc(HERO_BY[q.stat],28,'hex'):hIc(QG[q.t]||'scroll',q.t==='gwen'?'pink':QC[k],'hex',28)}<div style="flex:1;min-width:0;"><div class="hq-t">${esc(q.text)}</div><div class="hq-b"><span class="bar"><i style="width:${q.prog/q.n*100}%"></i></span><small>${q.prog}/${q.n}</small></div></div>`
     +(q.claimed?'<span class="hq-ok">✓</span>':q.ready?`<button class="hq-claim" onclick="event.stopPropagation();heroClaim('${q.key}','${k}')">Claim +${q.xp}</button>`:`<span class="hq-xp">+${q.xp} XP</span>`)+'</div>').join('')
-    +(all&&k==='d'?got?'<div class="hq-chest done">🎁 Daily chest opened</div>':`<button class="hq-chest" onclick="event.stopPropagation();heroClaim('${chest}','d')">🎁 All done! Open the daily chest (+60 XP)</button>`:'');
+    +(all&&k==='d'?got?'<div class="hq-chest done">🎁 Daily chest opened</div>':`<button class="hq-chest" onclick="event.stopPropagation();heroClaim('${chest}','d')">🎁 All done! Open the daily chest (+60 XP and loot)</button>`:'');
 }
 function heroClaim(key,k){
   heroP.claims=heroP.claims||{};if(heroP.claims[key])return;
   const h=heroState(),Q=heroQuests(h),q=key.endsWith(':chest')?{text:'Daily chest',ready:Q.d.every(x=>x.claimed),xp:60}:Q[k].find(x=>x.key===key);
   if(!q||!q.ready)return;
-  const st=q.stat?{[q.stat]:1}:q.st||{discipline:1};
-  heroP.claims[key]={d:toDateStr(new Date()),xp:q.xp,st,what:`Quest: ${q.text}`,ic:key.endsWith(':chest')?'🎁':k==='m'?'🌙':k==='w'?'📅':'⚔️'};
+  const st=q.stat?{[q.stat]:1}:q.st||{discipline:1},tod=heroTod(),xp=Math.round(q.xp*(heroPerk('quest',tod)?1.25:1)*((heroEvent(tod)||{}).id==='lucky'?2:1));
+  heroP.claims[key]={d:tod,xp,st,what:`Quest: ${q.text}`,ic:key.endsWith(':chest')?'🎁':k==='m'?'🌙':k==='w'?'📅':'⚔️'};
+  const loot=key.endsWith(':chest')?heroLoot(tod):[];
   save();renderTaskList();if(document.body.dataset.tab==='hero')renderHero();
+  if(loot.length)heroShow(`<div class="hl-t">CHEST OPENED</div><div class="hl-em">${hIc('chest','gold','burst',90)}</div><div class="hl-row">+${xp} XP</div>${loot.map(heroItemLine).join('')}`,4500,true);
   if(k==='w')setTimeout(()=>showToast('⚡ Quest momentum: +15% XP for the next 3 days'),2900);
 }
 
@@ -513,10 +547,10 @@ function heroTree(h){
     s.steps.forEach((_,i)=>{
       const[x,y]=pos[s.id+i],st=i<n?'done':i===n&&!lock?'now':'lock';
       if(i)edges+=`<line x1="${pos[s.id+(i-1)][0].toFixed(1)}" y1="${pos[s.id+(i-1)][1].toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="te${i<=n?' lit':''}" style="--c:${col}"/>`;
-      nodes+=`<g class="tn ${st}${on&&st==='now'?' on':''}" style="--c:${col}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})" onclick="heroOpenSkill('${s.id}')"><title>${esc(s.name)}: ${esc(stepName(s,i))}</title><circle r="${i?14:18}"/><text>${i?st==='done'?'✓':st==='lock'&&lock?'🔒':i+1:s.ic}</text></g>`;
+      nodes+=`<g class="tn ${st}${on&&st==='now'?' on':''}" style="--c:${col}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})" onclick="heroOpenSkill('${s.id}')"><title>${esc(s.name)}: ${esc(stepName(s,i))}</title><circle r="${i?14:18}"/>${i?`<text>${st==='done'?'✓':st==='lock'&&lock?'🔒':i+1}</text>`:`<g transform="translate(-10.8 -10.8) scale(.9)">${hGlyph(lock?'lock':skGl(s))}</g>`}</g>`;
     });
     const[lx,ly,a]=pt(k,s.steps.length-1),c=Math.cos(a),r=R0+(s.steps.length-1)*G+26,tx=r*c,ty=r*Math.sin(a);
-    labels+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" class="tl" text-anchor="${c>.3?'start':c<-.3?'end':'middle'}" onclick="heroOpenSkill('${s.id}')">${s.ic} ${esc(s.name)} ${n}/${s.steps.length}</text>`;
+    labels+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" class="tl" text-anchor="${c>.3?'start':c<-.3?'end':'middle'}" onclick="heroOpenSkill('${s.id}')">${esc(s.name)} ${n}/${s.steps.length}</text>`;
   });
   const S=R0+7*G+150;
   return`<svg viewBox="${-S} ${-S} ${2*S} ${2*S}" id="hero-tree-svg">${edges}${nodes}${labels}<g class="tc" onclick="heroSetSeg('stats')"><circle r="44"/><text y="-8" class="tc-av">${esc(heroP.av)}</text><text y="22" class="tc-lv">Lv ${h.L}</text></g></svg>`;
@@ -563,13 +597,13 @@ function heroBody(h){
       +(back?`<g class="bl">${[['back',cx,70],['core',cx,114],['legs',cx-11,176]].map(([id,x,y])=>`<text x="${x}" y="${y}">${L(id)}</text>`).join('')}</g>`:'')
       +`<text x="${cx}" y="272" class="bcap">${back?'BACK':'FRONT'}</text>`;
   };
-  const tag=id=>`<button class="bt" onclick="heroStat('${id}')"><i style="background:${col(id)}"></i>${HERO_BY[id].ic} ${HERO_BY[id].name} <b>Lv ${L(id)}</b></button>`;
+  const tag=id=>`<button class="bt" onclick="heroStat('${id}')"><i style="background:${col(id)}"></i>${HERO_BY[id].name} <b>Lv ${L(id)}</b></button>`;
   return`<svg viewBox="0 0 320 280" class="body-svg">${fig(80,false)}${fig(240,true)}</svg><div class="bt-row">${['arms','chest','back','core','legs','endurance',mind,'vitality'].map(tag).join('')}</div>`;
 }
 
 // ── Achievements: worked out from everything above; each can carry a title you can wear under your name ──
 const HERO_TITLES={arms:'Iron Arms',chest:'Steel Chest',back:'Eagle Back',core:'Stone Core',legs:'Swift Legs',endurance:'Tireless',intellect:'Sage',focus:'Laser Focus',creativity:'Artist',faith:'Devout',discipline:'Unbreakable',vitality:'Vital',charisma:'Charmer',wealth:'Merchant'};
-function heroBestStreak(){const s=[...completedDays].sort();let best=0,run=0,prev='';s.forEach(d=>{run=prev&&dAdd(prev,1)===d?run+1:1;best=Math.max(best,run);prev=d;});return best;}
+function heroBestStreak(){const s=[...heroDoneDays()].sort();let best=0,run=0,prev='';s.forEach(d=>{run=prev&&dAdd(prev,1)===d?run+1:1;best=Math.max(best,run);prev=d;});return best;}
 function heroAchievements(h=heroState()){
   const tk=h.aw.filter(a=>a.k==='task').length,str=heroBestStreak(),cl=Object.keys(heroP.claims||{}),mastered=heroSkills().filter(s=>heroDone(s.id)>=s.steps.length);
   const gl=g=>HERO_STATS.filter(x=>x.g===g).reduce((n,x)=>n+heroLvl(h.s.st[x.id],HERO_SB),0)/HERO_STATS.filter(x=>x.g===g).length;
@@ -580,26 +614,31 @@ function heroAchievements(h=heroState()){
     ['q10','⚔️','Quester','Claim 10 quests',cl.length,10,'Quester'],['qm','🌙','Moon hunter','Claim a monthly quest',cl.filter(k=>k[0]==='m').length,1,'Moon Hunter'],
     ['sk','🏆','Master','Master a whole skill path',mastered.length,1],
     ['bal','⚖️','All-rounder','Body, Mind, Spirit and Life all average Lv 5',Math.min(...Object.keys(HERO_GROUPS).map(gl)),5,'All-Rounder'],
+    ['db1','⚔️','Boss slayer','Beat a daily boss',heroBossWins(),1,'Slayer'],['db10','⚔️','Boss hunter','Beat 10 daily bosses',heroBossWins(),10,'Boss Hunter'],['db50','💀','Bane of bosses','Beat 50 daily bosses',heroBossWins(),50,'Bane of Bosses'],
+    ['cb5','⚡','Combo master','Reach a ×5 combo',heroP.comboBest||0,5,'Combo Master'],['jr30','📝','Chronicler','Write 30 journal lines',Object.keys(heroP.journal||{}).length,30,'Chronicler'],
+    ['ch3','📜','Storyteller','Finish 3 story chapters',heroP.ch||0,3,'Storyteller'],['quit30','🛡️','Free','30 clean days from a habit',Math.max(0,...(heroP.quits||[]).map(heroClean)),30,'Free Spirit'],
+    ['pet','🐾','Tamer','Raise your pet to Adult',heroP.pet?heroPetInfo(h).st:0,3,'Tamer'],['pr','★','Reborn','Prestige once',h.P,1,'Reborn'],
     ...HERO_STATS.map(x=>['st-'+x.id,x.ic,HERO_TITLES[x.id],`${x.name} level 10`,heroLvl(h.s.st[x.id],HERO_SB),10,HERO_TITLES[x.id]]),
     ...mastered.map(s=>['m-'+s.id,s.ic,`Master of ${s.name}`,'Mastered every step',1,1,`${s.name} Master`]),
   ];
-  return list.map(([id,ic,name,desc,v,n,title])=>({id,ic,name,desc,v:Math.min(v,n),n,title,got:v>=n}));
+  const AG={first:['check','green'],t100:['check','silver'],t500:['check','gold'],s7:['flame','orange'],s30:['flame','red'],l10:['star','silver'],l25:['star','gold'],l50:['crown','gold'],q10:['swords','blue'],qm:['moon','purple'],
+    sk:['trophy','gold'],bal:['gem','teal'],db1:['skull','bronze'],db10:['skull','silver'],db50:['skull','gold'],cb5:['bolt','orange'],jr30:['pen','blue'],ch3:['scroll','purple'],quit30:['shield','teal'],pet:['paw','orange'],pr:['star','legend']};
+  return list.map(([id,ic,name,desc,v,n,title])=>{const st=HERO_BY[id.slice(3)],sk=id.startsWith('m-')&&heroSkill(id.slice(2)),[gl,col]=AG[id]||(st?[st.gl,'gold']:sk?[skGl(sk),'purple']:['star','gold']);
+    return{id,ic,gl,col,f:st?'hex':sk?'burst':'shield',name,desc,v:Math.min(v,n),n,title,got:v>=n};});
 }
 function heroTitle(ach){const t=heroP.title&&ach.find(a=>a.got&&a.title===heroP.title);return t?t.title:'';}
 let heroGot=null;
 function heroAchCheck(silent){
-  const ach=heroAchievements(),got=ach.filter(a=>a.got).map(a=>a.id),prev=heroGot;heroGot=got;
+  const ach=heroAchievements(),got=ach.filter(a=>a.got).map(a=>a.id),prev=heroGot;heroGot=got;heroGotCache=got;
   if(silent||!prev)return;
   const fresh=ach.filter(a=>a.got&&!prev.includes(a.id));
-  if(fresh.length)setTimeout(()=>{const el=document.getElementById('hero-lvl');if(!el)return;
-    el.innerHTML=`<div class="hl-box"><div class="hl-t">ACHIEVEMENT</div>${fresh.map(a=>`<div class="hl-big" style="font-size:26px;">${a.ic} ${esc(a.name)}</div><div class="hl-rank">${esc(a.desc)}</div>${a.title?`<div class="hl-row">New title: <b>${esc(a.title)}</b></div>`:''}`).join('')}<div class="hl-tap">tap to close</div></div>`;
-    el.classList.add('on');confetti();clearTimeout(heroLevelUp.t);heroLevelUp.t=setTimeout(()=>el.classList.remove('on'),5000);},2000);
+  if(fresh.length)setTimeout(()=>heroShow(`<div class="hl-t">ACHIEVEMENT</div>${fresh.map(a=>`<div class="hl-em">${hIc(a.gl,a.col,a.f,72)}</div><div class="hl-big" style="font-size:26px;">${esc(a.name)}</div><div class="hl-rank">${esc(a.desc)}</div>${a.title?`<div class="hl-row">New title: <b>${esc(a.title)}</b></div>`:''}${HERO_GEAR.filter(g=>g[6]===a.id).map(g=>`<div class="hl-row">New gear: <b>${g[2]}</b></div>`).join('')}`).join('')}`,5000,true),2000);
 }
 function renderHeroAch(h){
   const el=document.getElementById('hero-ach');if(!el)return;
   const ach=heroAchievements(h),got=ach.filter(a=>a.got),titles=got.filter(a=>a.title);
   el.innerHTML=`<div class="hm-sub" style="margin-bottom:8px;">${got.length} of ${ach.length} unlocked${titles.length?' · tap a title to wear it':''}</div><div class="ha-grid">`
-    +ach.map(a=>`<button class="ha${a.got?' got':''}${a.got&&a.title&&heroP.title===a.title?' worn':''}" ${a.got&&a.title?`onclick="heroWear('${esc(a.title)}')"`:''} title="${esc(a.desc)}"><span class="ha-ic">${a.got?a.ic:'🔒'}</span><b>${esc(a.name)}</b><small>${a.got?(a.title?`Title: ${esc(a.title)}`:esc(a.desc)):`${esc(a.desc)} · ${Math.floor(a.v)}/${a.n}`}</small></button>`).join('')+'</div>';
+    +ach.map(a=>`<button class="ha${a.got?' got':''}${a.got&&a.title&&heroP.title===a.title?' worn':''}" ${a.got&&a.title?`onclick="heroWear('${esc(a.title)}')"`:''} title="${esc(a.desc)}"><span class="ha-ic">${a.got?hIc(a.gl,a.col,a.f,40):hIc('lock','dark',a.f,40)}</span><b>${esc(a.name)}</b><small>${a.got?(a.title?`Title: ${esc(a.title)}`:esc(a.desc)):`${esc(a.desc)} · ${Math.floor(a.v)}/${a.n}`}</small></button>`).join('')+'</div>';
 }
 function heroWear(t){heroP.title=heroP.title===t?'':t;save();renderHero();renderHeroMini();}
 
@@ -608,5 +647,603 @@ const HERO_BOSSES=[['👹','The Procrastinator'],['🐉','Doomscroll Dragon'],['
 function heroBoss(list,p){
   const q=list.find(x=>x.t==='xp');if(!q)return'';
   const [ic,name]=HERO_BOSSES[Math.floor(heroRng(p.id+'boss')()*HERO_BOSSES.length)],hp=Math.max(0,q.n-q.prog);
-  return`<div class="boss${hp?'':' dead'}"><span class="boss-ic">${hp?ic:'💥'}</span><div style="flex:1;min-width:0;"><b>${hp?name:`${name} defeated!`}</b><div class="boss-hp"><i style="width:${hp/q.n*100}%"></i></div><small>${hp?`${hp} HP left · every XP you earn this week hits it`:'Claim the reward below'}</small></div></div>`;
+  const bg=['skull','flame','skull','moon','target','wings','shield'][HERO_BOSSES.findIndex(b=>b[1]===name)]||'skull';
+  return`<div class="boss${hp?'':' dead'}"><span class="boss-ic">${hp?hIc(bg,'red','burst',44):hIc('trophy','gold','burst',44)}</span><div style="flex:1;min-width:0;"><b>${hp?name:`${name} defeated!`}</b><div class="boss-hp"><i style="width:${hp/q.n*100}%"></i></div><small>${hp?`${hp} HP left · every XP you earn this week hits it`:'Claim the reward below'}</small></div></div>`;
 }
+
+// ════════ Round 3 ════════
+
+// ── Emblems instead of emoji: a metal badge (shape + colour) with a white symbol, drawn as SVG ──
+const HG={
+  dumbbell:'M2 10h2v4H2zM5 7h3v10H5zM16 7h3v10h-3zM20 10h2v4h-2zM8 11h8v2H8z',
+  shield:'M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z',
+  wings:'M11 9C8 5 4 4 1 5c1 3 3 5 6 6-2 .5-3.5 1.5-4 3 3 .5 6 0 8-2zM13 9c3-4 7-5 10-4-1 3-3 5-6 6 2 .5 3.5 1.5 4 3-3 .5-6 0-8-2zM10 9h4v9l-2 3-2-3z',
+  flame:'M12 2c.5 4 6 6.5 6 12.5A6 6 0 016 14.5c0-3 1.5-4.8 3-6 0 2 .8 3.2 2 3.5-.5-3.5 0-7 1-10z',
+  bolt:'M13 2L4 14h7l-1 8 9-12h-7z',
+  heart:'M12 21C5.5 15.5 2 12.3 2 8.3 2 5.4 4.3 3 7.2 3c1.9 0 3.6 1 4.8 2.6C13.2 4 14.9 3 16.8 3 19.7 3 22 5.4 22 8.3c0 4-3.5 7.2-10 12.7z',
+  book:'M2 5c3.5-1.3 7-1 9.3 1v14C9 18.2 5.5 18 2 19.2zM22 5c-3.5-1.3-7-1-9.3 1v14c2.3-1.8 5.8-2 9.3-.8z',
+  target:'M12 2a10 10 0 110 20 10 10 0 010-20zm0 3.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zm0 3a3.5 3.5 0 110 7 3.5 3.5 0 010-7z',
+  spark:'M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z',
+  moon:'M16 3.5a9 9 0 1 0 0 17 10 10 0 0 1 0-17z',
+  swords:'M3 3h3l11 11-3 3L3 6zM13 19l6-6 1.5 1.5-6 6zM18 18l3 3-1.5 1.5-3-3zM21 3v3L10 17l-3-3L18 3zM11 19l-6-6-1.5 1.5 6 6zM6 18l-3 3 1.5 1.5 3-3z',
+  leaf:'M21 3C10 3 4 8 4 15c0 2 .4 3.7 1 5 1.5-5 5-8.5 10-10.5-4 3-6.6 6.5-7.6 11C17 20 21 13 21 3z',
+  chat:'M3 4h18v12H10l-5 4v-4H3z',
+  gem:'M7 3h10l5 6-10 12L2 9z',
+  star:'M12 2l3 6.6 7.2.7-5.4 4.9 1.6 7.1L12 17.6l-6.4 3.7 1.6-7.1L1.8 9.3 9 8.6z',
+  crown:'M3 17h18v3H3zM2 6l5.5 4.5L12 3l4.5 7.5L22 6l-2 9.5H4z',
+  skull:'M12 2a9 9 0 00-9 9c0 3.2 1.5 5.3 3.5 6.6V21h11v-3.4c2-1.3 3.5-3.4 3.5-6.6a9 9 0 00-9-9zM8.5 9.5a2.2 2.2 0 110 4.4 2.2 2.2 0 010-4.4zm7 0a2.2 2.2 0 110 4.4 2.2 2.2 0 010-4.4z',
+  chest:'M3 11h18v9H3zM3 10a9 5 0 0118 0zM10.5 12.5h3v4h-3z',
+  flask:'M9 2h6v2h-1v5.5l6 9.5a2 2 0 01-1.7 3H5.7A2 2 0 014 19l6-9.5V4H9z',
+  snow:'S:M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7M9 3.5l3 2.5 3-2.5M9 20.5l3-2.5 3 2.5',
+  dice:'M4 3h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1zM8 6.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm8 8a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm-4-4a1.5 1.5 0 100 3 1.5 1.5 0 000-3z',
+  trophy:'M7 3h10v6a5 5 0 01-10 0zM2.5 4H7v2H4.5c.2 2 1.2 3.3 2.7 3.6l-.4 2C4.3 11.1 2.6 8.8 2.5 4zM21.5 4H17v2h2.5c-.2 2-1.2 3.3-2.7 3.6l.4 2c2.5-.5 4.2-2.8 4.3-7.6zM10.5 14h3v4h3.5v3H7v-3h3.5z',
+  scroll:'M6 3h13a2 2 0 012 2v1h-3v12a3 3 0 01-3 3H5a3 3 0 01-3-3v-1h4zM9 8h6v1.6H9zm0 4h6v1.6H9z',
+  paw:'M12 12c3 0 6 3.5 6 6 0 2-2 2.5-3 2.5s-2-.6-3-.6-2 .6-3 .6-3-.5-3-2.5c0-2.5 3-6 6-6zM5.5 7a2 2.5 0 110 5 2 2.5 0 010-5zM18.5 7a2 2.5 0 110 5 2 2.5 0 010-5zM9 2.5a2 2.5 0 110 5 2 2.5 0 010-5zM15 2.5a2 2.5 0 110 5 2 2.5 0 010-5z',
+  clock:'M12 2a10 10 0 110 20 10 10 0 010-20zm-1.2 4v7.2l5.4 3.2 1.1-1.8-4.1-2.4V6z',
+  sun:'M12 7a5 5 0 110 10 5 5 0 010-10zM11 1h2v4h-2zM11 19h2v4h-2zM1 11h4v2H1zM19 11h4v2h-4zM4.2 5.6l1.4-1.4 2.8 2.8-1.4 1.4zM15.6 17l1.4-1.4 2.8 2.8-1.4 1.4zM4.2 18.4l2.8-2.8 1.4 1.4-2.8 2.8zM15.6 7l2.8-2.8 1.4 1.4L17 8.4z',
+  lock:'M6 10V7a6 6 0 0112 0v3h1v11H5V10zm2.5 0h7V7a3.5 3.5 0 00-7 0z',
+  check:'M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z',
+  flag:'M5 2h2v20H5zM8 3h11l-2.5 4L19 11H8z',
+  helm:'M12 2C7 2 3 6 3 11v6l3 4h4v-6H6v-2h12v2h-4v6h4l3-4v-6c0-5-4-9-9-9z',
+  hand:'M8 21v-3l-4-5c-.7-.9-.5-2 .4-2.6.8-.5 1.8-.3 2.4.4L8 12V4.5a1.5 1.5 0 013 0V10h.5V3a1.5 1.5 0 013 0v7h.5V4.5a1.5 1.5 0 013 0V11h.5V7.5a1.5 1.5 0 013 0V15c0 3-2 6-5 6z',
+  cloak:'M12 3l3 2h4l2 5-3 2v9H6v-9l-3-2 2-5h4z',
+  medal:'M7 2h4l2 5-2 1zM17 2h-4l-2 5 2 1zM12 8a7 7 0 110 14 7 7 0 010-14zm0 3l1.5 3 3.3.5-2.4 2.3.6 3.2-3-1.6-3 1.6.6-3.2-2.4-2.3 3.3-.5z',
+  pen:'M3 21l1.2-5.2L15.5 4.5l4 4L8.2 19.8zM17 3l1.5-1.5 4 4L21 7z',
+  bag:'M5 8h14l-1 13H6zM8.5 8V6.5a3.5 3.5 0 017 0V8h-2V6.5a1.5 1.5 0 00-3 0V8z',
+  chart:'M3 21V3h2v16h16v2zM7 17v-6h3v6zm5 0V7h3v10zm5 0v-4h3v4z',
+  plus:'M9 3h6v6h6v6h-6v6H9v-6H3V9h6z',
+  code:'M8 6l-6 6 6 6 1.5-1.5L5 12l4.5-4.5zM16 6l6 6-6 6-1.5-1.5L19 12l-4.5-4.5zM13 4h2l-4 16H9z',
+  globe:'S:M12 2a10 10 0 110 20 10 10 0 010-20zM2 12h20M12 2c3 3 4 7 4 10s-1 7-4 10c-3-3-4-7-4-10s1-7 4-10z',
+  coin:'M12 2a10 10 0 110 20 10 10 0 010-20zm0 3a7 7 0 100 14 7 7 0 000-14zm-1 1.5h2v2c1.4.3 2.3 1.2 2.4 2.5h-2c-.1-.6-.6-1-1.4-1s-1.3.4-1.3.9.5.8 1.8 1.1c1.8.4 3 1 3 2.6 0 1.3-.9 2.2-2.5 2.5v1.9h-2v-1.9c-1.5-.3-2.5-1.2-2.6-2.6h2c.1.7.7 1.1 1.6 1.1s1.5-.4 1.5-1-.5-.8-1.9-1.1c-1.6-.4-2.8-1-2.8-2.5 0-1.3.9-2.1 2.2-2.4z',
+};
+const HCOL={bronze:['#F3C08B','#C27A3A','#6B3A12'],silver:['#FFFFFF','#B6C2D1','#4B5563'],gold:['#FFF3B0','#F5B82E','#8A5300'],red:['#FCA5A5','#E0383E','#7F1D1D'],
+  blue:['#BFDBFE','#3B82F6','#1E3A8A'],purple:['#E9D5FF','#9B5CF6','#4C1D95'],green:['#BBF7D0','#22C55E','#14532D'],teal:['#99F6E4','#14B8A6','#134E4A'],
+  orange:['#FED7AA','#F97316','#7C2D12'],pink:['#FBCFE8','#EC4899','#831843'],dark:['#9CA3AF','#4B5563','#111827'],legend:['#FFF7CC','#F472B6','#5B21B6']};
+const HFR={shield:'M20 1.5l16 5v11.5c0 10.5-7 17.5-16 20.5C11 35.5 4 28.5 4 18V6.5z',hex:'M20 1l17 9.5v19L20 39 3 29.5v-19z',circle:'M20 1a19 19 0 110 38 19 19 0 010-38z',
+  diamond:'M20 0l20 20-20 20L0 20z',burst:Array.from({length:24},(_,i)=>{const r=i%2?15.5:19.5,a=Math.PI*i/12-Math.PI/2;return(i?'L':'M')+(20+r*Math.cos(a)).toFixed(1)+' '+(20+r*Math.sin(a)).toFixed(1);}).join('')+'z'};
+const hGrad=(c,id)=>{const[a,b,d]=HCOL[c]||HCOL.gold;return`<linearGradient id="${id}" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="${a}"/><stop offset=".5" stop-color="${b}"/><stop offset="1" stop-color="${d}"/></linearGradient>`;};
+function heroDefs(){
+  if(document.getElementById('hg-defs')||!document.body)return;
+  document.body.insertAdjacentHTML('beforeend',`<svg id="hg-defs" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${Object.keys(HCOL).map(c=>hGrad(c,'hg-'+c)).join('')}</defs></svg>`);
+}
+function hGlyph(g,fill='#fff'){
+  const d=HG[g]||HG.star,st=d.startsWith('S:');
+  return st?`<path d="${d.slice(2)}" fill="none" stroke="${fill}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`:`<path d="${d}" fill="${fill}" fill-rule="evenodd"/>`;
+}
+// g: symbol, c: colour, f: badge shape, s: size in px. solo: carries its own colours (for pictures)
+function hIc(g,c='gold',f='shield',s=28,solo){
+  const id=solo?'hs-'+c+Math.random().toString(36).slice(2,6):'hg-'+c,fr=HFR[f]||HFR.shield;
+  return`<svg class="hi" viewBox="0 0 40 40" width="${s}" height="${s}"${solo?' xmlns="http://www.w3.org/2000/svg"':''}>${solo?`<defs>${hGrad(c,id)}</defs>`:''}<path d="${fr}" fill="url(#${id})" stroke="rgba(0,0,0,.45)" stroke-width="1"/><path d="${fr}" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="1.6" transform="translate(20 20) scale(.84) translate(-20 -20)"/><g transform="translate(9.6 9.2) scale(.86)"><g transform="translate(.7 1.1)" opacity=".4">${hGlyph(g,'#000')}</g>${hGlyph(g)}</g></svg>`;
+}
+const sIc=(x,s=22,f='circle')=>hIc(x.gl,x.col,f,s);
+// Rank badges get grander as you climb, like prestige emblems
+const HERO_RANK_IC={Novice:['star','bronze','circle'],Apprentice:['swords','bronze','shield'],Adept:['star','silver','shield'],Warrior:['swords','silver','hex'],Veteran:['shield','gold','hex'],
+  Elite:['wings','gold','burst'],Master:['crown','purple','burst'],Grandmaster:['crown','red','burst'],Legend:['crown','legend','burst']};
+function heroRankIc(L,s=40,solo){const r=HERO_RANKS.find(x=>L>=x[0])[1],[g,c,f]=HERO_RANK_IC[r];return hIc(g,c,f,s,solo);}
+const HERO_SKILL_GL={pushup:'dumbbell',pullup:'wings',legs:'bolt',core:'flame',handstand:'hand',dips:'shield',run:'heart',cook:'flask',money:'coin',focus:'target',prayer:'moon',quran:'book',speak:'chat',firstaid:'plus',sleep:'clock',typing:'pen',code:'code',lang:'globe'};
+const skGl=s=>HERO_SKILL_GL[s.id]||'star';
+
+// ── Popups one after another (level-ups, achievements, records, rewards) ──
+const heroQ=[];
+function heroShow(html,ms=4500,burst){heroQ.push({html,ms,burst});if(heroQ.length===1)heroNext();}
+function heroNext(){
+  const el=document.getElementById('hero-lvl'),x=heroQ[0];if(!el||!x)return;
+  el.innerHTML=`<div class="hl-box${x.burst?' burst':''}">${x.html}<div class="hl-tap">tap to close</div></div>`;el.classList.add('on');if(x.burst)confetti();
+  const done=()=>{if(heroQ[0]!==x)return;clearTimeout(heroNext.t);heroQ.shift();el.classList.remove('on');if(heroQ.length)setTimeout(heroNext,250);};
+  el.onclick=done;clearTimeout(heroNext.t);heroNext.t=setTimeout(done,x.ms);
+}
+
+// ── Small helpers ──
+const heroTod=()=>toDateStr(new Date());
+const heroWeekStart=d=>{const x=new Date(d+'T12:00:00');x.setDate(x.getDate()-x.getDay());return toDateStr(x);};
+function heroBonus(d,xp,st,what,ic,k,x){heroP.bonus=(heroP.bonus||[]).concat({d,xp,sx:sx(xp,st),what,ic,k,...x});}
+const heroDoneDays=()=>new Set([...completedDays,...((heroP.used||{}).freeze||[])]);
+const heroPrestigeXP=()=>{const p=heroP.prestige||[];return p.length?p[p.length-1].xp:0;};
+const heroInv=()=>heroP.inv=heroP.inv||{};
+
+// ── Perks: a point every 5 levels ──
+const HERO_PERKS=[['xp','Fast learner','+5% XP on everything','bolt','gold'],['rest','Deep sleeper','Well rested gives +20% instead of +10%','moon','blue'],
+  ['dawn','Dawn warrior','Early bird gives +15% instead of +5%','sun','orange'],['streak','Momentum','Streak buffs give +10% more','flame','red'],
+  ['iron','Iron mind','Debuffs and curses hurt half as much','shield','silver'],['hunter','Boss hunter','+50% XP from daily bosses','skull','red'],
+  ['quest','Quest master','+25% XP from quests','scroll','purple'],['lucky','Lucky','Chests and bosses drop two items','dice','green'],
+  ['combo','Combo king','Combo bonus goes up to +50 XP','bolt','orange'],['ice','Ice heart','A free streak freeze every month','snow','teal']];
+const heroPerk=(id,d)=>(heroP.perks||[]).some(p=>p.id===id&&(!d||p.d<=d));
+const heroPerkPts=h=>Math.floor(h.L/5)+15*h.P-(heroP.perks||[]).length;
+function heroPickPerk(id){
+  const h=heroState();if(heroPerkPts(h)<1||heroPerk(id))return;
+  const p=HERO_PERKS.find(x=>x[0]===id);if(!confirm(`Pick ${p[1]}? ${p[2]}. Perks are forever.`))return;
+  heroP.perks=(heroP.perks||[]).concat({id,d:heroTod()});save();renderHero();showToast(`✨ Perk unlocked: ${p[1]}`);
+}
+
+// ── Rare events: some days are special (the same on every device) ──
+const HERO_EVENTS=[['golden','Golden day','+50% XP all day','sun','gold'],['meteor','Meteor day','Chests and bosses drop an extra item','spark','purple'],['lucky','Lucky day','Quest rewards are doubled','dice','green']];
+function heroEvent(d){const r=heroRng(((heroP.bossCfg||{}).seed||'dt')+'ev'+d);if(r()>.12)return null;const e=HERO_EVENTS[Math.floor(r()*HERO_EVENTS.length)];return{id:e[0],name:e[1],what:e[2],gl:e[3],col:e[4]};}
+
+// ── Today's record of things that change over time (Gwen's bond, gear), so past days keep their XP ──
+function heroDaily(){
+  const tod=heroTod(),dl=heroP.daily=heroP.daily||{};
+  const lv=typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLevel==='function'?gwenLevel(gwenBondPts()):0;
+  dl[tod]={party:Math.min(.1,lv*.01),gear:Math.round(heroGearFx()*100)/100};
+  const lim=dAdd(tod,-400);for(const d in dl)if(d<lim)delete dl[d];
+  const m=tod.slice(0,7);if(heroPerk('ice')&&heroP.iceM!==m){heroP.iceM=m;heroInv().freeze=(heroInv().freeze||0)+1;}
+}
+
+// ── Combo: tasks finished within an hour of each other ──
+function heroCombo(silent){
+  const tod=heroTod(),n=tasks.filter(t=>t.done.includes(tod)).length;let c=heroP.combo;
+  if(!c||c.d!==tod)c=heroP.combo={d:tod,max:n,n:0,last:0};
+  if(silent)c.max=Math.max(c.max,n); // ticks that came in by sync don't count
+  if(n<=c.max)return 0;
+  const now=Date.now();c.n=now-c.last<=36e5?c.n+(n-c.max):1;c.last=now;c.max=n;
+  heroP.comboBest=Math.max(heroP.comboBest||0,c.n);
+  if(c.n<2)return 0;
+  heroBonus(tod,Math.min(heroPerk('combo')?50:25,5*(c.n-1)),{discipline:1},`Combo ×${c.n}`,'⚡','combo');
+  return c.n;
+}
+const heroComboLeft=()=>{const c=heroP.combo;if(!c||c.d!==heroTod()||c.n<1)return 0;return Math.max(0,Math.round((c.last+36e5-Date.now())/6e4));};
+
+// ── Daily login reward: a 7-day calendar ──
+function heroLoginCheck(){
+  const tod=heroTod(),l=heroP.login;if(l&&l.d===tod)return;
+  const n=l&&l.d===dAdd(tod,-1)?l.n%7+1:1;heroP.login={d:tod,n};
+  const xp=n===7?50:10*n;heroBonus(tod,xp,{discipline:1},`Day ${n} login reward`,'📅','login');
+  const loot=n===7?heroLoot(tod):[];
+  setTimeout(()=>heroShow(`<div class="hl-t">DAILY REWARD</div><div class="hl-week">${[1,2,3,4,5,6,7].map(i=>`<div class="${i<n?'got':i===n?'now':''}">${hIc(i===7?'chest':'coin',i<=n?'gold':'dark','circle',30)}<small>Day ${i}</small></div>`).join('')}</div><div class="hl-big" style="font-size:24px;">+${xp} XP</div>${loot.map(heroItemLine).join('')}${new Date().getDay()===0?'<div class="hl-row">📜 Your weekly report card is ready in Level → Story</div>':''}<div class="hl-rank">Come back tomorrow for day ${n%7+1}</div>`,4000),1500);
+}
+
+// ── Items and loot ──
+const HERO_ITEMS={freeze:['Streak freeze','Saves a missed day so your streak lives on','snow','teal',150],potion:['XP potion','Double XP for everything today','flask','purple',120],reroll:['Quest reroll','Swap a daily quest for a new one','dice','blue',60]};
+const heroItemLine=k=>`<div class="hl-row">${hIc(HERO_ITEMS[k][2],HERO_ITEMS[k][3],'hex',26)} <b>${HERO_ITEMS[k][0]}</b> found!</div>`;
+function heroLoot(d=heroTod()){
+  const n=(heroPerk('lucky')?2:1)+((heroEvent(d)||{}).id==='meteor'?1:0),inv=heroInv(),got=[];
+  for(let i=0;i<n;i++){const r=Math.random(),k=r<.3?'freeze':r<.65?'potion':'reroll';inv[k]=(inv[k]||0)+1;got.push(k);}
+  return got;
+}
+function heroUse(k){
+  const inv=heroInv(),used=heroP.used=heroP.used||{},tod=heroTod();if(!(inv[k]>0))return;
+  if(k==='potion'){if((used.potion||[]).includes(tod))return showToast('🧪 A potion is already working today');used.potion=(used.potion||[]).concat(tod);}
+  else if(k==='freeze'){
+    const dn=heroDoneDays();let d=null;for(let i=1;i<=14;i++){const x=dAdd(tod,-i);if(!dn.has(x)&&dn.has(dAdd(x,-1))){d=x;break;}}
+    if(!d)return showToast('🧊 No broken streak to save right now');
+    if(!confirm(`Freeze ${fmtDay(d)} so your streak carries on?`))return;used.freeze=(used.freeze||[]).concat(d);
+  }else if(k==='reroll'){
+    const Q=heroQuests(),open=Q.d.map((q,i)=>({q,i})).filter(x=>!x.q.claimed&&!x.q.ready&&x.q.t!=='gwen');
+    if(!open.length)return showToast('🎲 No open daily quest to reroll');
+    return sheet(`<div style="text-align:center;">${hIc('dice','blue','hex',56)}</div><div class="sl">Which quest?</div>${open.map(x=>`<button class="mi" onclick="heroReroll(${x.i})">${esc(x.q.text)}</button>`).join('')}${closeBtn}`);
+  }
+  inv[k]--;save();renderHero();renderHeroMini();showToast(`${HERO_ITEMS[k][0]} used`);
+}
+function heroReroll(i){
+  const inv=heroInv(),pid=heroPeriods().d.id,list=heroP.q[pid];if(!list||!list[i]||!(inv.reroll>0))return;
+  const h=heroState(),L=h.L,pool=[{t:'perfect',n:1},{t:'mood',n:1},{t:'focus',n:25},{t:'xp',n:60+L*10},{t:'tasks',n:3},{t:'stat',stat:HERO_STATS[Math.floor(Math.random()*14)].id,n:20+L*2}].filter(q=>q.t!==list[i].t);
+  list[i]=pool[Math.floor(Math.random()*pool.length)];inv.reroll--;save();closeOv('dt-ov');renderHero();renderHeroMini();showToast('🎲 New quest!');
+}
+
+// ── Coins and the shop: 1 coin for every 10 XP, spent on items and real-life rewards you set ──
+const heroCoins=h=>Math.max(0,Math.floor(h.s.total/10))-(heroP.spent||0);
+const heroShop=()=>heroP.shop=heroP.shop||[{id:'r1',name:'1 hour of gaming',cost:100},{id:'r2',name:'Movie night',cost:200},{id:'r3',name:'Order food',cost:300}];
+function heroBuy(kind,id){
+  const h=heroState(),c=heroCoins(h),r=kind==='item'?{name:HERO_ITEMS[id][0],cost:HERO_ITEMS[id][4]}:heroShop().find(x=>x.id===id);if(!r)return;
+  if(c<r.cost)return showToast(`🪙 You need ${r.cost-c} more coins`);
+  if(!confirm(`Buy ${r.name} for ${r.cost} coins?`))return;
+  heroP.spent=(heroP.spent||0)+r.cost;heroP.buys=(heroP.buys||[]).concat({d:heroTod(),name:r.name,cost:r.cost}).slice(-50);
+  if(kind==='item')heroInv()[id]=(heroInv()[id]||0)+1;
+  save();renderHero();
+  if(kind!=='item')heroShow(`<div class="hl-t">REWARD UNLOCKED</div><div class="hl-em">${hIc('trophy','gold','burst',80)}</div><div class="hl-big" style="font-size:24px;">${esc(r.name)}</div><div class="hl-rank">You earned it. Enjoy!</div>`,4000,true);
+}
+async function heroAddReward(){
+  const name=(await ask('A real-life reward','e.g. New game, Shawarma, A day off')||'').trim().slice(0,40);if(!name)return;
+  const cost=Math.max(10,Math.min(100000,parseInt(await ask('How many coins? (you earn 1 per 10 XP)','e.g. 250'),10)||0));if(!cost)return;
+  heroShop().push({id:'r'+uid(),name,cost});save();renderHero();
+}
+function heroDelReward(id){if(!confirm('Remove this reward?'))return;heroP.shop=heroShop().filter(x=>x.id!==id);save();renderHero();}
+
+// ── Gear: achievements unlock it, each piece adds a little XP ──
+const HERO_GEAR=[['gloves','hands','Training gloves','hand','bronze',.01,'first'],['gaunt','hands','Gauntlets of will','hand','gold',.04,'s30'],
+  ['helm','head','Iron helm','helm','silver',.02,'t100'],['crown','head','Crown of focus','crown','gold',.04,'l25'],
+  ['cloak','body','Cloak of dawn','cloak','orange',.02,'s7'],['armor','body','Legend armor','cloak','purple',.05,'l50'],
+  ['qbadge','badge','Quester badge','medal','blue',.02,'q10'],['seal','badge','Master seal','medal','gold',.03,'sk'],
+  ['balance','badge','Balance medal','medal','teal',.03,'bal'],['slayer','badge','Slayer medal','medal','red',.03,'db10']];
+const HERO_SLOTS={head:'Head',body:'Body',hands:'Hands',badge:'Badge'};
+let heroGotCache=[];
+const heroGearOk=g=>heroGotCache.includes(g[6]);
+function heroGearFx(){const eq=heroP.gear||{};return Object.values(eq).reduce((n,id)=>{const g=HERO_GEAR.find(x=>x[0]===id);return n+(g&&heroGearOk(g)?g[5]:0);},0);}
+function heroEquip(id){const g=HERO_GEAR.find(x=>x[0]===id);if(!g||!heroGearOk(g))return;const eq=heroP.gear=heroP.gear||{};eq[g[1]]=eq[g[1]]===id?'':id;heroDaily();save();renderHero();}
+
+// ── Prestige: at Legend you can start again from level 1 with a star and +5% XP for good ──
+function heroPrestige(){
+  const h=heroState();if(h.L<75)return;
+  if(!confirm('Prestige? You go back to level 1 (stats, skills and items stay) and get a prestige star with +5% XP forever.'))return;
+  heroP.prestige=(heroP.prestige||[]).concat({d:heroTod(),xp:h.s.total});save();renderHero();
+  heroShow(`<div class="hl-t">PRESTIGE ${h.P+1}</div><div class="hl-em">${hIc('star','legend','burst',96)}</div><div class="hl-big">Reborn</div>`,5000,true);
+}
+
+// ── Daily boss: appears at a random time, rings the phone, and has to be beaten within 30 minutes ──
+const HERO_DB_MIN=30;
+const HERO_DBOSS=[['Sloth Golem','skull','dark','Do 25 push-ups','chest'],['Plank Wraith','flame','red','Hold a plank for 90 seconds','core'],
+  ['Squat Goblin','bolt','green','Do 40 squats','legs'],['Clutter Hydra','swords','purple','Tidy your room or desk for 10 minutes','discipline'],
+  ['Thirst Djinn','leaf','teal','Drink 2 glasses of water','vitality'],['Scroll Specter','book','blue','Read 10 pages of a book','intellect'],
+  ['Phantom of Silence','chat','pink','Text or call a friend or someone in your family','charisma'],['Doomscroll Dragon','target','orange','Put your phone face down for 15 minutes','focus'],
+  ['Dust Titan','shield','bronze','Do 20 burpees','endurance'],['Wallet Leech','gem','gold','Skip one thing you were going to buy today','wealth'],
+  ['Shade of Heedlessness','moon','purple','Read a page of Quran or say your adhkar','faith'],['Blank Page Imp','spark','pink','Draw, write or make something for 10 minutes','creativity'],
+  ['Stiff Ogre','heart','red','Stretch for 5 minutes','vitality'],['Pull-up Harpy','wings','blue','Do as many pull-ups or rows as you can, 3 sets','back']];
+function heroBossCfg(){const c=heroP.bossCfg=heroP.bossCfg||{};if(c.on===undefined)c.on=true;if(!c.onAt)c.onAt=Date.now();c.from=c.from||'10:00';c.to=c.to||'22:00';if(!c.seed)c.seed=Math.random().toString(36).slice(2,10);return c;}
+function heroDBoss(d){
+  const c=heroBossCfg();if(!c.on)return null;
+  const r=heroRng(c.seed+d),[fh,fm]=c.from.split(':').map(Number),[th,tm]=c.to.split(':').map(Number),a=fh*60+fm,b=Math.max(a+31,th*60+tm)-HERO_DB_MIN;
+  const min=a+Math.floor(r()*(b-a)),[name,g,col,task,stat]=HERO_DBOSS[Math.floor(r()*HERO_DBOSS.length)];
+  const t=new Date(d+'T00:00:00');t.setMinutes(min);
+  const at=t.getTime(),until=at+HERO_DB_MIN*6e4,now=Date.now(),won=((heroP.bosses||{})[d]||{}).won;
+  if(at<c.onAt&&!won)return null; // no boss (and no curse) before bosses were switched on
+  return{d,at,until,name,g,col,task,stat,won,state:won?'won':now<at?'soon':now<until?'on':'gone'};
+}
+const heroBossWins=()=>Object.values(heroP.bosses||{}).filter(b=>b.won).length;
+const heroBossXP=(d,L)=>Math.round((80+5*L)*(heroPerk('hunter',d)?1.5:1));
+let heroBossSent='',heroBossTest=0;
+function heroBossSync(){
+  const N=window.DayTrackNative;if(!N||!N.bosses)return;
+  const now=Date.now(),list=[0,1,2].map(i=>heroDBoss(dAdd(heroTod(),i))).filter(b=>b&&!b.won&&b.until>now&&b.d!==heroBossShown)
+    .map(b=>({at:b.at,until:b.until,title:`⚔️ ${b.name} appeared!`,body:`${b.task}. You have ${HERO_DB_MIN} minutes to beat it. Open DayTrack to fight!`}));
+  if(heroBossTest>now)list.unshift({at:heroBossTest-25*6e4,until:heroBossTest,title:'⚔️ Test boss appeared!',body:'This is how a daily boss rings. Open DayTrack to stop it.'});
+  const j=JSON.stringify(list);if(j!==heroBossSent){heroBossSent=j;try{N.bosses(j);}catch(e){}}
+}
+function heroBossTestRing(){
+  const N=window.DayTrackNative;
+  if(!N||!N.bosses)return showToast('The ringing alarm works in the phone app. Here the boss screen and a sound show up.');
+  heroBossTest=Date.now()+5000+25*6e4;heroBossSent='';heroBossSync();showToast('📳 Lock your phone: the test boss rings in 5 seconds');
+}
+let heroBossShown='',heroAlarm=null;
+function heroBossWatch(){
+  const b=heroDBoss(heroTod());if(!b||b.state!=='on'||heroBossShown===b.d)return;
+  if(document.visibilityState==='visible')heroBossOpen(true);
+  else if(!window.DayTrackNative&&window.Notification&&Notification.permission==='granted'&&heroBossShown!=='n'+b.d){heroBossShown='n'+b.d;try{new Notification(`⚔️ ${b.name} appeared!`,{body:`${b.task}. ${HERO_DB_MIN} minutes to beat it!`});}catch(e){}}
+}
+if(typeof document!=='undefined'){
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(heroBossWatch,500);});
+  setInterval(()=>{try{heroBossWatch();}catch(e){}},15000);
+}
+function heroBossOpen(alarm){
+  const N=window.DayTrackNative;if(N&&N.stopBoss)try{N.stopBoss();}catch(e){}
+  const b=heroDBoss(heroTod());if(typeof switchTab==='function'&&document.body.dataset.tab!=='hero'){heroSeg='quests';switchTab('hero');}else heroSetSeg('quests');
+  if(!b||b.state!=='on')return;
+  heroBossShown=b.d;heroBossSync();heroDefs(); // seen in the app: the phone doesn't need to ring for it
+  let el=document.getElementById('hero-boss');if(!el){el=document.createElement('div');el.id='hero-boss';document.body.appendChild(el);}
+  el.innerHTML=`<div class="hbx"><div class="hbx-t">⚠ A BOSS APPEARED ⚠</div><div class="hbx-em">${hIc(b.g,b.col,'burst',120)}</div><div class="hbx-n">${esc(b.name)}</div>
+    <div class="boss-hp hbx-hp"><i id="hbx-hp" style="width:100%"></i></div><div class="hbx-task">${esc(b.task)}</div><div class="hbx-time" id="hbx-time"></div>
+    <button class="hbx-go" onclick="heroBossWin()">⚔️ I did it! Strike!</button><button class="hbx-later" onclick="heroBossClose()">Not yet</button>
+    <div class="hbx-r">Win: +${heroBossXP(b.d,heroState().L)} XP and loot · Run out of time: −10% XP today</div></div>`;
+  el.classList.add('on');
+  const tick=()=>{const t=document.getElementById('hbx-time');if(!t)return clearInterval(heroBossOpen.t);const ms=b.until-Date.now();if(ms<=0){heroBossClose();renderHero();return;}t.textContent=`${Math.floor(ms/6e4)}:${String(Math.floor(ms/1e3)%60).padStart(2,'0')} left`;};
+  clearInterval(heroBossOpen.t);heroBossOpen.t=setInterval(tick,1000);tick();
+  if(alarm)heroAlarmOn();
+}
+// A siren from the app itself (the phone app also rings like an alarm)
+function heroAlarmOn(){
+  heroAlarmOff();const ctx=typeof gwenAudioCtx==='function'?gwenAudioCtx():null;if(navigator.vibrate)navigator.vibrate([500,200,500,200,500,200,800]);if(!ctx)return;
+  const o=ctx.createOscillator(),g=ctx.createGain();o.type='square';g.gain.value=0;o.connect(g);g.connect(ctx.destination);o.start();
+  let on=0,n=0;const iv=setInterval(()=>{on^=1;n++;o.frequency.setValueAtTime(on?880:620,ctx.currentTime);g.gain.setTargetAtTime(.12,ctx.currentTime,.01);if(n>60)heroAlarmOff();},350);
+  heroAlarm={o,g,iv};
+  document.addEventListener('pointerdown',heroAlarmOff,{once:true});
+}
+function heroAlarmOff(){if(!heroAlarm)return;clearInterval(heroAlarm.iv);try{heroAlarm.o.stop();}catch(e){}heroAlarm=null;if(navigator.vibrate)navigator.vibrate(0);}
+function heroBossClose(){heroAlarmOff();clearInterval(heroBossOpen.t);const el=document.getElementById('hero-boss');if(el)el.classList.remove('on');}
+function heroBossWin(){
+  const b=heroDBoss(heroTod());if(!b||b.state!=='on')return heroBossClose();
+  heroAlarmOff();const L=heroState().L,xp=heroBossXP(b.d,L);
+  heroP.bosses=heroP.bosses||{};heroP.bosses[b.d]={won:Date.now(),name:b.name};
+  const lim=dAdd(b.d,-60);for(const d in heroP.bosses)if(d<lim)delete heroP.bosses[d];
+  heroBonus(b.d,xp,{[b.stat]:1,discipline:.3},`Beat ${b.name}`,'⚔️','dboss');
+  const loot=heroLoot(b.d),hp=document.getElementById('hbx-hp');if(hp)hp.style.width='0%';
+  const box=document.querySelector('#hero-boss .hbx');if(box)box.classList.add('hit');
+  setTimeout(()=>{heroBossClose();save();renderTaskList();renderHero();
+    heroShow(`<div class="hl-t">BOSS DEFEATED</div><div class="hl-em">${hIc('trophy','gold','burst',96)}</div><div class="hl-big" style="font-size:24px;">${esc(b.name)}</div><div class="hl-row">+${xp} XP</div>${loot.map(heroItemLine).join('')}`,5000,true);
+    if(typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLine==='function')gwenLine(`You beat ${b.name}! That's my hero 💜`,'happy');},900);
+}
+async function heroBossSettings(){
+  const c=heroBossCfg();
+  sheet(`<div style="text-align:center;">${hIc('skull','red','burst',56)}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">Daily bosses</div>
+    <div class="hm-sub" style="text-align:center;margin:4px 0 12px;">One boss a day at a random time. You get ${HERO_DB_MIN} minutes to do its challenge.</div>
+    <label class="hx-row"><input type="checkbox" id="hb-on" ${c.on?'checked':''}> Bosses on</label>
+    <div class="hx-row">Between <input class="inp" type="time" id="hb-from" value="${c.from}" style="width:auto;"> and <input class="inp" type="time" id="hb-to" value="${c.to}" style="width:auto;"></div>
+    <div class="hm-sub" style="margin:6px 0 10px;">On the phone it rings like an alarm, even on silent, until you open DayTrack. Do Not Disturb can still hold it back.</div>
+    <button class="hk-btn" style="width:100%;margin-bottom:8px;" onclick="heroBossTestRing()">📳 Test the alarm</button>
+    <button class="hk-btn pri" style="width:100%;" onclick="heroBossSave()">Save</button>${closeBtn}`);
+}
+function heroBossSave(){
+  const c=heroBossCfg(),f=document.getElementById('hb-from').value,t=document.getElementById('hb-to').value;
+  const was=c.on;c.on=document.getElementById('hb-on').checked;if(/^\d\d:\d\d$/.test(f))c.from=f;if(/^\d\d:\d\d$/.test(t))c.to=t;
+  if(c.to<=c.from)c.to='22:00';
+  if(c.on&&!was)c.onAt=Date.now();else{const b=heroDBoss(heroTod());if(b&&b.state==='gone')c.onAt=Date.now();} // moving the hours never curses todayheroBossSent='';save();closeOv('dt-ov');renderHero();renderHeroMini();showToast(c.on?'⚔️ Bosses on':'Bosses off');
+}
+function heroBossCard(mini){
+  const b=heroDBoss(heroTod());
+  if(!b)return mini?'':`<div class="dboss off" onclick="heroBossSettings()"><div style="flex:1">Daily bosses are off</div><span class="minibtn">Turn on</span></div>`;
+  if(mini&&b.state==='soon')return'';
+  const ic=hIc(b.state==='won'?'trophy':b.state==='gone'?'skull':b.g,b.state==='won'?'gold':b.state==='gone'?'dark':b.col,'burst',mini?40:54);
+  const left=Math.max(0,Math.ceil((b.until-Date.now())/6e4));
+  const body={soon:`<b>A boss is lurking…</b><small>It shows up at a random time between ${c12(heroBossCfg().from)} and ${c12(heroBossCfg().to)}. Keep your phone close.</small>`,
+    on:`<b>${esc(b.name)} is here!</b><small>${esc(b.task)} · ${left} min left</small>`,
+    won:`<b>${esc(b.name)} defeated</b><small>Next boss tomorrow. Wins so far: ${heroBossWins()}</small>`,
+    gone:`<b>${esc(b.name)} escaped</b><small>Its curse: −10% XP today. Be ready tomorrow.</small>`}[b.state];
+  return`<div class="dboss ${b.state}"${b.state==='on'?' onclick="heroBossOpen()"':''}>${ic}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;">${body}</div>${b.state==='on'?'<span class="hq-claim">Fight</span>':mini?'':`<button class="minibtn" onclick="event.stopPropagation();heroBossSettings()">⚙</button>`}</div>`;
+}
+const c12=hm=>{const[h,m]=hm.split(':').map(Number);return`${(h+11)%12+1}${m?':'+String(m).padStart(2,'0'):''} ${h<12?'AM':'PM'}`;};
+// Bosses beaten, for Gwen's house: each becomes a trophy parcel
+function heroTrophies(){
+  const lim=dAdd(heroTod(),-14),out=Object.entries(heroP.bosses||{}).filter(([d,b])=>b.won&&d>=lim).map(([d,b])=>({id:'b-'+d,date:d,reason:`Rayan beat ${b.name||'a daily boss'}`}));
+  Object.entries(heroP.claims||{}).forEach(([k,c])=>{if(k[0]==='w'&&c.d>=lim&&/^Quest: Earn \d+ XP$/.test(c.what||''))out.push({id:'w-'+k.slice(1,11),date:c.d,reason:'Rayan defeated the weekly boss'});});
+  return out;
+}
+
+// ── Class evolution at level 20 ──
+const HERO_EVOLVE={arms:'Calisthenics Master',chest:'Juggernaut',back:'Wall Climber',core:'Iron Core',legs:'Sprinter',endurance:'Marathoner',intellect:'Sage',focus:'Strategist',
+  creativity:'Artisan',faith:'Hafiz Path',discipline:'Ascetic',vitality:'Healer',charisma:'Diplomat',wealth:'Merchant Lord'};
+
+// ── Personal records ──
+function heroRecords(h){
+  const byDay={},tk={},wk={};
+  h.aw.forEach(a=>{byDay[a.d]=(byDay[a.d]||0)+a.xp;if(a.k==='task')tk[a.d]=(tk[a.d]||0)+1;const w=heroWeekStart(a.d);wk[w]=(wk[w]||0)+a.xp;});
+  const mx=o=>Math.max(0,...Object.values(o));
+  const out=[['streak','Longest streak',heroBestStreak(),'days','flame'],['xpday','Most XP in a day',mx(byDay),'XP','bolt'],['xpweek','Best week',mx(wk),'XP','star'],
+    ['tasks','Most tasks in a day',mx(tk),'tasks','check'],['focus','Longest focus session',Math.max(0,...savedSessions.map(s=>Math.round(s.total/6e4))),'min','clock'],
+    ['combo','Best combo',heroP.comboBest||0,'×','bolt']];
+  const per={};tasks.forEach(t=>{if(!t.count)return;const u=(t.count.unit||t.name).toLowerCase().trim().slice(0,30);
+    const days=new Set([...Object.keys(t.counts||{}),...t.done]);days.forEach(d=>{const n=Math.max((t.counts||{})[d]||0,t.done.includes(d)?t.count.target:0);per[u]=per[u]||{};per[u][d]=(per[u][d]||0)+n;});});
+  Object.entries(per).forEach(([u,o])=>out.push(['u-'+u,`Most ${u} in a day`,mx(o),'','dumbbell']));
+  const ft=Object.values(heroP.tests||{});[['pushups','Max push-ups','reps'],['pullups','Max pull-ups','reps'],['plank','Longest plank','sec'],['squats','Squats in a minute','reps']].forEach(([k,n,u])=>{const v=Math.max(0,...ft.map(t=>t[k]||0));if(v)out.push(['ft-'+k,n,v,u,'medal']);});
+  return out.map(([id,name,v,u,gl])=>({id,name,v,u,gl}));
+}
+function heroRecCheck(silent){
+  const h=heroState(),rec=heroP.rec=heroP.rec||{},fresh=[];
+  heroRecords(h).forEach(r=>{if(r.v>(rec[r.id]||0)){if(rec[r.id]&&!silent)fresh.push({...r,was:rec[r.id]});rec[r.id]=r.v;}});
+  if(h.evo&&!heroP.evolved){heroP.evolved={d:heroTod(),cls:h.evo};if(!silent)setTimeout(()=>heroShow(`<div class="hl-t">CLASS EVOLVED</div><div class="hl-em">${hIc('wings','legend','burst',96)}</div><div class="hl-big" style="font-size:26px;">${esc(h.evo)}</div><div class="hl-rank">+5% XP from now on</div>`,5000,true),1200);}
+  if(fresh.length)setTimeout(()=>heroShow(`<div class="hl-t">NEW RECORD</div>${fresh.slice(0,3).map(r=>`<div class="hl-em">${hIc(r.gl,'gold','burst',64)}</div><div class="hl-big" style="font-size:22px;">${esc(r.name)}</div><div class="hl-row">${r.was} → <b>${r.v} ${r.u}</b></div>`).join('')}`,4500,true),1600);
+}
+
+// ── Story chapters: a long questline that unlocks one chapter at a time ──
+const HERO_STORY=[['Awakening',[['tasks',10,'Complete 10 tasks'],['level',3,'Reach level 3'],['skill',1,'Master a skill step']]],
+  ['First blood',[['dboss',1,'Beat a daily boss'],['quests',5,'Claim 5 quests'],['streak',3,'Finish every task 3 days in a row']]],
+  ['The climb',[['level',10,'Reach level 10'],['pushday',100,'Do 100 push-ups in one day'],['streak',7,'A 7-day streak']]],
+  ['Mind over matter',[['focus',600,'Focus 600 minutes with the Timer'],['journal',14,'Write 14 journal lines'],['stat:intellect',8,'Intellect level 8']]],
+  ['Iron will',[['tasks',300,'Complete 300 tasks'],['dboss',10,'Beat 10 daily bosses'],['perfect',30,'Finish every task on 30 days']]],
+  ['The faithful',[['stat:faith',12,'Faith level 12'],['skill',10,'Master 10 skill steps'],['streak',14,'A 14-day streak']]],
+  ['Warrior\'s road',[['level',15,'Reach level 15 (Warrior)'],['dboss',30,'Beat 30 daily bosses'],['pushday',200,'Do 200 push-ups in one day']]],
+  ['Legend in the making',[['level',30,'Reach level 30'],['streak',30,'A 30-day streak'],['skill',25,'Master 25 skill steps']]]];
+function heroStoryVal(k,h){
+  if(k.startsWith('stat:'))return heroLvl(h.s.st[k.slice(5)],HERO_SB);
+  switch(k){case'tasks':return h.aw.filter(a=>a.k==='task').length;case'level':return h.L+75*h.P;case'skill':return heroSkills().reduce((n,s)=>n+heroDone(s.id),0);
+    case'dboss':return heroBossWins();case'quests':return Object.keys(heroP.claims||{}).length;case'streak':return heroBestStreak();
+    case'pushday':{const r=heroRecords(h).filter(r=>/push/.test(r.id));return Math.max(0,...r.map(x=>x.v));}
+    case'focus':return h.aw.reduce((n,a)=>n+(a.min||0),0);case'journal':return Object.keys(heroP.journal||{}).length;case'perfect':return completedDays.length;}
+  return 0;
+}
+function heroStoryHtml(h){
+  const ch=heroP.ch||0,c=HERO_STORY[ch];
+  const done=HERO_STORY.slice(0,ch).map((x,i)=>`<div class="hst done">${hIc('check','green','circle',22)} Chapter ${i+1}: ${x[0]}</div>`).join('');
+  if(!c)return done+'<div class="hm-sub" style="margin-top:8px;">To be continued… you finished every chapter so far.</div>';
+  const goals=c[1].map(([k,n,t])=>{const v=Math.min(n,heroStoryVal(k,h));return{t,v,n,ok:v>=n};}),all=goals.every(g=>g.ok);
+  return done+`<div class="hst-now"><div class="hst-h">${hIc('scroll','purple','shield',34)}<div><small>Chapter ${ch+1}</small><b>${c[0]}</b></div></div>`
+    +goals.map(g=>`<div class="hq${g.ok?' got':''}"><div style="flex:1;min-width:0;"><div class="hq-t">${esc(g.t)}</div><div class="hq-b"><span class="bar"><i style="width:${g.v/g.n*100}%"></i></span><small>${g.v}/${g.n}</small></div></div>${g.ok?'<span class="hq-ok">✓</span>':''}</div>`).join('')
+    +(all?`<button class="hq-chest" onclick="heroStoryClaim()">📜 Finish chapter ${ch+1} (+${200*(ch+1)} XP and loot)</button>`:'')+'</div>';
+}
+function heroStoryClaim(){
+  const h=heroState(),ch=heroP.ch||0,c=HERO_STORY[ch];if(!c||!c[1].every(([k,n])=>heroStoryVal(k,h)>=n))return;
+  heroP.ch=ch+1;heroBonus(heroTod(),200*(ch+1),{discipline:1},`Chapter ${ch+1}: ${c[0]}`,'📜','story');const loot=heroLoot();
+  save();renderTaskList();renderHero();
+  heroShow(`<div class="hl-t">CHAPTER ${ch+1} COMPLETE</div><div class="hl-em">${hIc('scroll','legend','burst',90)}</div><div class="hl-big" style="font-size:24px;">${c[0]}</div><div class="hl-row">+${200*(ch+1)} XP</div>${loot.map(heroItemLine).join('')}`,5000,true);
+}
+
+// ── Monthly fitness test ──
+const HERO_TESTS=[['pushups','Max push-ups in one go','reps',4,{chest:.6,arms:.6}],['pullups','Max pull-ups in one go','reps',10,{back:.6,arms:.6}],['plank','Longest plank','seconds',1,{core:1}],['squats','Squats in one minute','reps',2,{legs:1}]];
+function heroTestOpen(){
+  const m=heroTod().slice(0,7),cur=(heroP.tests||{})[m]||{},prev=heroTestPrev(m);
+  sheet(`<div style="text-align:center;">${hIc('medal','gold','burst',56)}</div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);">Fitness test · ${new Date().toLocaleString('en',{month:'long'})}</div>
+    <div class="hm-sub" style="text-align:center;margin:4px 0 10px;">Do each one with good form, rest in between, then write what you got. Beating last month's numbers gives extra XP.</div>
+    ${HERO_TESTS.map(([k,n,u])=>`<div class="hx-row"><span style="flex:1;">${n}${prev&&prev[k]?` <small style="color:var(--sub)">(last: ${prev[k]})</small>`:''}</span><input class="inp" type="number" min="0" max="2000" id="ft-${k}" value="${cur[k]||''}" placeholder="${u}" style="width:90px;"></div>`).join('')}
+    <button class="hk-btn pri" style="width:100%;margin-top:10px;" onclick="heroTestSave()">Save results</button>${closeBtn}`);
+}
+function heroTestPrev(m){const ks=Object.keys(heroP.tests||{}).filter(k=>k<m).sort();return ks.length?heroP.tests[ks[ks.length-1]]:null;}
+function heroTestSave(){
+  const m=heroTod().slice(0,7),prev=heroTestPrev(m),r={d:heroTod()};let xp=50;const st={endurance:.3};
+  HERO_TESTS.forEach(([k,,,per,w])=>{const v=Math.max(0,Math.min(2000,parseInt(document.getElementById('ft-'+k).value,10)||0));if(v)r[k]=v;
+    if(v){for(const s in w)st[s]=Math.max(st[s]||0,w[s]);if(prev&&prev[k]&&v>prev[k])xp+=(v-prev[k])*per;}});
+  if(Object.keys(r).length<2)return showToast('Write at least one result');
+  xp=Math.min(400,xp);heroP.tests=heroP.tests||{};heroP.tests[m]=r;
+  heroP.bonus=(heroP.bonus||[]).filter(b=>!(b.k==='test'&&b.m===m));heroBonus(heroTod(),xp,st,'Fitness test','🏅','test',{m});
+  save();closeOv('dt-ov');renderTaskList();renderHero();
+}
+function heroTestHtml(){
+  const ks=Object.keys(heroP.tests||{}).sort().reverse().slice(0,3),m=heroTod().slice(0,7);
+  return(ks.length?`<table class="ft-t"><tr><th></th>${ks.map(k=>`<th>${new Date(k+'-15').toLocaleString('en',{month:'short'})}</th>`).join('')}</tr>${HERO_TESTS.map(([k,n,u])=>`<tr><td>${n.replace(/ in one go| in one minute/,'')}</td>${ks.map(x=>`<td>${heroP.tests[x][k]||'–'}</td>`).join('')}</tr>`).join('')}</table>`:'<div class="hm-sub">Once a month: max push-ups, pull-ups, plank and squats. Your numbers become records and XP.</div>')
+    +`<button class="minibtn" style="margin-top:10px;width:100%;padding:10px;" onclick="heroTestOpen()">${(heroP.tests||{})[m]?'Edit this month\'s test':'🏅 Take this month\'s test'}</button>`;
+}
+
+// ── Bounty board: your own quests with your own price ──
+async function heroAddBounty(){
+  const text=(await ask('What\'s the bounty?','e.g. Clean the car')||'').trim().slice(0,60);if(!text)return;
+  const xp=Math.max(10,Math.min(300,parseInt(await ask('XP reward (10 to 300)','50'),10)||50)),st=heroDetect(text);
+  heroP.bounties=(heroP.bounties||[]).concat({id:'b'+uid(),text,xp,st:Object.keys(st).length?st:{discipline:1},done:null});save();renderHero();
+}
+function heroBountyDone(id){const b=(heroP.bounties||[]).find(x=>x.id===id);if(!b||b.done)return;b.done=heroTod();save();renderTaskList();renderHero();}
+function heroBountyDel(id){if(!confirm('Remove this bounty?'))return;heroP.bounties=(heroP.bounties||[]).filter(x=>x.id!==id);save();renderHero();}
+function heroBountyHtml(){
+  const lim=dAdd(heroTod(),-7),l=(heroP.bounties||[]).filter(b=>!b.done||b.done>=lim);
+  return(l.length?l.map(b=>`<div class="hq${b.done?' got':''}">${hIc('flag','orange','shield',26)}<div style="flex:1;min-width:0;"><div class="hq-t">${esc(b.text)}</div></div>${b.done?'<span class="hq-ok">✓</span>':`<button class="hq-claim" onclick="heroBountyDone('${b.id}')">Done +${b.xp}</button>`}<button class="hx-x" onclick="heroBountyDel('${b.id}')">×</button></div>`).join(''):'<div class="hm-sub">Post your own quests with your own reward, like "Clean the car, 80 XP".</div>')
+    +`<button class="minibtn" style="margin-top:10px;width:100%;padding:10px;" onclick="heroAddBounty()">+ Post a bounty</button>`;
+}
+
+// ── Mini bosses: tasks you keep putting off ──
+function heroMiniBossHtml(){
+  const l=tasks.filter(t=>t.boss&&!t.recurring&&!t.done.length),tod=heroTod();
+  if(!l.length)return'<div class="hm-sub">Got a task you keep putting off? Open it and switch on <b>Mini boss</b>. It gets angrier (and worth more XP) every day it waits.</div>';
+  return l.map(t=>{const w=Math.max(0,Math.round((new Date(tod+'T12:00:00')-new Date((t.createdAt||tod)+'T12:00:00'))/864e5)),xp=Math.min(300,taskXP(t)*3+10*w),ang=Math.min(1,w/14);
+    return`<div class="mboss" style="--a:${ang}" onclick="openEditTask('${t.id}')">${hIc('skull',ang>.6?'red':ang>.3?'orange':'dark','burst',36)}<div style="flex:1;min-width:0;"><b>${esc(t.name)}</b><small>${w?`Waiting ${w} day${w>1?'s':''}, getting angrier`:'Fresh today'}</small></div><span class="hq-xp">+${xp} XP</span></div>`;}).join('');
+}
+
+// ── Bad habits you're quitting ──
+async function heroAddQuit(){
+  const name=(await ask('What are you quitting?','e.g. Vaping, Doomscrolling, Energy drinks')||'').trim().slice(0,40);if(!name)return;
+  heroP.quits=(heroP.quits||[]).concat({id:'q'+uid(),name,from:heroTod(),slips:[]});save();renderHero();
+}
+function heroSlip(id){const q=(heroP.quits||[]).find(x=>x.id===id);if(!q||!confirm(`Slipped on ${q.name} today? No shame, the count restarts and you go again.`))return;q.slips=[...new Set([...(q.slips||[]),heroTod()])];save();renderHero();}
+function heroQuitDel(id){if(!confirm('Stop tracking this? Its XP stays.'))return;const q=(heroP.quits||[]).find(x=>x.id===id);if(q){heroBankQuit(q);}heroP.quits=(heroP.quits||[]).filter(x=>x.id!==id);save();renderHero();}
+function heroBankQuit(q){const tmp=heroP.quits;heroP.quits=[q];const aw=heroAwards().filter(a=>a.k==='quit');heroP.quits=tmp;if(aw.length)heroBonus(heroTod(),aw.reduce((n,a)=>n+a.xp,0),{discipline:1,vitality:.3},`${q.name}: ${aw.length} clean days (kept)`,'🛡️','quitkept');}
+const heroClean=q=>{const last=[...(q.slips||[])].sort().pop();const from=last?dAdd(last,1):q.from;return Math.max(0,Math.round((new Date(heroTod()+'T12:00:00')-new Date(from+'T12:00:00'))/864e5));};
+function heroQuitHtml(){
+  const l=heroP.quits||[];
+  return(l.length?l.map(q=>{const n=heroClean(q),slip=(q.slips||[]).includes(heroTod());return`<div class="hq">${hIc('shield',slip?'dark':n>=30?'gold':n>=7?'teal':'silver','shield',30)}<div style="flex:1;min-width:0;"><div class="hq-t">${esc(q.name)}</div><small style="color:var(--sub);font-size:12px;">${slip?'Slipped today. Tomorrow is day 1 again':`${n} day${n===1?'':'s'} clean · +15 XP each day`}</small></div>${slip?'':`<button class="minibtn" onclick="heroSlip('${q.id}')">I slipped</button>`}<button class="hx-x" onclick="heroQuitDel('${q.id}')">×</button></div>`;}).join(''):'<div class="hm-sub">Quitting something? Every clean day gives Discipline XP. A slip shows as a debuff for that day, then you start again.</div>')
+    +`<button class="minibtn" style="margin-top:10px;width:100%;padding:10px;" onclick="heroAddQuit()">+ Add a habit to quit</button>`;
+}
+
+// ── Pet: grows with the days you show up, gets sad when you don't ──
+const HERO_PETS={fox:['Fox','#F97316','#FED7AA'],cat:['Cat','#8B5CF6','#DDD6FE'],dragon:['Dragon','#16A34A','#BBF7D0'],owl:['Owl','#A16207','#FDE68A']};
+const HERO_PET_ST=[[0,'Egg'],[3,'Baby'],[10,'Young'],[30,'Adult'],[90,'Legendary']];
+function heroPetInfo(h){
+  const days=[...new Set(h.aw.filter(a=>a.xp>0).map(a=>a.d))].sort(),p=heroP.pet;
+  const act=p?days.filter(d=>d>=p.born).length:0,st=HERO_PET_ST.filter(x=>act>=x[0]).length-1,last=days[days.length-1],tod=heroTod();
+  const gap=last?Math.round((new Date(tod+'T12:00:00')-new Date(last+'T12:00:00'))/864e5):9;
+  return{act,st,stage:HERO_PET_ST[st][1],next:HERO_PET_ST[st+1],mood:gap<=1?'happy':gap<=3?'sad':'sleepy'};
+}
+function heroPetSvg(kind,st,mood,s=110){
+  const[,c,l]=HERO_PETS[kind]||HERO_PETS.fox,k=.62+st*.1;
+  if(st===0)return`<svg viewBox="0 0 100 100" width="${s}" height="${s}" class="pet egg"><ellipse cx="50" cy="56" rx="28" ry="36" fill="${l}" stroke="${c}" stroke-width="3"/><circle cx="40" cy="44" r="5" fill="${c}"/><circle cx="60" cy="62" r="7" fill="${c}"/><circle cx="46" cy="76" r="4" fill="${c}"/></svg>`;
+  const ears={fox:`<path d="M28 30L22 4l22 18zM72 30l6-26-22 18z" fill="${c}"/>`,cat:`<path d="M27 32l-3-24 20 14zM73 32l3-24-20 14z" fill="${c}"/>`,
+    dragon:`<path d="M34 24l-6-20 14 14zM66 24l6-20-14 14z" fill="#FDE68A"/><path d="M14 56l-12-10 4 18zM86 56l12-10-4 18z" fill="${c}" opacity=".7"/>`,owl:`<path d="M28 26l-4-16 14 10zM72 26l4-16-14 10z" fill="${c}"/>`}[kind];
+  const eyes=mood==='happy'?`<path d="M36 48q5-7 10 0M54 48q5-7 10 0" stroke="#1F2937" stroke-width="3.5" fill="none" stroke-linecap="round"/>`:mood==='sad'?`<circle cx="41" cy="48" r="4" fill="#1F2937"/><circle cx="59" cy="48" r="4" fill="#1F2937"/><path d="M63 54q2 5 0 8" stroke="#60A5FA" stroke-width="3" fill="none"/>`:`<path d="M36 49h10M54 49h10" stroke="#1F2937" stroke-width="3.5" stroke-linecap="round"/>`;
+  const mouth=mood==='happy'?`<path d="M43 60q7 7 14 0" stroke="#1F2937" stroke-width="3" fill="none" stroke-linecap="round"/>`:mood==='sad'?`<path d="M43 64q7-6 14 0" stroke="#1F2937" stroke-width="3" fill="none" stroke-linecap="round"/>`:`<text x="66" y="34" font-size="12" fill="${c}">z</text><text x="74" y="24" font-size="9" fill="${c}">z</text>`;
+  return`<svg viewBox="0 0 100 100" width="${s}" height="${s}" class="pet ${mood}">${st>=4?`<circle cx="50" cy="54" r="48" fill="${c}" opacity=".18"/>`:''}<g transform="translate(50 56) scale(${k}) translate(-50 -56)">${ears}<ellipse cx="50" cy="56" rx="36" ry="34" fill="${c}"/><ellipse cx="50" cy="64" rx="22" ry="20" fill="${l}"/>${eyes}${mouth}<circle cx="34" cy="60" r="4" fill="#F9A8D4" opacity=".7"/><circle cx="66" cy="60" r="4" fill="#F9A8D4" opacity=".7"/>${st>=4?'<path d="M36 18l6 8 8-12 8 12 6-8-2 14H38z" fill="#FCD34D"/>':''}</g></svg>`;
+}
+async function heroPetPick(kind){const name=(await ask(`Name your ${HERO_PETS[kind][0].toLowerCase()}`,'e.g. Kitsu')||'').trim().slice(0,20)||HERO_PETS[kind][0];heroP.pet={kind,name,born:heroTod()};save();renderHero();}
+
+// ── Party: Gwen and your pet ──
+function heroPartyHtml(h){
+  const lv=typeof gwenCfg!=='undefined'&&gwenCfg.key&&typeof gwenLevel==='function'?gwenLevel(gwenBondPts()):0,p=heroP.pet;
+  const gw=`<div class="pty">${hIc('heart','pink','shield',44)}<div style="flex:1;min-width:0;"><b>Gwen</b><small>${lv?`Bond level ${lv} · party buff +${Math.min(10,lv)}% XP`:'Set her up on the Gwen tab to join your party'}</small><small>Gives you her daily quest. Talk, play and study with her to raise the bond.</small></div></div>`;
+  if(!p)return gw+`<div class="sl" style="margin-top:12px;">Adopt a pet</div><div class="hm-sub" style="margin-bottom:8px;">It hatches and grows with every day you earn XP, and gets sad when you skip days.</div><div class="pet-pick">${Object.entries(HERO_PETS).map(([k,v])=>`<button onclick="heroPetPick('${k}')">${heroPetSvg(k,2,'happy',64)}<small>${v[0]}</small></button>`).join('')}</div>`;
+  const i=heroPetInfo(h);
+  return gw+`<div class="pty pet-row">${heroPetSvg(p.kind,i.st,i.mood,96)}<div style="flex:1;min-width:0;"><b>${esc(p.name)}</b><small>${i.stage} ${HERO_PETS[p.kind][0].toLowerCase()} · ${{happy:'Happy',sad:'Missing you',sleepy:'Asleep, waiting for you'}[i.mood]}</small><small>${i.next?`${i.next[0]-i.act} more active day${i.next[0]-i.act>1?'s':''} to ${i.next[1]}`:'Fully grown'}</small></div></div>`;
+}
+
+// ── Weekly report card ──
+function heroReport(h,ws){
+  const we=dAdd(ws,6),inW=(a,b)=>h.aw.filter(x=>x.d>=a&&x.d<=b),g=(aw,grp)=>aw.reduce((n,a)=>n+HERO_STATS.filter(x=>x.g===grp).reduce((m,x)=>m+Math.max(0,a.sx[x.id]||0),0),0);
+  const cur=inW(ws,we);
+  return Object.keys(HERO_GROUPS).map(grp=>{
+    const v=g(cur,grp),past=[1,2,3,4].map(i=>g(inW(dAdd(ws,-7*i),dAdd(we,-7*i)),grp)),avg=past.reduce((a,b)=>a+b,0)/4;
+    const r=avg>=30?v/avg:v/120,gr=r>=1.2?'A':r>=.9?'B':r>=.6?'C':r>=.3?'D':'F';
+    return{grp,v,gr,up:avg>=30?Math.round((v/avg-1)*100):null};
+  });
+}
+function heroReportHtml(h){
+  const ws=dAdd(heroWeekStart(heroTod()),-7),r=heroReport(h,ws),col={A:'#22C55E',B:'#14B8A6',C:'#F59E0B',D:'#F97316',F:'#EF4444'};
+  return`<div class="hm-sub" style="margin-bottom:8px;">Last week, ${fmtDay(ws)} to ${fmtDay(dAdd(ws,6))}, compared with the 4 weeks before</div><div class="rc">${r.map(x=>`<div><b style="color:${col[x.gr]}">${x.gr}</b><span>${x.grp}</span><small>${x.v} XP${x.up!==null?` · ${x.up>=0?'+':''}${x.up}%`:''}</small></div>`).join('')}</div>`
+    +(typeof gwenCfg!=='undefined'&&gwenCfg.key?`<button class="minibtn" style="margin-top:10px;width:100%;padding:10px;" onclick="heroReportGwen()">💜 What does Gwen think?</button>`:'');
+}
+function heroReportGwen(){
+  const r=heroReport(heroState(),dAdd(heroWeekStart(heroTod()),-7));switchTab('gwen');
+  const inp=document.getElementById('gwen-in');inp.value=`My report card for last week: ${r.map(x=>`${x.grp} ${x.gr}`).join(', ')}. What do you think, and what should I work on this week?`;inp.focus();
+}
+
+// ── This month vs last month ──
+function heroVsHtml(h){
+  const tod=heroTod(),n=+tod.slice(8),a=tod.slice(0,8)+'01',lm=new Date(a+'T12:00:00');lm.setMonth(lm.getMonth()-1);
+  const la=toDateStr(lm),lb=dAdd(la,n-1),pick=(x,y)=>h.aw.filter(q=>q.d>=x&&q.d<=y);
+  const A=pick(a,tod),B=pick(la,lb<dAdd(a,-1)?lb:dAdd(a,-1)),cd=(x,y)=>completedDays.filter(d=>d>=x&&d<=y).length;
+  const rows=[['XP',A.reduce((s,q)=>s+q.xp,0),B.reduce((s,q)=>s+q.xp,0)],['Tasks done',A.filter(q=>q.k==='task').length,B.filter(q=>q.k==='task').length],['Perfect days',cd(a,tod),cd(la,lb)],['Focus minutes',A.reduce((s,q)=>s+(q.min||0),0),B.reduce((s,q)=>s+(q.min||0),0)]];
+  return`<div class="hm-sub" style="margin-bottom:6px;">The first ${n} day${n>1?'s':''} of this month vs the same days last month</div><table class="ft-t vs"><tr><th></th><th>Now</th><th>Then</th><th></th></tr>${rows.map(([k,x,y])=>`<tr><td>${k}</td><td><b>${x}</b></td><td>${y}</td><td style="color:${x>=y?'#22C55E':'#EF4444'};font-weight:800;">${x>y?'▲':x<y?'▼':'='}</td></tr>`).join('')}</table>`;
+}
+
+// ── Seasons: one every 3 months, with a tier for the XP you earn in it ──
+const HERO_TIERS=[[0,'Bronze','shield','bronze'],[1500,'Silver','shield','silver'],[4000,'Gold','hex','gold'],[8000,'Platinum','hex','teal'],[15000,'Diamond','diamond','blue'],[25000,'Champion','burst','legend']];
+function heroSeasons(h){
+  const q=d=>`${d.slice(0,4)} S${Math.floor((+d.slice(5,7)-1)/3)+1}`,o={};h.aw.forEach(a=>{const k=q(a.d);o[k]=(o[k]||0)+a.xp;});
+  return{cur:q(heroTod()),o};
+}
+function heroSeasonHtml(h){
+  const{cur,o}=heroSeasons(h),xp=o[cur]||0,ti=HERO_TIERS.filter(t=>xp>=t[0]).length-1,t=HERO_TIERS[ti],nx=HERO_TIERS[ti+1];
+  const m=+heroTod().slice(5,7),end=new Date(+heroTod().slice(0,4),Math.ceil(m/3)*3,0),left=Math.ceil((end-new Date())/864e5);
+  const past=Object.keys(o).filter(k=>k!==cur).sort().reverse().slice(0,4);
+  return`<div class="ssn">${hIc(t[2],t[3],t[2]==='burst'?'burst':'hex',60)}<div style="flex:1;min-width:0;"><small>Season ${cur.slice(-1)} · ${cur.slice(0,4)} · ${left} days left</small><b>${t[1]}</b><div class="bar" style="height:7px;margin:6px 0 3px;"><i style="width:${nx?Math.round((xp-t[0])/(nx[0]-t[0])*100):100}%"></i></div><small>${xp.toLocaleString()} XP${nx?` · ${(nx[0]-xp).toLocaleString()} to ${nx[1]}`:''}</small></div></div>`
+    +(past.length?`<div class="ssn-past">${past.map(k=>{const p=HERO_TIERS.filter(x=>o[k]>=x[0]).pop();return`<span>${hIc(p[2],p[3],'hex',22)} ${k} ${p[1]}</span>`;}).join('')}</div>`:'')
+    +(h.L>=75||h.P?`<div class="ssn-past">${h.P?`<span>${'★'.repeat(Math.min(10,h.P))} Prestige ${h.P}</span>`:''}${h.L>=75?`<button class="hq-claim" onclick="heroPrestige()">Prestige</button>`:''}</div>`:'');
+}
+
+// ── A year of XP, one square a day ──
+function heroHeatmap(h){
+  const by={};h.aw.forEach(a=>by[a.d]=(by[a.d]||0)+a.xp);
+  const vals=Object.values(by).filter(v=>v>0).sort((a,b)=>a-b),q=f=>vals[Math.floor(vals.length*f)]||1,lv=[q(.25),q(.5),q(.75)];
+  const tod=heroTod(),start=dAdd(heroWeekStart(tod),-52*7);let cells='',d=start,i=0;
+  for(;d<=tod;d=dAdd(d,1),i++){const v=by[d]||0,l=v<=0?0:v<=lv[0]?1:v<=lv[1]?2:v<=lv[2]?3:4;cells+=`<rect x="${Math.floor(i/7)*7}" y="${(i%7)*7}" width="6" height="6" rx="1.2" class="hm${l}"><title>${fmtDay(d)}: ${v} XP</title></rect>`;}
+  return`<svg viewBox="0 0 371 49" class="heat">${cells}</svg><div class="heat-k">Less <i class="hm0"></i><i class="hm1"></i><i class="hm2"></i><i class="hm3"></i><i class="hm4"></i> More · ${Object.keys(by).filter(k=>k>=start&&by[k]>0).length} active days this year</div>`;
+}
+
+// ── Journal: one line a night ──
+function heroJournalHtml(mini){
+  const tod=heroTod(),j=heroP.journal||{},t=j[tod]||'';
+  const back=[[7,'A week ago'],[30,'A month ago'],[365,'A year ago']].map(([n,l])=>j[dAdd(tod,-n)]?`<div class="jr-old"><small>${l} you wrote</small>“${esc(j[dAdd(tod,-n)])}”</div>`:'').join('');
+  return`<div class="jr"><input class="inp" id="jr-in${mini?'-m':''}" maxlength="200" placeholder="One line about today…" value="${esc(t)}"><button class="minibtn" onclick="heroJournalSave(${mini?1:0})">${t?'Update':'Save +10 XP'}</button></div>`
+    +(mini?'':back+Object.keys(j).filter(d=>d<tod).sort().reverse().slice(0,5).map(d=>`<div class="hl-g" style="padding:4px 0;"><span>${fmtDay(d)}: ${esc(j[d])}</span></div>`).join(''));
+}
+function heroJournalSave(mini){
+  const v=(document.getElementById('jr-in'+(mini?'-m':'')).value||'').trim().slice(0,200);heroP.journal=heroP.journal||{};
+  if(v)heroP.journal[heroTod()]=v;else delete heroP.journal[heroTod()];save();renderTaskList();renderHero();showToast(v?'📝 Saved':'Removed');
+}
+
+// ── Share your character card as a picture ──
+async function heroShare(){
+  const h=heroState(),c=document.createElement('canvas');c.width=1080;c.height=1350;const x=c.getContext('2d');
+  const g=x.createLinearGradient(0,0,1080,1350);g.addColorStop(0,'#1E1B4B');g.addColorStop(.6,'#4C1D95');g.addColorStop(1,'#7C2D12');x.fillStyle=g;x.fillRect(0,0,1080,1350);
+  const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(heroRankIc(h.L,260,true));
+  await new Promise(r=>{img.onload=r;img.onerror=r;});try{x.drawImage(img,410,60,260,260);}catch(e){}
+  x.textAlign='center';x.fillStyle='#fff';x.font='800 80px system-ui,sans-serif';x.fillText('RAYAN',540,400);
+  x.font='600 38px system-ui,sans-serif';x.fillStyle='#FCD34D';const t=heroTitle(heroAchievements(h));x.fillText(`${t?'「'+t+'」 ':''}${h.rank} ${h.cls}`,540,460);
+  x.font='800 120px system-ui,sans-serif';x.fillText(`LEVEL ${h.L}`,540,600);
+  const b=heroBar(h.xp,HERO_B);x.fillStyle='rgba(255,255,255,.18)';x.fillRect(140,640,800,22);x.fillStyle='#F59E0B';x.fillRect(140,640,8*b.pct,22);
+  x.font='500 30px system-ui,sans-serif';x.fillStyle='rgba(255,255,255,.8)';x.fillText(`${h.s.total.toLocaleString()} XP · ${heroBossWins()} boss${heroBossWins()===1?'':'es'} beaten · ${heroBestStreak()}-day best streak`,540,710);
+  x.textAlign='left';HERO_STATS.forEach((s,i)=>{const cx=i<7?110:580,cy=790+(i%7)*70,L=heroLvl(h.s.st[s.id],HERO_SB),sb=heroBar(h.s.st[s.id],HERO_SB);
+    x.fillStyle='#fff';x.font='600 30px system-ui,sans-serif';x.fillText(s.name,cx,cy);x.fillStyle='#FCD34D';x.textAlign='right';x.fillText('Lv '+L,cx+390,cy);x.textAlign='left';
+    x.fillStyle='rgba(255,255,255,.15)';x.fillRect(cx,cy+14,390,10);x.fillStyle={Body:'#EF4444',Mind:'#3B82F6',Spirit:'#A855F7',Life:'#22C55E'}[s.g];x.fillRect(cx,cy+14,3.9*sb.pct,10);});
+  x.textAlign='center';x.fillStyle='rgba(255,255,255,.55)';x.font='500 26px system-ui,sans-serif';x.fillText(`DayTrack · ${fmtDay(heroTod())}`,540,1310);
+  saveImage(c.toDataURL('image/png'),'rayan-level-'+h.L+'.png');
+}
+
+// Avatar frame grows with your level
+const heroFrame=h=>'fr'+(h.P?5:h.L>=50?4:h.L>=30?3:h.L>=15?2:h.L>=5?1:0);
+// One line under the character: rare event, combo, potion
+function heroExtrasLine(){
+  const tod=heroTod(),ev=heroEvent(tod),cl=heroComboLeft(),c=heroP.combo,pot=((heroP.used||{}).potion||[]).includes(tod),out=[];
+  if(ev)out.push(`<span class="hx-ev">${hIc(ev.gl,ev.col,'circle',18)} ${ev.name}: ${ev.what}</span>`);
+  if(cl&&c.n>=1)out.push(`<span class="hx-ev">⚡ Combo ×${c.n} · next task within ${cl} min for ×${c.n+1}</span>`);
+  if(pot)out.push('<span class="hx-ev">🧪 XP potion active</span>');
+  return out.length?`<div class="hx-line">${out.join('')}</div>`:'';
+}
+function heroPerksHtml(h){
+  const pts=heroPerkPts(h),has=new Set((heroP.perks||[]).map(p=>p.id));
+  return`<div class="hm-sub" style="margin-bottom:8px;">${pts>0?`<b>${pts} perk point${pts>1?'s':''} to spend!</b> `:''}You get a point every 5 levels.${pts<1?` Next at level ${(Math.floor(h.L/5)+1)*5}.`:''}</div><div class="perk-grid">`
+    +HERO_PERKS.map(([id,n,d,g,c])=>`<button class="perk${has.has(id)?' got':pts>0?' can':''}" ${!has.has(id)&&pts>0?`onclick="heroPickPerk('${id}')"`:''}>${hIc(g,has.has(id)?c:'dark','hex',36)}<b>${n}</b><small>${d}</small></button>`).join('')+'</div>';
+}
+function heroRecsHtml(h){
+  const r=heroRecords(h).filter(x=>x.v>0);
+  return r.length?`<div class="rec-grid">${r.map(x=>`<div class="rec">${hIc(x.gl,'gold','circle',30)}<div><b>${x.v}${x.u==='×'?'×':' '+x.u}</b><small>${esc(x.name)}</small></div></div>`).join('')}</div>`:'<div class="hm-sub">Your best days, streaks and reps show up here and get celebrated when you beat them.</div>';
+}
+function heroBagHtml(h){
+  const inv=heroInv();
+  return`<div class="bag">${Object.entries(HERO_ITEMS).map(([k,[n,d,g,c]])=>`<div class="bag-i">${hIc(g,inv[k]>0?c:'dark','hex',40)}<b>${n} ×${inv[k]||0}</b><small>${d}</small>${inv[k]>0?`<button class="minibtn" onclick="heroUse('${k}')">Use</button>`:''}</div>`).join('')}</div>
+    <div class="sl" style="display:flex;justify-content:space-between;align-items:center;">Shop<span class="coin">🪙 ${heroCoins(h).toLocaleString()} coins</span></div><div class="hm-sub" style="margin-bottom:6px;">You earn a coin for every 10 XP.</div>`
+    +Object.entries(HERO_ITEMS).map(([k,[n,,g,c,cost]])=>`<div class="shop">${hIc(g,c,'hex',26)}<span>${n}</span><button class="minibtn" onclick="heroBuy('item','${k}')">🪙 ${cost}</button></div>`).join('')
+    +heroShop().map(r=>`<div class="shop">${hIc('trophy','gold','circle',26)}<span>${esc(r.name)}</span><button class="minibtn" onclick="heroBuy('reward','${r.id}')">🪙 ${r.cost}</button><button class="hx-x" onclick="heroDelReward('${r.id}')">×</button></div>`).join('')
+    +`<button class="minibtn" style="margin-top:8px;width:100%;padding:10px;" onclick="heroAddReward()">+ Add a real-life reward</button>`
+    +((heroP.buys||[]).length?`<div class="hm-sub" style="margin-top:8px;">Last bought: ${esc(heroP.buys[heroP.buys.length-1].name)}, ${fmtDay(heroP.buys[heroP.buys.length-1].d)}</div>`:'');
+}
+function heroGearHtml(){
+  const eq=heroP.gear||{},ach=heroAchievements();
+  return`<div class="hm-sub" style="margin-bottom:8px;">Achievements unlock gear. Equip one piece per slot: +${Math.round(heroGearFx()*100)}% XP now.</div>`+Object.entries(HERO_SLOTS).map(([sl,nm])=>`<div class="hs-g">${nm}</div><div class="gear-row">${HERO_GEAR.filter(g=>g[1]===sl).map(g=>{const ok=heroGearOk(g),on=eq[sl]===g[0],a=ach.find(x=>x.id===g[6]);
+    return`<button class="gear${on?' on':''}${ok?'':' lock'}" ${ok?`onclick="heroEquip('${g[0]}')"`:''} title="${ok?'':'Unlocks with '+esc(a?a.name:'')}">${hIc(ok?g[3]:'lock',ok?g[4]:'dark','shield',34)}<b>${g[2]}</b><small>${ok?`+${Math.round(g[5]*100)}% XP${on?' · on':''}`:`🔒 ${esc(a?a.desc:'')}`}</small></button>`;}).join('')}</div>`).join('');
+}
+// Task sheet: hardcore and mini boss switches
+function heroFlagsInit(t){const a=document.getElementById('hero-flag-hard'),b=document.getElementById('hero-flag-boss');if(a)a.checked=!!(t&&t.hard);if(b)b.checked=!!(t&&t.boss);}
+function heroFlags(old){
+  const a=document.getElementById('hero-flag-hard'),b=document.getElementById('hero-flag-boss'),hard=!!(a&&a.checked);
+  return{hard,hardFrom:hard?(old&&old.hard&&old.hardFrom)||heroTod():null,boss:!!(b&&b.checked)};
+}
+if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',heroDefs);

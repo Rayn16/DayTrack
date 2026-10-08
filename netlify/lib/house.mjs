@@ -86,6 +86,19 @@ export async function parcelFor(today, completedDays, doneCount) {
   return p;
 }
 
+// Bosses he beat in DayTrack's level system: each one sends a trophy to the house (once)
+export async function trophyParcels(list) {
+  if (!Array.isArray(list) || !list.length) return;
+  const house = blobStore('daytrack-house');
+  let parcels = (await house.get('parcels', { type: 'json' })) || [];
+  const have = new Set(parcels.map(p => p.id)), add = list.slice(0, 20)
+    .filter(t => t && /^[bw]-\d{4}-\d{2}-\d{2}$/.test(t.id) && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && !have.has('t' + t.id))
+    .map(t => ({ id: 't' + t.id, date: t.date, size: 'big', kind: 'trophy', reason: String(t.reason || 'Rayan beat a boss').slice(0, 80), status: 'waiting' }));
+  if (!add.length) return;
+  const lim = dayAdd(add[0].date, -30);
+  await house.setJSON('parcels', [...parcels.filter(x => x.date >= lim), ...add]);
+}
+
 // Umm al-Qura Hijri date of a YYYY-MM-DD day: {y, m, d}
 const HIJRI = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' });
 export function hijri(date) {
