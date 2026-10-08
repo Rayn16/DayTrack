@@ -10,7 +10,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
-import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 
@@ -20,7 +19,7 @@ import org.json.JSONObject;
 // The daily surprise boss: at its time the phone rings like an alarm (louder than silent mode, again and again)
 // until he opens DayTrack or the fight's time runs out. The app gives the next few bosses: [{at, until, title, body}].
 public class BossAlarm extends BroadcastReceiver {
-    static final String CHANNEL = "boss";
+    static final String CHANNEL = "boss_battle"; // a channel keeps its first sound, so new sound = new channel
     static final int ID = 7;
 
     static void set(Context c, String json) {
@@ -69,8 +68,7 @@ public class BossAlarm extends BroadcastReceiver {
     }
 
     private static void ring(Context c, JSONObject b) {
-        Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-        if (sound == null) sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+        Uri sound = Uri.parse("android.resource://" + c.getPackageName() + "/" + R.raw.boss_battle); // battle drums, not the ringtone
         long[] buzz = {0, 900, 250, 900, 250, 900, 250, 1500};
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel ch = new NotificationChannel(CHANNEL, "Boss fights", NotificationManager.IMPORTANCE_HIGH);
@@ -80,6 +78,7 @@ public class BossAlarm extends BroadcastReceiver {
             ch.setVibrationPattern(buzz);
             ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             c.getSystemService(NotificationManager.class).createNotificationChannel(ch);
+            c.getSystemService(NotificationManager.class).deleteNotificationChannel("boss"); // the old one that used the ringtone
         }
         Intent open = new Intent(c, MainActivity.class).putExtra("boss", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent pi = PendingIntent.getActivity(c, ID, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

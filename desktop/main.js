@@ -92,7 +92,7 @@ app.whenReady().then(async () => {
     if (pathname === '/__dt/panel' && req.method === 'POST') { if (panel) panel.hide(); return Response.json({ok: true}); }
     const file = path.join(WEB, decodeURIComponent(pathname === '/' ? '/index.html' : pathname));
     if (!file.startsWith(WEB + path.sep) || !fs.existsSync(file)) return new Response('Not found', {status: 404});
-    const type = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png'}[path.extname(file)];
+    const type = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ogg': 'audio/ogg'}[path.extname(file)];
     return new Response(fs.readFileSync(file), {headers: {'Content-Type': type || 'application/octet-stream'}});
   });
 

@@ -297,7 +297,7 @@ function renderHeroMini(){
   const el=document.getElementById('hero-mini');if(!el)return;heroDefs();
   const b=heroBar(h.xp,HERO_B);
   const top=HERO_STATS.map(x=>({...x,L:heroLvl(h.s.st[x.id],HERO_SB)})).filter(x=>h.s.st[x.id]).sort((a,c)=>c.L-a.L||h.s.st[c.id]-h.s.st[a.id]).slice(0,4);
-  el.innerHTML=`<div class="hm-top"><div class="hm-av ${heroFrame(h)}">${esc(heroP.av)}</div><div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div>${heroRankIc(h.L,40)}</div>`
+  el.innerHTML=`<div class="hm-top"><div class="hm-av ${heroFrame(h)}">${heroAvHtml()}</div><div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div>${heroRankIc(h.L,40)}</div>`
     +(top.length?`<div class="hm-stats">${top.map(x=>`<span>${x.ic} ${x.name} <b>${x.L}</b></span>`).join('')}</div>`:'<div class="hm-sub" style="margin-top:8px;">Tick a task to earn your first XP.</div>')
     +heroBuffChips(toDateStr(new Date()))+heroExtrasLine();
   const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=heroBossCard(true)+`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d')
@@ -309,7 +309,7 @@ function renderHero(){
   const h=heroState(),b=heroBar(h.xp,HERO_B),tab=document.getElementById('tab-hero');if(!tab)return;heroDefs();
   tab.dataset.seg=heroSeg;renderHeroChip(h);
   document.getElementById('hero-card').innerHTML=`
-    <div class="hc-top"><button class="hc-av ${heroFrame(h)}" onclick="heroAvatar()" title="Change">${esc(heroP.av)}</button>
+    <div class="hc-top"><button class="hc-av ${heroFrame(h)}" onclick="heroAvatar()" title="Change">${heroAvHtml()}</button>
       <div style="flex:1;min-width:0;"><div class="hc-name">Rayan</div><div class="hc-cls">${heroTitle(heroAchievements(h))?`<b class="hc-title">「${esc(heroTitle(heroAchievements(h)))}」</b> `:''}${h.rank} ${h.cls}</div></div>
       <div class="hc-rk">${heroRankIc(h.L,58)}<div class="hc-lv"><small>LEVEL</small>${h.L}</div></div></div>
     <div class="bar hc-bar"><i style="width:${b.pct}%"></i></div>
@@ -355,9 +355,23 @@ function heroStat(id){
     <div class="sl">What trained it</div>${list.length?list.map(([k,v])=>`<div class="hl-g" style="padding:7px 0;border-bottom:1px solid var(--brd);"><span>${v.ic} ${esc(k)} <small style="color:var(--sub)">×${v.n}</small></span><b>+${v.xp}</b></div>`).join(''):`<div class="hm-sub">Nothing yet. Add a task with a word like "${{arms:'push-ups',chest:'push-ups',back:'pull-ups',core:'plank',legs:'squats',endurance:'run',intellect:'study',focus:'deep work',creativity:'draw',faith:'Quran',discipline:'clean room',vitality:'drink water',charisma:'call a friend',wealth:'budget'}[id]}" in its name, or pick ${x.name} under "Levels up" when you add one.</div>`}
     ${sk.length?`<div class="sl">Skills that train it</div><div class="hk-chips">${sk.map(s=>`<button class="gchip" onclick="heroOpenSkill('${s.id}')">${s.ic} ${esc(s.name)}</button>`).join('')}</div>`:''}${closeBtn}`);
 }
-async function heroAvatar(){
+// Character picture: a photo (cropped square, kept small so it syncs) or an emoji
+const heroAvHtml=()=>heroP.avImg?`<img class="av-img" src="${heroP.avImg}" alt="">`:esc(heroP.av);
+function heroAvatar(){
+  sheet(`<div style="text-align:center;"><div class="hc-av av-big">${heroAvHtml()}</div></div><div style="font-size:18px;font-weight:700;text-align:center;color:var(--txt);margin:8px 0 12px;">Your character picture</div>
+    <label class="hk-btn pri" style="display:block;text-align:center;margin-bottom:8px;">📷 Pick a photo<input type="file" accept="image/*" style="display:none" onchange="heroAvPhoto(this.files[0])"></label>
+    <button class="hk-btn" style="width:100%;margin-bottom:8px;" onclick="heroAvEmoji()">😀 Use an emoji</button>${heroP.avImg?'<button class="mi" style="color:#EF4444;justify-content:center;" onclick="heroP.avImg=null;save();closeOv(\'dt-ov\');renderHero();renderHeroMini();">🗑️ Remove the photo</button>':''}${closeBtn}`);
+}
+function heroAvPhoto(f){
+  if(!f)return;const img=new Image(),url=URL.createObjectURL(f);
+  img.onload=()=>{const c=document.createElement('canvas'),n=256,s=Math.min(img.width,img.height);c.width=c.height=n;
+    c.getContext('2d').drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,n,n);URL.revokeObjectURL(url);
+    heroP.avImg=c.toDataURL('image/jpeg',.85);save();closeOv('dt-ov');renderHero();renderHeroMini();showToast('📷 New character picture');};
+  img.onerror=()=>showToast('Couldn\'t open that picture');img.src=url;
+}
+async function heroAvEmoji(){
   const v=(await ask('Pick an emoji for your character','e.g. 🥷 🧙 🦸 🐺')||'').trim();if(!v)return;
-  heroP.av=[...v].slice(0,2).join('');save();renderHero();renderHeroMini();
+  heroP.av=[...v].slice(0,2).join('');heroP.avImg=null;save();renderHero();renderHeroMini();
 }
 
 // One skill's steps
@@ -553,7 +567,7 @@ function heroTree(h){
     labels+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" class="tl" text-anchor="${c>.3?'start':c<-.3?'end':'middle'}" onclick="heroOpenSkill('${s.id}')">${esc(s.name)} ${n}/${s.steps.length}</text>`;
   });
   const S=R0+7*G+150;
-  return`<svg viewBox="${-S} ${-S} ${2*S} ${2*S}" id="hero-tree-svg">${edges}${nodes}${labels}<g class="tc" onclick="heroSetSeg('stats')"><circle r="44"/><text y="-8" class="tc-av">${esc(heroP.av)}</text><text y="22" class="tc-lv">Lv ${h.L}</text></g></svg>`;
+  return`<svg viewBox="${-S} ${-S} ${2*S} ${2*S}" id="hero-tree-svg">${edges}${nodes}${labels}<g class="tc" onclick="heroSetSeg('stats')"><circle r="44"/>${heroP.avImg?`<clipPath id="tc-clip"><circle cy="-8" r="26"/></clipPath><image href="${heroP.avImg}" x="-26" y="-34" width="52" height="52" clip-path="url(#tc-clip)"/>`:`<text y="-8" class="tc-av">${esc(heroP.av)}</text>`}<text y="22" class="tc-lv">Lv ${h.L}</text></g></svg>`;
 }
 function renderHeroTree(h){
   const el=document.getElementById('hero-skills');if(!el)return;
@@ -919,13 +933,19 @@ function heroBossOpen(alarm){
 }
 // A siren from the app itself (the phone app also rings like an alarm)
 function heroAlarmOn(){
-  heroAlarmOff();const ctx=typeof gwenAudioCtx==='function'?gwenAudioCtx():null;if(navigator.vibrate)navigator.vibrate([500,200,500,200,500,200,800]);if(!ctx)return;
+  heroAlarmOff();if(navigator.vibrate)navigator.vibrate([500,200,500,200,500,200,800]);
+  const a=new Audio('boss.ogg');a.loop=true;a.volume=1;heroAlarm={a};
+  setTimeout(()=>{if(heroAlarm&&heroAlarm.a===a)heroAlarmOff();},60000);
+  document.addEventListener('pointerdown',heroAlarmOff,{once:true});
+  a.play().catch(()=>{if(heroAlarm&&heroAlarm.a===a){heroAlarm=null;heroSiren();}});
+}
+function heroSiren(){const ctx=typeof gwenAudioCtx==='function'?gwenAudioCtx():null;if(navigator.vibrate)navigator.vibrate([500,200,500,200,500,200,800]);if(!ctx)return;
   const o=ctx.createOscillator(),g=ctx.createGain();o.type='square';g.gain.value=0;o.connect(g);g.connect(ctx.destination);o.start();
   let on=0,n=0;const iv=setInterval(()=>{on^=1;n++;o.frequency.setValueAtTime(on?880:620,ctx.currentTime);g.gain.setTargetAtTime(.12,ctx.currentTime,.01);if(n>60)heroAlarmOff();},350);
   heroAlarm={o,g,iv};
   document.addEventListener('pointerdown',heroAlarmOff,{once:true});
 }
-function heroAlarmOff(){if(!heroAlarm)return;clearInterval(heroAlarm.iv);try{heroAlarm.o.stop();}catch(e){}heroAlarm=null;if(navigator.vibrate)navigator.vibrate(0);}
+function heroAlarmOff(){if(!heroAlarm)return;if(heroAlarm.a)heroAlarm.a.pause();clearInterval(heroAlarm.iv);try{heroAlarm.o&&heroAlarm.o.stop();}catch(e){}heroAlarm=null;if(navigator.vibrate)navigator.vibrate(0);}
 function heroBossClose(){heroAlarmOff();clearInterval(heroBossOpen.t);const el=document.getElementById('hero-boss');if(el)el.classList.remove('on');}
 function heroBossWin(){
   const b=heroDBoss(heroTod());if(!b||b.state!=='on')return heroBossClose();
@@ -946,7 +966,7 @@ async function heroBossSettings(){
     <label class="hx-row"><input type="checkbox" id="hb-on" ${c.on?'checked':''}> Bosses on</label>
     <div class="hx-row">Between <input class="inp" type="time" id="hb-from" value="${c.from}" style="width:auto;"> and <input class="inp" type="time" id="hb-to" value="${c.to}" style="width:auto;"></div>
     <div class="hm-sub" style="margin:6px 0 10px;">On the phone it rings like an alarm, even on silent, until you open DayTrack. Do Not Disturb can still hold it back.</div>
-    <button class="hk-btn" style="width:100%;margin-bottom:8px;" onclick="heroBossTestRing()">📳 Test the alarm</button>
+    <div style="display:flex;gap:8px;margin-bottom:8px;"><button class="hk-btn" onclick="heroAlarm?heroAlarmOff():heroAlarmOn()">🥁 Hear the music</button><button class="hk-btn" onclick="heroBossTestRing()">📳 Test the alarm</button></div>
     <button class="hk-btn pri" style="width:100%;" onclick="heroBossSave()">Save</button>${closeBtn}`);
 }
 function heroBossSave(){
