@@ -74,14 +74,14 @@ const HERO_SKILLS=[
     ['Hanging leg raises','3 sets of 10','Straight legs up to hip height or higher.'],
     ['L-sit','Hold 10 seconds','On parallel bars, two chairs or the floor, press up and hold your legs straight out.'],
     ['Dragon flag','3 sets of 3','Lying on a bench, hold behind your head, lift your whole straight body and lower it slowly.']]},
-  {id:'handstand',cat:'Calisthenics',name:'Handstand path',ic:'🤸',st:{arms:1,core:.5,focus:.3},days:[0,2,4],steps:[
+  {id:'handstand',cat:'Calisthenics',name:'Handstand path',ic:'🤸',st:{arms:1,core:.5,focus:.3},days:[0,2,4],req:['pushup',4],steps:[
     ['Pike hold','Hold 30 seconds','Hands on the floor, hips high, weight leaning into your shoulders.'],
     ['Wall walk','3 reps','Feet on the wall, walk your hands in until your chest is close to it, then walk back out.'],
     ['Chest-to-wall handstand','Hold 45 seconds','Belly facing the wall, body straight, push the floor away.'],
     ['Kick-up to the wall','10 soft kick-ups','Back to the wall, kick up gently with one leg and let the other follow.'],
     ['Freestanding handstand','Hold 10 seconds','Balance with your fingertips. Learn to bail out by stepping or cartwheeling to the side first.'],
     ['Handstand push-up (wall)','3 sets of 3','Lower your head to the floor between your hands and press back up.']]},
-  {id:'dips',cat:'Calisthenics',name:'Dip path',ic:'🛡️',st:{chest:1,arms:1},days:[0,2,4],steps:[
+  {id:'dips',cat:'Calisthenics',name:'Dip path',ic:'🛡️',st:{chest:1,arms:1},days:[0,2,4],req:['pushup',4],steps:[
     ['Bench dips','3 sets of 12','Hands on a chair behind you, bend your elbows to 90° and push back up.'],
     ['Support hold','Hold 30 seconds','On parallel bars or two sturdy chairs, arms locked, shoulders down.'],
     ['Negative dips','3 sets of 5, 5 seconds down','Start at the top and lower yourself slowly.'],
@@ -119,7 +119,7 @@ const HERO_SKILLS=[
     ['Seven days','All five on time for a week','If you miss one, just restart the count.'],
     ['Fajr streak','Fajr on time for 14 days','Sleep earlier the night before; it\'s the hardest one.'],
     ['Thirty days','All five on time for a month','By now it\'s a habit, not an effort.']]},
-  {id:'quran',cat:'Life skills',name:'Quran memorization',ic:'📖',st:{faith:1,focus:.3},days:[],steps:[
+  {id:'quran',cat:'Life skills',name:'Quran memorization',ic:'📖',st:{faith:1,focus:.3},days:[],req:['prayer',1],steps:[
     ['The last ten surahs','From Al-Fil to An-Nas','A few verses a day: read, repeat ten times, recite them in your prayers.'],
     ['Half of Juz Amma','Up to Al-A\'la','Review old surahs every day before adding new ones.'],
     ['Juz Amma','All of juz 30','Recite to someone who can correct you.'],
@@ -148,7 +148,7 @@ const HERO_SKILLS=[
     ['50 words a minute','With 95% accuracy','Accuracy first, speed follows.'],
     ['70 words a minute','With 95% accuracy','Practise real sentences, not just words.'],
     ['90 words a minute','With 95% accuracy','You now type faster than most people think.']]},
-  {id:'code',cat:'Life skills',name:'Coding',ic:'💻',st:{intellect:1,creativity:.3,wealth:.5},days:[],steps:[
+  {id:'code',cat:'Life skills',name:'Coding',ic:'💻',st:{intellect:1,creativity:.3,wealth:.5},days:[],req:['focus',1],steps:[
     ['Python basics','Variables, loops and functions','Any free beginner course. Type every example yourself.'],
     ['A small program','A calculator or quiz game','Finishing something small teaches more than another tutorial.'],
     ['Git and GitHub','Push a project to GitHub','Learn commit, push and pull.'],
@@ -164,7 +164,7 @@ const heroSkills=()=>HERO_SKILLS.concat((heroP.custom||[]).map(c=>({...c,cat:'My
 const heroSkill=id=>heroSkills().find(s=>s.id===id);
 
 // Saved per device and synced: XP kept from deleted tasks, skill progress, own skills, avatar
-let heroP={bank:[],skills:{},custom:[],av:'🧑'};
+let heroP={bank:[],skills:{},custom:[],av:'🧑',q:{},claims:{}};
 function heroLoad(){try{heroP={...heroP,...JSON.parse(localStorage.getItem('dt_player')||'{}')};}catch(e){}}
 function heroWrite(){try{localStorage.setItem('dt_player',JSON.stringify(heroP));}catch(e){}}
 
@@ -181,20 +181,22 @@ function taskStats(t){
 function taskXP(t){return 20+(t.priority==='high'?10:t.priority==='medium'?5:0)+(t.count?Math.min(30,Math.round(t.count.target/2)):0);}
 const sx=(xp,st)=>Object.fromEntries(Object.entries(st).map(([k,w])=>[k,Math.round(xp*w)]));
 const tIcon=t=>t.iconType==='image'?'✅':t.icon||'✅';
-// Every XP award, oldest first: {d: date, xp, sx: {stat: xp}, what, ic}
-function heroTaskAwards(t){
-  const out=[],st=taskStats(t),xp=taskXP(t),ic=tIcon(t),add=(d,x,what)=>d&&x>0&&out.push({d,xp:x,sx:sx(x,st),what,ic});
-  t.done.forEach(d=>add(d,xp,t.name));
-  if(t.count)Object.entries(t.counts||{}).forEach(([d,n])=>{if(!t.done.includes(d))add(d,Math.round(xp*n/t.count.target),`${t.name} (${n}/${t.count.target})`);});
-  (t.subtasks||[]).forEach(s=>(s.done||[]).forEach(d=>add(d,5,s.name)));
+// Every XP award, oldest first: {d: date, xp, sx: {stat: xp}, what, ic, k: kind}. Task XP is scaled by that day's buffs (m).
+function heroTaskAwards(t,m=()=>1){
+  const out=[],st=taskStats(t),base=taskXP(t),ic=tIcon(t),add=(d,x,what,k)=>{x=Math.round(x*m(d));if(d&&x>0)out.push({d,xp:x,sx:sx(x,st),what,ic,k});};
+  t.done.forEach(d=>add(d,base,t.name,'task'));
+  if(t.count)Object.entries(t.counts||{}).forEach(([d,n])=>{if(!t.done.includes(d))add(d,base*n/t.count.target,`${t.name} (${n}/${t.count.target})`,'count');});
+  (t.subtasks||[]).forEach(s=>(s.done||[]).forEach(d=>add(d,5,s.name,'sub')));
   return out;
 }
 function heroAwards(){
-  const out=tasks.flatMap(heroTaskAwards),add=(d,xp,st,what,ic)=>d&&xp>0&&out.push({d,xp,sx:sx(xp,st),what,ic});
-  completedDays.forEach(d=>add(d,30,{discipline:1},'Finished every task','🏆'));
-  goals.forEach(g=>{const st={...heroDetect(g.name),discipline:.5};g.steps.forEach(s=>add(s.done,25,st,s.name,'🎯'));});
-  savedSessions.forEach(s=>add(sessDate(s),Math.min(120,Math.round(s.total/120000)),{...heroDetect(s.name),focus:1},s.name,'⏱️'));
-  Object.entries(heroP.skills||{}).forEach(([id,p])=>{const sk=heroSkill(id);if(sk)(p.at||[]).forEach((d,i)=>sk.steps[i]&&add(d,60*(i+1),sk.st,stepName(sk,i),sk.ic));});
+  const mm={},m=d=>mm[d]??=heroMult(d);
+  const out=tasks.flatMap(t=>heroTaskAwards(t,m)),add=(d,xp,st,what,ic,k,x)=>d&&xp>0&&out.push({d,xp,sx:sx(xp,st),what,ic,k,...x});
+  completedDays.forEach(d=>add(d,30,{discipline:1},'Finished every task','🏆','day'));
+  goals.forEach(g=>{const st={...heroDetect(g.name),discipline:.5};g.steps.forEach(s=>add(s.done,25,st,s.name,'🎯','goal'));});
+  savedSessions.forEach(s=>add(sessDate(s),Math.min(120,Math.round(s.total/120000)),{...heroDetect(s.name),focus:1},s.name,'⏱️','focus',{min:Math.round(s.total/60000)}));
+  Object.entries(heroP.skills||{}).forEach(([id,p])=>{const sk=heroSkill(id);if(sk)(p.at||[]).forEach((d,i)=>sk.steps[i]&&add(d,60*(i+1),sk.st,stepName(sk,i),sk.ic,'skill'));});
+  Object.entries(heroP.claims||{}).forEach(([key,c])=>add(c.d,c.xp,c.st||{discipline:1},c.what,c.ic||'🎁','quest'));
   (heroP.bank||[]).forEach(b=>out.push(b));
   return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
 }
@@ -230,17 +232,18 @@ function heroLevelUps(aw){
 // ── After every save: show what just went up ──
 let heroLast=null;
 function heroTick(silent){
+  heroAchCheck(silent);
   const s=heroSum(heroAwards()),prev=heroLast;heroLast=s;
   if(silent||!prev||s.total<=prev.total)return;
   const gains=HERO_STATS.filter(x=>s.st[x.id]>prev.st[x.id]).map(x=>({...x,add:s.st[x.id]-prev.st[x.id],L0:heroLvl(prev.st[x.id],HERO_SB),L:heroLvl(s.st[x.id],HERO_SB)})).sort((a,b)=>b.add-a.add);
   const L0=heroLvl(prev.total,HERO_B),L=heroLvl(s.total,HERO_B);
-  heroPop(s.total-prev.total,gains);
+  heroPop(s.total-prev.total,gains,heroMult(toDateStr(new Date())));
   const ups=gains.filter(g=>g.L>g.L0);
   if(L>L0||ups.length)setTimeout(()=>heroLevelUp(L>L0?L:0,ups),900);
 }
-function heroPop(xp,gains){
+function heroPop(xp,gains,m=1){
   const el=document.getElementById('hero-pop');if(!el)return;
-  el.innerHTML=`<b>+${xp} XP</b>${gains.slice(0,4).map(g=>`<span>${g.ic} ${g.name} +${g.add}</span>`).join('')}`;
+  el.innerHTML=`<b>+${xp} XP</b>${m!==1?`<span>${m>1?'⚡':'🔻'} ×${m.toFixed(2).replace(/0$/,'')}</span>`:''}${gains.slice(0,4).map(g=>`<span>${g.ic} ${g.name} +${g.add}</span>`).join('')}`;
   el.classList.remove('on');void el.offsetWidth;el.classList.add('on');
   clearTimeout(heroPop.t);heroPop.t=setTimeout(()=>el.classList.remove('on'),2800);
 }
@@ -253,7 +256,7 @@ function heroLevelUp(L,ups){
 }
 // Deleting a task keeps the XP it earned
 function heroBank(t){
-  const aw=heroTaskAwards(t);if(!aw.length)return;
+  const aw=heroTaskAwards(t,heroMult);if(!aw.length)return;
   const sum=heroSum(aw);
   heroP.bank=(heroP.bank||[]).concat({d:toDateStr(new Date()),xp:sum.total,sx:Object.fromEntries(Object.entries(sum.st).filter(([,v])=>v)),what:`${t.name} (deleted, XP kept)`,ic:tIcon(t)});
 }
@@ -263,7 +266,8 @@ function heroLine(){
   const h=heroState();if(!h.s.total)return'';
   const best=HERO_STATS.map(x=>[x,heroLvl(h.s.st[x.id],HERO_SB)]).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([x,l])=>`${x.name} ${l}`).join(', ');
   const learning=Object.entries(heroP.skills||{}).filter(([,p])=>p.on).map(([id,p])=>{const sk=heroSkill(id);return sk&&sk.steps[(p.at||[]).length]?`${sk.name} (next: ${sk.steps[(p.at||[]).length][0]})`:null;}).filter(Boolean);
-  return`DayTrack turns his life into a game: he is Level ${h.L} (${h.rank} ${h.cls}), ${h.today} XP today. Strongest stats: ${best}.${learning.length?` Skills he's learning: ${learning.join('; ')}.`:''} Cheer his level-ups.`;
+  const bf=heroBuffs(toDateStr(new Date())).map(b=>`${b.name} (${b.why})`),qs=heroQuests(h).d.filter(q=>!q.claimed).map(q=>q.text);
+  return`DayTrack turns his life into a game: he is Level ${h.L} (${h.rank} ${h.cls}), ${h.today} XP today. Strongest stats: ${best}.${learning.length?` Skills he's learning: ${learning.join('; ')}.`:''}${bf.length?` Today's buffs and debuffs: ${bf.join(', ')}.`:''}${qs.length?` Daily quests still open: ${qs.join('; ')}.`:''} Cheer his level-ups.`;
 }
 
 // ── UI ──
@@ -279,28 +283,34 @@ function renderHeroMini(){
   const b=heroBar(h.s.total,HERO_B);
   const top=HERO_STATS.map(x=>({...x,L:heroLvl(h.s.st[x.id],HERO_SB)})).filter(x=>h.s.st[x.id]).sort((a,c)=>c.L-a.L||h.s.st[c.id]-h.s.st[a.id]).slice(0,4);
   el.innerHTML=`<div class="hm-top"><div class="hm-av">${esc(heroP.av)}</div><div style="flex:1;min-width:0;"><div class="hm-name">Lv ${h.L} · ${h.rank} ${h.cls}</div><div class="bar hm-bar"><i style="width:${b.pct}%"></i></div><div class="hm-sub">${b.left} XP to level ${h.L+1}${h.today?` · <b>+${h.today} today</b>`:''}</div></div><div style="color:var(--pri);font-size:20px;">›</div></div>`
-    +(top.length?`<div class="hm-stats">${top.map(x=>`<span>${x.ic} ${x.name} <b>${x.L}</b></span>`).join('')}</div>`:'<div class="hm-sub" style="margin-top:8px;">Tick a task to earn your first XP.</div>');
+    +(top.length?`<div class="hm-stats">${top.map(x=>`<span>${x.ic} ${x.name} <b>${x.L}</b></span>`).join('')}</div>`:'<div class="hm-sub" style="margin-top:8px;">Tick a task to earn your first XP.</div>')
+    +heroBuffChips(toDateStr(new Date()));
+  const qm=document.getElementById('hero-quests-mini');if(qm)qm.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div class="cl" style="margin:0;">⚔️ Daily quests</div><button class="minibtn" onclick="heroSetSeg('quests');switchTab('hero')">All quests</button></div>`+heroQuestRows(heroQuests(h).d,'d');
 }
 let heroSeg='stats';
-function heroSetSeg(s){heroSeg=s;document.getElementById('tab-hero').dataset.seg=s;document.querySelectorAll('#hero-seg button').forEach(b=>b.classList.toggle('on',b.dataset.s===s));}
+function heroSetSeg(s){heroSeg=s;document.getElementById('tab-hero').dataset.seg=s;if(s==='skills')setTimeout(heroTreeFit,0);document.querySelectorAll('#hero-seg button').forEach(b=>b.classList.toggle('on',b.dataset.s===s));}
 function renderHero(){
   const h=heroState(),b=heroBar(h.s.total,HERO_B),tab=document.getElementById('tab-hero');if(!tab)return;
   tab.dataset.seg=heroSeg;renderHeroChip(h);
   document.getElementById('hero-card').innerHTML=`
     <div class="hc-top"><button class="hc-av" onclick="heroAvatar()" title="Change">${esc(heroP.av)}</button>
-      <div style="flex:1;min-width:0;"><div class="hc-name">Rayan</div><div class="hc-cls">${h.rank} ${h.cls}</div></div>
+      <div style="flex:1;min-width:0;"><div class="hc-name">Rayan</div><div class="hc-cls">${heroTitle(heroAchievements(h))?`<b class="hc-title">「${esc(heroTitle(heroAchievements(h)))}」</b> `:''}${h.rank} ${h.cls}</div></div>
       <div class="hc-lv"><small>LEVEL</small>${h.L}</div></div>
     <div class="bar hc-bar"><i style="width:${b.pct}%"></i></div>
     <div class="hc-xp"><span>${h.s.total.toLocaleString()} XP</span><span>${b.left} to level ${h.L+1}</span></div>
     <div class="hc-today">${h.today?`+${h.today} XP today`:'No XP yet today'}</div>`;
+  document.getElementById('hero-card').insertAdjacentHTML('beforeend',heroBuffChips(toDateStr(new Date()),true));
   document.getElementById('hero-radar').innerHTML=heroRadar(h);
+  document.getElementById('hero-body').innerHTML=heroBody(h);
+  const Q=heroQuests(h),left=b=>{const ms=new Date(b+'T23:59:59')-new Date(),dd=Math.ceil(ms/864e5);return dd<=1?`resets in ${Math.max(1,Math.ceil(ms/36e5))} h`:`${dd} days left`;};
+  document.getElementById('hero-quests').innerHTML=[['d','☀️ Daily'],['w','📅 Weekly'],['m','🌙 Monthly']].map(([k,n])=>`<div class="hs-g hq-h"><span>${n}</span><small>${left(Q.p[k].b)}</small></div>`+(k==='w'?heroBoss(Q.w,Q.p.w):'')+heroQuestRows(Q[k],k)).join('');
   document.getElementById('hero-stats').innerHTML=Object.keys(HERO_GROUPS).map(g=>`<div class="hs-g">${g}</div>`+HERO_STATS.filter(x=>x.g===g).map(x=>{const sb=heroBar(h.s.st[x.id],HERO_SB);return`<div class="hs-row" onclick="heroStat('${x.id}')"><span class="hs-ic">${x.ic}</span><span class="hs-n">${x.name}</span><div class="bar"><i style="width:${sb.pct}%"></i></div><span class="hs-l">Lv ${sb.L}</span></div>`;}).join('')).join('');
   const ups=heroLevelUps(h.aw).slice(0,15),tod=toDateStr(new Date());
   const days=[...new Set(h.aw.map(a=>a.d))].sort().reverse().slice(0,7);
   document.getElementById('hero-log').innerHTML=
     (ups.length?`<div class="hs-g" style="margin-top:0;">Level-ups</div>`+ups.map(u=>`<div class="hl-item"><span class="hs-ic">${u.ic}</span><div style="flex:1;min-width:0;"><b>${u.name==='Level'?'You reached Level '+u.L:u.name+' reached Lv '+u.L}</b><div class="hm-sub">${u.d===tod?'Today':fmtDay(u.d)} · from ${esc(u.via)}</div></div></div>`).join(''):'')
     +(days.length?`<div class="hs-g">XP by day</div>`+days.map(d=>{const a=h.aw.filter(x=>x.d===d);return`<div class="hl-day"><div class="hl-dh"><b>${d===tod?'Today':fmtDay(d)}</b><span>+${a.reduce((n,x)=>n+x.xp,0)} XP</span></div>${a.map(x=>`<div class="hl-g"><span>${x.ic} ${esc(x.what)}</span><span>+${x.xp} ${Object.keys(x.sx).filter(k=>HERO_BY[k]).map(k=>HERO_BY[k].ic).join('')}</span></div>`).join('')}</div>`;}).join(''):'<div class="hm-sub">Your XP history shows up here once you tick a task.</div>');
-  renderHeroSkills();
+  renderHeroTree(h);renderHeroAch(h);
 }
 // Six-sided stat shape, like a game character sheet
 function heroRadar(h){
@@ -329,17 +339,7 @@ async function heroAvatar(){
   heroP.av=[...v].slice(0,2).join('');save();renderHero();renderHeroMini();
 }
 
-// Skills list and one skill's steps
-function renderHeroSkills(){
-  const el=document.getElementById('hero-skills');if(!el)return;
-  const all=heroSkills(),cats=[...new Set(all.map(s=>s.cat))];
-  const card=s=>{const p=heroP.skills[s.id]||{},n=(p.at||[]).length,t=s.steps.length,next=s.steps[n];
-    return`<button class="hk${p.on?' on':''}${n===t?' done':''}" onclick="heroOpenSkill('${s.id}')"><span class="hk-ic">${s.ic}</span><span class="hk-b"><b>${esc(s.name)}</b><small>${n===t?'🏆 Mastered':next?(p.on?'Now: ':'Start: ')+esc(next[0]):''}</small><span class="bar"><i style="width:${n/t*100}%"></i></span></span><span class="hk-n">${n}/${t}</span></button>`;};
-  const learning=all.filter(s=>(heroP.skills[s.id]||{}).on&&(heroP.skills[s.id].at||[]).length<s.steps.length);
-  el.innerHTML=(learning.length?`<div class="hs-g" style="margin-top:0;">Learning now</div><div class="hk-grid">${learning.map(card).join('')}</div>`:'')
-    +cats.map(c=>`<div class="hs-g">${c}</div><div class="hk-grid">${all.filter(s=>s.cat===c).map(card).join('')}</div>`).join('')
-    +`<button class="minibtn" style="margin-top:12px;width:100%;padding:10px;" onclick="heroNewSkill()">+ Add my own skill</button>`;
-}
+// One skill's steps
 function heroOpenSkill(id){
   const s=heroSkill(id);if(!s)return;const p=heroP.skills[id]||{},n=(p.at||[]).length,tod=toDateStr(new Date());
   const st=Object.keys(s.st).map(k=>HERO_BY[k]&&`${HERO_BY[k].ic} ${HERO_BY[k].name}`).filter(Boolean).join(' · ');
@@ -347,7 +347,7 @@ function heroOpenSkill(id){
     <div class="hm-sub" style="text-align:center;margin:2px 0 10px;">Trains ${st} · ${n}/${s.steps.length} mastered</div>
     ${s.steps.map((x,i)=>{const[nm,goal,how]=Array.isArray(x)?x:[x.name||x,'',''];const state=i<n?'done':i===n?'now':'lock';
       return`<div class="hk-step ${state}"><div class="hk-dot">${i<n?'✓':i+1}</div><div style="flex:1;min-width:0;"><b>${esc(nm)}</b>${goal?`<div class="hk-goal">🎯 ${esc(goal)}</div>`:''}${state==='now'&&how?`<div class="hk-how">${esc(how)}</div>`:''}${i<n&&p.at[i]?`<div class="hm-sub">Mastered ${p.at[i]===tod?'today':fmtDay(p.at[i])} · +${60*(i+1)} XP</div>`:state!=='done'?`<div class="hm-sub">+${60*(i+1)} XP</div>`:''}</div></div>`;}).join('')}
-    ${n<s.steps.length?`<div style="display:flex;gap:8px;margin-top:12px;">${p.on?'':`<button class="hk-btn" onclick="heroLearn('${id}')">▶ Start learning</button>`}<button class="hk-btn pri" onclick="heroMaster('${id}')">✓ I can do it</button></div>`:'<div style="text-align:center;font-size:15px;font-weight:700;color:var(--grntxt);margin-top:12px;">🏆 Skill mastered!</div>'}
+    ${heroLocked(s)?`<div class="hk-lock">🔒 Unlocks when you master <b>${esc(stepName(heroSkill(s.req[0]),s.req[1]-1))}</b> in ${esc(heroSkill(s.req[0]).name)}</div>`:n<s.steps.length?`<div style="display:flex;gap:8px;margin-top:12px;">${p.on?'':`<button class="hk-btn" onclick="heroLearn('${id}')">▶ Start learning</button>`}<button class="hk-btn pri" onclick="heroMaster('${id}')">✓ I can do it</button></div>`:'<div style="text-align:center;font-size:15px;font-weight:700;color:var(--grntxt);margin-top:12px;">🏆 Skill mastered!</div>'}
     ${n<s.steps.length&&typeof gwenCfg!=='undefined'&&gwenCfg.key?`<button class="hk-btn" style="width:100%;margin-top:8px;" onclick="heroAskGwen('${id}')">💜 Ask Gwen to coach me</button>`:''}
     ${n?`<button class="mi" style="color:var(--sub);justify-content:center;" onclick="heroUndo('${id}')">↺ Undo last step</button>`:''}
     ${s.custom?`<button class="mi" style="color:#EF4444;justify-content:center;" onclick="heroDelSkill('${id}')">🗑️ Delete this skill</button>`:''}${closeBtn}`);
@@ -364,7 +364,7 @@ function heroLearn(id){
 }
 function heroMaster(id){
   const s=heroSkill(id),p=heroP.skills[id]=heroP.skills[id]||{at:[]};p.at=p.at||[];
-  if(p.at.length>=s.steps.length)return;
+  if(p.at.length>=s.steps.length||heroLocked(s))return;
   p.at.push(toDateStr(new Date()));
   const n=p.at.length,t=tasks.find(x=>x.skill===id);
   if(t&&n<s.steps.length){t.name=`${stepName(s,n)} practice`;t.notes=Array.isArray(s.steps[n])?s.steps[n][1]:'';} // the practice task moves on to the next step
@@ -403,4 +403,210 @@ function heroPickRender(){
 function heroPickTog(id){
   const on=heroPick||Object.keys(taskStats({name:document.getElementById('new-name').value,count:{unit:document.getElementById('cnt-unit').value}}));
   heroPick=on.includes(id)?on.filter(x=>x!==id):on.concat(id);if(!heroPick.length)heroPick=null;heroPickRender();
+}
+
+// ── Buffs and debuffs ──
+// Worked out for each day from the days before it plus that day's sleep and mood, so XP already earned never shifts later.
+const dAdd=(d,n)=>{const x=new Date(d+'T12:00:00');x.setDate(x.getDate()+n);return toDateStr(x);};
+function heroBuffs(d){
+  const out=[],cd=new Set(completedDays),y=dAdd(d,-1),fx=(ic,name,f,why)=>out.push({ic,name,fx:f,why,bad:f<0});
+  let st=0;for(let x=y;cd.has(x)&&st<400;x=dAdd(x,-1))st++;
+  if(st>=7)fx('🔥','Blazing',.2,`${st}-day streak`);else if(st>=3)fx('🔥','On fire',.1,`${st}-day streak`);
+  else if(!cd.has(y)&&cd.has(dAdd(y,-1))&&cd.has(dAdd(y,-2))&&cd.has(dAdd(y,-3)))fx('💔','Streak broken',-.05,'Yesterday wasn\'t finished. Finish today to start again');
+  const sl=sleepLog[d];
+  if(sl&&typeof sleepHours==='function'){const h=sleepHours(sl);
+    if(h>=7)fx('😴','Well rested',.1,`Slept ${h.toFixed(1)} h`);else if(h<6)fx('🥱','Tired',-.1,`Only ${h.toFixed(1)} h of sleep`);
+    if(String(sl.wake).padStart(5,'0')<'07:00')fx('🌅','Early bird',.05,`Up at ${sl.wake}`);}
+  const md=moods[d];if(md&&md<=2)fx('🦁','Brave',.1,'Getting things done on a hard day');else if(md>=4)fx('✨','Good vibes',.05,'Feeling good today');
+  const od=tasks.filter(t=>!t.recurring&&t.date&&t.date<d&&!(t.done[0]&&t.done[0]<=d)).length;
+  if(od)fx('⏳','Overdue',-Math.min(.15,.05*od),`${od} task${od>1?'s':''} past ${od>1?'their':'its'} day`);
+  if(Object.entries(heroP.claims||{}).some(([k,c])=>k[0]==='w'&&c.d<d&&c.d>=dAdd(d,-3)))fx('⚡','Quest momentum',.15,'You finished a weekly quest');
+  return out;
+}
+const heroMult=d=>Math.max(.5,1+heroBuffs(d).reduce((n,b)=>n+b.fx,0));
+// Stats you trained before but not this week (a reminder, no XP lost)
+function heroRusty(aw){
+  const last={},lim=dAdd(toDateStr(new Date()),-7);aw.forEach(a=>{for(const k in a.sx)if(a.sx[k]>=5)last[k]=a.d;});
+  return HERO_STATS.filter(x=>last[x.id]&&last[x.id]<lim).map(x=>({ic:'🕸️',name:`Rusty ${x.name}`,fx:0,bad:true,why:`No ${x.name} training since ${fmtDay(last[x.id])}. Train it to clear this`}));
+}
+function heroBuffChips(d,all){
+  const b=heroBuffs(d).concat(all?heroRusty(heroAwards()):[]);if(!b.length)return all?'<div class="hb-row"><span class="hb none">No buffs yet today. Sleep 7 h, keep a streak or log your mood</span></div>':'';
+  return`<div class="hb-row">${b.map(x=>`<button class="hb${x.bad?' bad':''}" data-w="${esc(x.ic+' '+x.name+': '+x.why)}" onclick="event.stopPropagation();showToast(this.dataset.w)">${x.ic} ${x.name}${x.fx?` <b>${x.fx>0?'+':''}${Math.round(x.fx*100)}%</b>`:''}</button>`).join('')}</div>`;
+}
+
+// ── Quests: daily, weekly (Sunday to Saturday) and monthly, picked once per period and kept in heroP.q ──
+const QUEST_XP={d:40,w:150,m:500};
+function heroPeriods(){
+  const now=new Date(),tod=toDateStr(now),w=new Date(now);w.setDate(w.getDate()-w.getDay());
+  const wa=toDateStr(w),ma=tod.slice(0,8)+'01';
+  return{d:{id:'d'+tod,a:tod,b:tod},w:{id:'w'+wa,a:wa,b:dAdd(wa,6)},m:{id:'m'+ma,a:ma,b:toDateStr(new Date(now.getFullYear(),now.getMonth()+1,0))}};
+}
+function heroRng(seed){let h=2166136261;for(const c of seed)h=Math.imul(h^c.charCodeAt(0),16777619);return()=>{h=Math.imul(h^h>>>15,2246822507)^Math.imul(h^h>>>13,3266489909);return((h^=h>>>16)>>>0)/4294967296;};}
+function heroMakeQuests(k,p,h){
+  const r=heroRng(p.id),pick=a=>a[Math.floor(r()*a.length)],L=h.L;
+  const trained=HERO_STATS.filter(x=>h.s.st[x.id]>0).sort((a,b)=>h.s.st[a.id]-h.s.st[b.id]);
+  const st=(trained.length?pick(trained.slice(0,4)):pick(HERO_STATS)).id; // one of your weaker stats
+  const dow=new Date(p.a+'T12:00:00').getDay(),today=tasks.filter(t=>isTodayTask(t,p.a,dow)).length;
+  if(k==='d')return[{t:'tasks',n:Math.max(1,Math.min(5,today||3))},{t:'stat',stat:st,n:20+L*2},pick([{t:'perfect',n:1},{t:'mood',n:1},{t:'focus',n:25},{t:'xp',n:60+L*10}])];
+  if(k==='w')return[{t:'xp',n:400+L*40},{t:'perfect',n:3},pick([{t:'skill',n:1},{t:'goal',n:2},{t:'focus',n:120},{t:'sleep',n:5}]),{t:'stat',stat:st,n:120+L*10}];
+  return[{t:'xp',n:2000+L*150},{t:'perfect',n:12},pick([{t:'skill',n:3},{t:'goal',n:6},{t:'focus',n:600}]),{t:'stat',stat:st,n:Math.max(100,heroAt(heroLvl(h.s.st[st],HERO_SB)+1,HERO_SB)-h.s.st[st])}];
+}
+function heroQText(q){
+  const s=q.n>1?'s':'',x=HERO_BY[q.stat];
+  return{tasks:`Complete ${q.n} task${s}`,stat:x&&`Earn ${q.n} ${x.ic} ${x.name} XP`,xp:`Earn ${q.n} XP`,perfect:q.n>1?`Finish every task on ${q.n} days`:'Finish every task today',
+    mood:'Log how you feel today',focus:`Focus ${q.n} minutes with the Timer`,skill:`Master ${q.n} skill step${s}`,goal:`Complete ${q.n} goal step${s}`,sleep:`Log your sleep ${q.n} nights`,gwen:q.text}[q.t]||'';
+}
+function heroQProg(q,p,aw){
+  const inP=aw.filter(a=>a.d>=p.a&&a.d<=p.b&&a.k!=='quest'),cnt=k=>inP.filter(a=>a.k===k).length,inRange=o=>Object.keys(o||{}).filter(d=>d>=p.a&&d<=p.b).length;
+  switch(q.t){
+    case'tasks':return cnt('task');case'perfect':return cnt('day');case'skill':return cnt('skill');case'goal':return cnt('goal');
+    case'xp':return inP.reduce((n,a)=>n+a.xp,0);case'stat':return inP.reduce((n,a)=>n+(a.sx[q.stat]||0),0);
+    case'focus':return inP.reduce((n,a)=>n+(a.min||0),0);case'mood':return inRange(moods);case'sleep':return inRange(sleepLog);
+    case'gwen':return q.done?1:0;
+  }return 0;
+}
+// Quests for now, with progress: {d:[], w:[], m:[], p: periods}
+function heroQuests(h=heroState()){
+  const P=heroPeriods(),out={p:P};heroP.q=heroP.q||{};
+  for(const k of['d','w','m']){
+    const p=P[k];if(!heroP.q[p.id])heroP.q[p.id]=heroMakeQuests(k,p,h);
+    const list=heroP.q[p.id].map((q,i)=>({...q,key:`${p.id}:${i}`}));
+    // Gwen's daily quest (from her house) joins the daily ones
+    if(k==='d'&&typeof quest!=='undefined'&&quest&&quest.date===p.a){const g=typeof questGo==='function'?questGo(quest):{};list.push({t:'gwen',n:1,text:`💜 Gwen's quest${g.where?' ('+g.where+')':''}: ${quest.text}`,done:quest.done,go:g.go,key:`${p.id}:gwen`,st:{charisma:1}});}
+    out[k]=list.map(q=>{const c=Math.min(q.n,heroQProg(q,p,h.aw));return{...q,text:heroQText(q),prog:c,ready:c>=q.n,claimed:!!(heroP.claims||{})[q.key],xp:QUEST_XP[k]};});
+  }
+  for(const id of Object.keys(heroP.q))if(![P.d.id,P.w.id,P.m.id].includes(id))delete heroP.q[id];
+  return out;
+}
+function heroQuestRows(list,k){
+  const all=list.length&&list.every(q=>q.claimed),chest=`${heroPeriods()[k].id}:chest`,got=(heroP.claims||{})[chest];
+  return list.map(q=>`<div class="hq${q.claimed?' got':''}"${q.go&&!q.ready?` onclick="${q.go}" style="cursor:pointer;"`:''}><div style="flex:1;min-width:0;"><div class="hq-t">${esc(q.text)}</div><div class="hq-b"><span class="bar"><i style="width:${q.prog/q.n*100}%"></i></span><small>${q.prog}/${q.n}</small></div></div>`
+    +(q.claimed?'<span class="hq-ok">✓</span>':q.ready?`<button class="hq-claim" onclick="event.stopPropagation();heroClaim('${q.key}','${k}')">Claim +${q.xp}</button>`:`<span class="hq-xp">+${q.xp} XP</span>`)+'</div>').join('')
+    +(all&&k==='d'?got?'<div class="hq-chest done">🎁 Daily chest opened</div>':`<button class="hq-chest" onclick="event.stopPropagation();heroClaim('${chest}','d')">🎁 All done! Open the daily chest (+60 XP)</button>`:'');
+}
+function heroClaim(key,k){
+  heroP.claims=heroP.claims||{};if(heroP.claims[key])return;
+  const h=heroState(),Q=heroQuests(h),q=key.endsWith(':chest')?{text:'Daily chest',ready:Q.d.every(x=>x.claimed),xp:60}:Q[k].find(x=>x.key===key);
+  if(!q||!q.ready)return;
+  const st=q.stat?{[q.stat]:1}:q.st||{discipline:1};
+  heroP.claims[key]={d:toDateStr(new Date()),xp:q.xp,st,what:`Quest: ${q.text}`,ic:key.endsWith(':chest')?'🎁':k==='m'?'🌙':k==='w'?'📅':'⚔️'};
+  save();renderTaskList();if(document.body.dataset.tab==='hero')renderHero();
+  if(k==='w')setTimeout(()=>showToast('⚡ Quest momentum: +15% XP for the next 3 days'),2900);
+}
+
+// ── Skill tree: every skill is a branch out from you; arrows show which skill unlocks which ──
+const HERO_TREE=['core','pushup','dips','handstand','pullup','legs','run','sleep','cook','firstaid','money','focus','code','typing','lang','speak','prayer','quran'];
+const heroDone=id=>(((heroP.skills||{})[id]||{}).at||[]).length;
+const heroLocked=s=>!!(s.req&&heroDone(s.req[0])<s.req[1]);
+const HERO_CAT_COL={Calisthenics:'#F97316','Life skills':'#14B8A6','My skills':'#A855F7'};
+let heroZoom=0;
+function heroTree(h){
+  const all=heroSkills(),order=HERO_TREE.map(heroSkill).filter(Boolean).concat(all.filter(s=>!HERO_TREE.includes(s.id)));
+  const N=order.length,R0=96,G=46,pos={},pt=(k,i)=>{const a=-Math.PI/2+2*Math.PI*k/N,r=R0+i*G;return[r*Math.cos(a),r*Math.sin(a),a];};
+  order.forEach((s,k)=>s.steps.forEach((_,i)=>pos[s.id+i]=pt(k,i)));
+  let edges='',nodes='',labels='';
+  order.forEach((s,k)=>{
+    const col=HERO_CAT_COL[s.cat]||'#A855F7',n=heroDone(s.id),lock=heroLocked(s),on=((heroP.skills||{})[s.id]||{}).on;
+    const[x0,y0]=pos[s.id+0];
+    if(s.req&&pos[s.req[0]+(s.req[1]-1)]){const[rx,ry]=pos[s.req[0]+(s.req[1]-1)];edges+=`<path d="M${rx.toFixed(1)},${ry.toFixed(1)} Q${((rx+x0)*.35).toFixed(1)},${((ry+y0)*.35).toFixed(1)} ${x0.toFixed(1)},${y0.toFixed(1)}" class="te req${lock?'':' open'}" style="--c:${col}"/>`;}
+    else edges+=`<line x1="0" y1="0" x2="${x0.toFixed(1)}" y2="${y0.toFixed(1)}" class="te${n?' lit':''}" style="--c:${col}"/>`;
+    s.steps.forEach((_,i)=>{
+      const[x,y]=pos[s.id+i],st=i<n?'done':i===n&&!lock?'now':'lock';
+      if(i)edges+=`<line x1="${pos[s.id+(i-1)][0].toFixed(1)}" y1="${pos[s.id+(i-1)][1].toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="te${i<=n?' lit':''}" style="--c:${col}"/>`;
+      nodes+=`<g class="tn ${st}${on&&st==='now'?' on':''}" style="--c:${col}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})" onclick="heroOpenSkill('${s.id}')"><title>${esc(s.name)}: ${esc(stepName(s,i))}</title><circle r="${i?14:18}"/><text>${i?st==='done'?'✓':st==='lock'&&lock?'🔒':i+1:s.ic}</text></g>`;
+    });
+    const[lx,ly,a]=pt(k,s.steps.length-1),c=Math.cos(a),r=R0+(s.steps.length-1)*G+26,tx=r*c,ty=r*Math.sin(a);
+    labels+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" class="tl" text-anchor="${c>.3?'start':c<-.3?'end':'middle'}" onclick="heroOpenSkill('${s.id}')">${s.ic} ${esc(s.name)} ${n}/${s.steps.length}</text>`;
+  });
+  const S=R0+7*G+150;
+  return`<svg viewBox="${-S} ${-S} ${2*S} ${2*S}" id="hero-tree-svg">${edges}${nodes}${labels}<g class="tc" onclick="heroSetSeg('stats')"><circle r="44"/><text y="-8" class="tc-av">${esc(heroP.av)}</text><text y="22" class="tc-lv">Lv ${h.L}</text></g></svg>`;
+}
+function renderHeroTree(h){
+  const el=document.getElementById('hero-skills');if(!el)return;
+  const learning=heroSkills().filter(s=>((heroP.skills||{})[s.id]||{}).on&&heroDone(s.id)<s.steps.length);
+  el.innerHTML=(learning.length?`<div class="hk-chips" style="margin-bottom:8px;">${learning.map(s=>`<button class="gchip" onclick="heroOpenSkill('${s.id}')">${s.ic} ${esc(stepName(s,heroDone(s.id)))}</button>`).join('')}</div>`:'')
+    +`<div class="tree-wrap"><div id="hero-tree">${heroTree(h)}</div><div class="tree-zoom"><button onclick="heroTreeZoom(1.25)">+</button><button onclick="heroTreeZoom(.8)">−</button><button onclick="heroTreeFit(true)">⤢</button></div></div>`
+    +`<div class="tree-key"><span><i style="background:#F97316"></i>Calisthenics</span><span><i style="background:#14B8A6"></i>Life skills</span><span><i class="k-now"></i>Next step</span><span>🔒 Locked</span></div>`
+    +`<button class="minibtn" style="margin-top:10px;width:100%;padding:10px;" onclick="heroNewSkill()">+ Add my own skill</button>`;
+  heroTreeFit();
+}
+function heroTreeFit(reset){
+  const box=document.getElementById('hero-tree'),svg=document.getElementById('hero-tree-svg');if(!box||!svg||!box.clientWidth)return;
+  if(reset||!heroZoom)heroZoom=Math.max(box.clientWidth/1300,.8);
+  const w=Math.round(1300*heroZoom);svg.style.width=svg.style.height=w+'px';
+  if(reset||!box.dataset.c){box.scrollLeft=(w-box.clientWidth)/2;box.scrollTop=(w-box.clientHeight)/2;box.dataset.c=1;}
+}
+function heroTreeZoom(f){
+  const box=document.getElementById('hero-tree'),cx=(box.scrollLeft+box.clientWidth/2)/box.scrollWidth,cy=(box.scrollTop+box.clientHeight/2)/box.scrollHeight;
+  heroZoom=Math.min(2.5,Math.max(.3,heroZoom*f));heroTreeFit();
+  box.scrollLeft=cx*box.scrollWidth-box.clientWidth/2;box.scrollTop=cy*box.scrollHeight-box.clientHeight/2;
+}
+
+// ── Body map: front and back, each part glows with its stat's level ──
+function heroBody(h){
+  const L=id=>heroLvl(h.s.st[id],HERO_SB),xp=id=>h.s.st[id];
+  const col=id=>{if(!xp(id))return'var(--hb-off)';const t=Math.min(1,(L(id)-1)/14);return`hsl(${Math.round(175-t*130)} 80% ${Math.round(42+t*12)}%)`;};
+  const mind=h.s.st.intellect>=h.s.st.focus?'intellect':'focus';
+  const R=(id,x,y,w,hh,rx,extra='')=>`<rect class="bp" data-s="${id}" x="${x}" y="${y}" width="${w}" height="${hh}" rx="${rx}" fill="${col(id)}" style="--g:${col(id)}"${extra} onclick="heroStat('${id}')"/>`;
+  const fig=(cx,back)=>{
+    const torso=back?'back':'chest';
+    return`<circle class="bp" cx="${cx}" cy="20" r="15" fill="${col(mind)}" style="--g:${col(mind)}" onclick="heroStat('${mind}')"/>`
+      +R('vitality',cx-5,34,10,8,3)
+      +R('arms',cx-41,44,14,46,7,` transform="rotate(8 ${cx-34} 44)"`)+R('arms',cx+27,44,14,46,7,` transform="rotate(-8 ${cx+34} 44)"`)
+      +R('arms',cx-47,92,12,42,6,` transform="rotate(6 ${cx-41} 92)"`)+R('arms',cx+35,92,12,42,6,` transform="rotate(-6 ${cx+41} 92)"`)
+      +(back?R('back',cx-25,42,50,52,12):R('chest',cx-25,42,24,32,10)+R('chest',cx+1,42,24,32,10))
+      +R('core',cx-20,back?96:76,40,back?30:50,8)
+      +R('legs',cx-21,back?128:128,42,16,8)
+      +R('legs',cx-21,146,19,58,9)+R('legs',cx+2,146,19,58,9)+R('legs',cx-19,206,15,46,7)+R('legs',cx+4,206,15,46,7)
+      +(back?'':`<path class="bp heart" d="M${cx-12} 56c-4-5-12-2-10 4 1 4 10 9 10 9s9-5 10-9c2-6-6-9-10-4z" fill="${xp('endurance')?'#EF4444':'var(--hb-off)'}" style="--g:#EF4444;opacity:${xp('endurance')?.45+.55*Math.min(1,L('endurance')/10):.6}" onclick="heroStat('endurance')"/>`)
+      +(back?'':`<g class="bl">${[['chest',cx+13,60],['core',cx,104],['arms',cx-44,74],['legs',cx-11,176]].map(([id,x,y])=>`<text x="${x}" y="${y}">${L(id)}</text>`).join('')}</g>`)
+      +(back?`<g class="bl">${[['back',cx,70],['core',cx,114],['legs',cx-11,176]].map(([id,x,y])=>`<text x="${x}" y="${y}">${L(id)}</text>`).join('')}</g>`:'')
+      +`<text x="${cx}" y="272" class="bcap">${back?'BACK':'FRONT'}</text>`;
+  };
+  const tag=id=>`<button class="bt" onclick="heroStat('${id}')"><i style="background:${col(id)}"></i>${HERO_BY[id].ic} ${HERO_BY[id].name} <b>Lv ${L(id)}</b></button>`;
+  return`<svg viewBox="0 0 320 280" class="body-svg">${fig(80,false)}${fig(240,true)}</svg><div class="bt-row">${['arms','chest','back','core','legs','endurance',mind,'vitality'].map(tag).join('')}</div>`;
+}
+
+// ── Achievements: worked out from everything above; each can carry a title you can wear under your name ──
+const HERO_TITLES={arms:'Iron Arms',chest:'Steel Chest',back:'Eagle Back',core:'Stone Core',legs:'Swift Legs',endurance:'Tireless',intellect:'Sage',focus:'Laser Focus',creativity:'Artist',faith:'Devout',discipline:'Unbreakable',vitality:'Vital',charisma:'Charmer',wealth:'Merchant'};
+function heroBestStreak(){const s=[...completedDays].sort();let best=0,run=0,prev='';s.forEach(d=>{run=prev&&dAdd(prev,1)===d?run+1:1;best=Math.max(best,run);prev=d;});return best;}
+function heroAchievements(h=heroState()){
+  const tk=h.aw.filter(a=>a.k==='task').length,str=heroBestStreak(),cl=Object.keys(heroP.claims||{}),mastered=heroSkills().filter(s=>heroDone(s.id)>=s.steps.length);
+  const gl=g=>HERO_STATS.filter(x=>x.g===g).reduce((n,x)=>n+heroLvl(h.s.st[x.id],HERO_SB),0)/HERO_STATS.filter(x=>x.g===g).length;
+  const list=[
+    ['first','🌱','First step','Complete your first task',tk,1],['t100','✅','Centurion','Complete 100 tasks',tk,100,'Centurion'],['t500','💯','Relentless','Complete 500 tasks',tk,500,'Relentless'],
+    ['s7','🔥','On a roll','Finish every task 7 days in a row',str,7],['s30','☄️','Unstoppable','Finish every task 30 days in a row',str,30,'Unstoppable'],
+    ['l10','⭐','Adept','Reach level 10',h.L,10],['l25','🌟','Hero','Reach level 25',h.L,25,'Hero'],['l50','👑','Legend','Reach level 50',h.L,50,'Legend'],
+    ['q10','⚔️','Quester','Claim 10 quests',cl.length,10,'Quester'],['qm','🌙','Moon hunter','Claim a monthly quest',cl.filter(k=>k[0]==='m').length,1,'Moon Hunter'],
+    ['sk','🏆','Master','Master a whole skill path',mastered.length,1],
+    ['bal','⚖️','All-rounder','Body, Mind, Spirit and Life all average Lv 5',Math.min(...Object.keys(HERO_GROUPS).map(gl)),5,'All-Rounder'],
+    ...HERO_STATS.map(x=>['st-'+x.id,x.ic,HERO_TITLES[x.id],`${x.name} level 10`,heroLvl(h.s.st[x.id],HERO_SB),10,HERO_TITLES[x.id]]),
+    ...mastered.map(s=>['m-'+s.id,s.ic,`Master of ${s.name}`,'Mastered every step',1,1,`${s.name} Master`]),
+  ];
+  return list.map(([id,ic,name,desc,v,n,title])=>({id,ic,name,desc,v:Math.min(v,n),n,title,got:v>=n}));
+}
+function heroTitle(ach){const t=heroP.title&&ach.find(a=>a.got&&a.title===heroP.title);return t?t.title:'';}
+let heroGot=null;
+function heroAchCheck(silent){
+  const ach=heroAchievements(),got=ach.filter(a=>a.got).map(a=>a.id),prev=heroGot;heroGot=got;
+  if(silent||!prev)return;
+  const fresh=ach.filter(a=>a.got&&!prev.includes(a.id));
+  if(fresh.length)setTimeout(()=>{const el=document.getElementById('hero-lvl');if(!el)return;
+    el.innerHTML=`<div class="hl-box"><div class="hl-t">ACHIEVEMENT</div>${fresh.map(a=>`<div class="hl-big" style="font-size:26px;">${a.ic} ${esc(a.name)}</div><div class="hl-rank">${esc(a.desc)}</div>${a.title?`<div class="hl-row">New title: <b>${esc(a.title)}</b></div>`:''}`).join('')}<div class="hl-tap">tap to close</div></div>`;
+    el.classList.add('on');confetti();clearTimeout(heroLevelUp.t);heroLevelUp.t=setTimeout(()=>el.classList.remove('on'),5000);},2000);
+}
+function renderHeroAch(h){
+  const el=document.getElementById('hero-ach');if(!el)return;
+  const ach=heroAchievements(h),got=ach.filter(a=>a.got),titles=got.filter(a=>a.title);
+  el.innerHTML=`<div class="hm-sub" style="margin-bottom:8px;">${got.length} of ${ach.length} unlocked${titles.length?' · tap a title to wear it':''}</div><div class="ha-grid">`
+    +ach.map(a=>`<button class="ha${a.got?' got':''}${a.got&&a.title&&heroP.title===a.title?' worn':''}" ${a.got&&a.title?`onclick="heroWear('${esc(a.title)}')"`:''} title="${esc(a.desc)}"><span class="ha-ic">${a.got?a.ic:'🔒'}</span><b>${esc(a.name)}</b><small>${a.got?(a.title?`Title: ${esc(a.title)}`:esc(a.desc)):`${esc(a.desc)} · ${Math.floor(a.v)}/${a.n}`}</small></button>`).join('')+'</div>';
+}
+function heroWear(t){heroP.title=heroP.title===t?'':t;save();renderHero();renderHeroMini();}
+
+// Weekly boss: the weekly XP quest as a monster whose HP your XP knocks down
+const HERO_BOSSES=[['👹','The Procrastinator'],['🐉','Doomscroll Dragon'],['🧟','The Couch Zombie'],['👻','Ghost of Excuses'],['🦑','The Distraction Kraken'],['🐺','Lazy Wolf'],['🗿','Stone of Sloth']];
+function heroBoss(list,p){
+  const q=list.find(x=>x.t==='xp');if(!q)return'';
+  const [ic,name]=HERO_BOSSES[Math.floor(heroRng(p.id+'boss')()*HERO_BOSSES.length)],hp=Math.max(0,q.n-q.prog);
+  return`<div class="boss${hp?'':' dead'}"><span class="boss-ic">${hp?ic:'💥'}</span><div style="flex:1;min-width:0;"><b>${hp?name:`${name} defeated!`}</b><div class="boss-hp"><i style="width:${hp/q.n*100}%"></i></div><small>${hp?`${hp} HP left · every XP you earn this week hits it`:'Claim the reward below'}</small></div></div>`;
 }
