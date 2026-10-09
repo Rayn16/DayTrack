@@ -1764,7 +1764,7 @@ async function sendGwen(opts={}){
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
   if(gwenCfg.loc)await gwenWeather();
-  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined},opts.cloud||!!(window.DayTrackNative&&gwenKit));}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':window.DayTrackNative?'Could not reach your PC. Is Tailscale on, and the PC awake with DayTrack running?':'Could not reach Gwen'};}
+  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined},opts.cloud||!!(window.DayTrackNative&&gwenKit));}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':window.DayTrackNative?(gwenKit?'Could not reach Gwen. Is your internet working?':'Gwen needs to reach your PC once to get her Haiku brain: turn Tailscale on with the PC awake and DayTrack running, then try again'):'Could not reach Gwen'};}
   gwenBusy=false;
   let out=null;
   if(res.text){
@@ -3076,13 +3076,15 @@ const UPD_KEY='dt_upd';
 async function latestBuild(tag){
   let c={};try{c=JSON.parse(localStorage.getItem(UPD_KEY)||'{}');}catch(e){}
   if(c[tag]&&Date.now()-c[tag].at<6*3600e3)return c[tag].n;
-  try{
-    const r=await fetchT(`https://api.github.com/repos/Rayn16/DayTrack/releases/tags/${tag}`,{},8000);if(!r.ok)throw 0;
-    const n=Number(((await r.json()).body||'').match(/Build (\d+)/)?.[1])||0;
-    c[tag]={n,at:Date.now()};try{localStorage.setItem(UPD_KEY,JSON.stringify(c));}catch(e){}
-    return n;
-  }catch(e){return c[tag]?c[tag].n:0;}
+  let n=0;
+  try{const r=await fetchT(`https://api.github.com/repos/Rayn16/DayTrack/releases/tags/${tag}`,{},8000);if(r.ok)n=Number(((await r.json()).body||'').match(/Build (\d+)/)?.[1])||0;}catch(e){}
+  // The API allows 60 checks an hour per network: the phone app can read the release page instead
+  if(!n&&window.DayTrackNative&&DayTrackNative.latest)n=await new Promise(ok=>{(latestWait[tag]=latestWait[tag]||[]).push(ok);setTimeout(()=>ok(0),20000);DayTrackNative.latest(tag);});
+  if(!n)return c[tag]?c[tag].n:0;
+  c[tag]={n,at:Date.now()};try{localStorage.setItem(UPD_KEY,JSON.stringify(c));}catch(e){}
+  return n;
 }
+const latestWait={};window.__dtLatest=(tag,n)=>(latestWait[tag]||[]).splice(0).forEach(ok=>ok(n));
 async function myBuild(){
   if(window.DayTrackNative&&DayTrackNative.build)return{tag:'app',n:DayTrackNative.build()};
   if(/Electron/.test(navigator.userAgent))try{return{tag:'desktop',n:(await(await fetch('/__dt/info')).json()).build};}catch(e){}

@@ -607,6 +607,25 @@ public class MainActivity extends Activity {
             } catch (PackageManager.NameNotFoundException e) { return 0; }
         }
 
+        // The newest build, read from the release page when the GitHub API says no (it allows 60 checks an hour
+        // per network, and a phone network is shared by many). Answers window.__dtLatest(tag, build), 0 if unknown.
+        @JavascriptInterface public void latest(String tag) {
+            if (!tag.matches("[a-z]+")) return;
+            new Thread(() -> {
+                int n = 0;
+                try {
+                    HttpURLConnection h = (HttpURLConnection) new URL("https://github.com/Rayn16/DayTrack/releases/tag/" + tag).openConnection();
+                    h.setConnectTimeout(8000);
+                    h.setReadTimeout(8000);
+                    try (java.util.Scanner s = new java.util.Scanner(h.getInputStream(), "UTF-8")) {
+                        String m = s.findWithinHorizon("Build (\\d+)", 0);
+                        if (m != null) n = Integer.parseInt(m.substring(6));
+                    } finally { h.disconnect(); }
+                } catch (Exception ignored) { }
+                js("window.__dtLatest&&__dtLatest(" + JSONObject.quote(tag) + "," + n + ")");
+            }).start();
+        }
+
         // Progress goes to window.__dtUpdate(state, msg): "allow", "downloading", "installing" or "error"
         @JavascriptInterface public void update() {
             if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
