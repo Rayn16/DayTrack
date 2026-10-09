@@ -100,6 +100,16 @@ const handler = async () => {
       }
     }
 
+    // Nudges the app scheduled (water when behind, bills due, top 3, weekly photo), once each a day, not in quiet hours
+    const nudged = data.nudgeFired && data.nudgeFired.date === todStr ? data.nudgeFired.ids : [];
+    for (const n of data.nudges || []) {
+      if (n.date !== todStr || nudged.includes(n.id) || Math.abs(nowMin - toMin(n.at)) > 1 || inQuiet(nowMin, data.quiet)) continue;
+      await notify(webpush, subscription, n.text, 'default', undefined, n.title);
+      nudged.push(n.id);
+      data.nudgeFired = { date: todStr, ids: nudged };
+      changed = true;
+    }
+
     // A study session with Gwen ended while the app was in the background
     const study = data.gwenStudy;
     if (study && nowMs >= study.end) {

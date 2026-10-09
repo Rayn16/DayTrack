@@ -108,3 +108,24 @@ console.log('Round 5 checks passed');
   assert(wk.heroSameRoute(a, b) && !wk.heroSameRoute(a, c), 'same route');
   console.log('Walk checks passed');
 }
+
+// Round 6: crits, drops and boosts only from the day it arrived, stay the same when worked out again; hardcore runs keep past XP
+{
+  const toDateStr = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const back = n => toDateStr(new Date(Date.now() - n * 864e5)), tod = back(0);
+  const T = [{id: 'g', name: 'Gym workout', recurring: true, days: [], done: Array.from({length: 60}, (_, i) => back(i)), subtasks: []}];
+  const r6 = new Function('toDateStr', 'completedDays', 'sleepLog', 'moods', 'tasks', 'isTodayTask', 'savedSessions', 'goals', fs.readFileSync(new URL('../levels.js', import.meta.url), 'utf8')
+    + '\nheroP.bossCfg={on:false,seed:"t"};return {heroTaskAwards, heroDrops, heroP, heroHC, heroOmen, heroBoost:()=>heroBoostMemo={}};')(toDateStr, [], {}, {}, T, () => true, [], []);
+  const sum = () => { r6.heroBoost(); return r6.heroTaskAwards(T[0]).reduce((n, a) => n + a.xp, 0); };
+  const base = sum(); assert.equal(base, 60 * 20, 'no crits before round 6');
+  assert.equal(r6.heroDrops().length, 0, 'no loot before round 6');
+  r6.heroP.r6 = back(30); const withCrit = sum(); assert.equal(withCrit, sum(), 'crits are the same every time');
+  assert.ok(withCrit >= base && (withCrit - base) % 40 === 0, 'a crit adds 2 × 20 XP');
+  const drops = r6.heroDrops(); assert.ok(drops.every(x => x.d >= back(30)) && drops.length > 0 && drops.length < 31, 'drops ' + drops.length);
+  const day = d => (r6.heroBoost(), r6.heroTaskAwards(T[0]).find(a => a.d === d)), c = x => x.what.includes('critical') ? 3 : 1;
+  r6.heroP.origin = {id: 'dwarf', d: tod}; const t0 = day(tod), y0 = day(back(1));
+  assert.equal(t0.xp, Math.round(20 * 1.05 * c(t0)), 'origin boosts today'); assert.equal(y0.xp, 20 * c(y0), 'but not the days before it');
+  r6.heroP.hc = {runs: [{from: back(10), to: back(5)}, {from: back(2)}]};
+  assert.ok(r6.heroHC(back(7)) && !r6.heroHC(back(4)) && r6.heroHC(tod), 'hardcore runs');
+  console.log('Round 6 checks passed');
+}

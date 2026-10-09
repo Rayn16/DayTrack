@@ -165,6 +165,18 @@ await call('/.netlify/functions/save-reminder', {subscription: sub, tasks: [task
 await fetch(url + '/.netlify/functions/check-reminders', {method: 'POST'});
 assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r => r.json())).some(m => m.title === '🌅 Morning adhkar'));
 
+// App ideas round: a nudge the app scheduled (water when behind) fires on its minute, once
+{
+  const n = new Date(), at = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+  const nudge = {id: 'water15:00', date: today, at, title: '💧 Water', text: 'You\'re at 1 of 8 glasses.'};
+  await call('/.netlify/functions/save-reminder', {subscription: sub, tasks: [task], completedDays: [today], tz, nudges: [nudge, {id: 'bad', date: 'x', at}]});
+  await fetch(url + '/.netlify/functions/check-reminders', {method: 'POST'});
+  const box = await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r => r.json());
+  assert.equal(box.filter(m => m.title === '💧 Water').length, 1);
+  await fetch(url + '/.netlify/functions/check-reminders', {method: 'POST'});
+  assert.ok(!(await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r => r.json())).some(m => m.title === '💧 Water'), 'fires once');
+}
+
 
 // Sync: the phone and the PC both change things between syncs; the server merges instead of the newest copy winning
 {
