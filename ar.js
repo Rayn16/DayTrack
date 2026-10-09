@@ -693,6 +693,23 @@
     'Auto-tick': 'إنجاز تلقائي', "Tick this place's tasks after 15 minutes there": 'إنجاز مهام هذا المكان بعد 15 دقيقة فيه',
     'PC time today': 'وقت الكمبيوتر اليوم', 'Every half hour of study or work is 10 Intellect XP, added the next day.': 'كل نصف ساعة دراسة أو عمل تعطي 10 XP للذكاء، تُضاف في اليوم التالي.',
     'A letter from Gwen': 'رسالة من غوين', 'Downloading…': 'جارٍ التنزيل…', 'Add': 'إضافة', 'Tomorrow': 'غدًا',
+    // 10-09 second round
+    'Gwen everywhere': 'غوين في كل مكان', 'Her settings': 'إعداداتها', 'Voice, outfit, quiet hours and features for desktop Gwen and her house, in one place': 'الصوت والملابس وساعات الهدوء والميزات لغوين على الكمبيوتر وفي بيتها، في مكان واحد',
+    'Status': 'الحالة', "Is AIRI, her voice, the house, DayTrack and Tailscale running? Start what's down (never during a game)": 'هل AIRI وصوتها والبيت وDayTrack وTailscale تعمل؟ شغّل المتوقف (أبدًا أثناء اللعب)',
+    'Check': 'افحص', 'Our story': 'قصتنا', 'Letters, house photos, firsts and milestones on one timeline': 'الرسائل وصور البيت والمرات الأولى والمحطات في خط زمني واحد',
+    'Loading…': 'جارٍ التحميل…', 'Checking…': 'جارٍ الفحص…', 'Your story starts here 💜': 'قصتكما تبدأ هنا 💜',
+    "Can't reach your PC right now.": 'لا يمكن الوصول إلى كمبيوترك الآن.', "Desktop Gwen and the house haven't shared their settings yet.": 'غوين على الكمبيوتر والبيت لم يشاركا إعداداتهما بعد.',
+    "Can't reach your PC. It may be off or asleep (you can wake it from the PC sheet).": 'لا يمكن الوصول إلى كمبيوترك. قد يكون مطفأً أو في وضع السكون (يمكنك تشغيله من صفحة الكمبيوتر).',
+    'Start': 'تشغيل', 'Running': 'يعمل', 'Not running': 'متوقف', 'Open': 'مفتوح', 'Closed (open it from the desktop shortcut)': 'مغلق (افتحه من اختصار سطح المكتب)', 'Stopped': 'متوقف', 'Not found': 'غير موجود', 'Connected': 'متصل',
+    'Gwen on the desktop (AIRI)': 'غوين على سطح المكتب (AIRI)', 'Her voice and brain': 'صوتها وعقلها', 'Her phone bridge': 'جسر الجوال', "Gwen's House": 'بيت غوين', 'DayTrack on the PC': 'DayTrack على الكمبيوتر',
+    'Saved': 'تم الحفظ', "Couldn't save that": 'تعذّر الحفظ', "Not while you're playing": 'ليس أثناء اللعب', "Couldn't start it": 'تعذّر التشغيل', "Can't reach your PC": 'لا يمكن الوصول إلى كمبيوترك',
+    'Focus with Gwen': 'تركيز مع غوين', 'Gwen this week': 'غوين هذا الأسبوع', 'Energy': 'الطاقة', 'Fun': 'المرح', 'Company': 'الرفقة', 'Her goals': 'أهدافها', 'Yours': 'أهدافك', 'Weekly quests': 'المهام الأسبوعية',
+    'She misses you. Talk to her or visit the house.': 'اشتاقت لك. كلّمها أو زر البيت.', 'Time with her and finishing your tasks fill these up.': 'وقتك معها وإنجاز مهامك يملآنها.',
+    'You both did it this week 💜': 'أنجزتما أهدافكما هذا الأسبوع 💜', 'Both done = 120 XP and 40 coins for you, and a treat for her.': 'إنجاز الاثنين = 120 XP و40 عملة لك، ومكافأة لها.',
+    'Look around the house and the yard': 'ابحث في البيت والحديقة', 'Ask Gwen on your PC about the story': 'اسأل غوين على الكمبيوتر عن القصة', 'Finish 3 tasks in one day': 'أنجز 3 مهام في يوم واحد',
+    'Find all three for 150 XP and 50 coins.': 'اعثر على الثلاثة لتحصل على 150 XP و50 عملة.', 'Solved! The next chapter opens next week.': 'تم الحل! الفصل التالي يُفتح الأسبوع القادم.',
+    'The story is finished. Thank you for bringing the light home 💜': 'انتهت القصة. شكرًا لأنك أعدت النور إلى البيت 💜', 'Okay, maybe next time': 'حسنًا، ربما المرة القادمة',
+    "Gwen's status": 'حالة غوين', 'Gwen was born': 'وُلدت غوين', 'A postcard from the house': 'بطاقة من البيت', 'Solved a story chapter together': 'حللتما فصلًا من القصة معًا', "Hit our week's goals together": 'حققتما أهداف الأسبوع معًا',
     // Level round 6
     '🗺️ World': '🗺️ العالم', 'World map': 'خريطة العالم', 'Villagers · weekly side quests': 'أهل القرى · مهام جانبية أسبوعية', 'On the road': 'على الطريق', 'Rival': 'الغريم',
     'Legendary weapon': 'السلاح الأسطوري', 'Your home': 'بيتك', 'Guild': 'النقابة', 'Hardcore run': 'الوضع القاسي', 'Mana and powers': 'المانا والقوى',
@@ -791,6 +808,9 @@
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const G6 = { Body: 'للجسد', Mind: 'للعقل', Spirit: 'للروح', Life: 'للحياة' }; // Level round 6
   const AR_RE = [
+    [/^📜 Chapter (\d) of (\d): (.+)$/, '📜 الفصل $1 من $2: $3'], [/^(\d+) days with Gwen$/, '$1 يومًا مع غوين'], [/^You reached level (\d+)$/, 'وصلت إلى المستوى $1'], // 10-09 second round
+    [/^(\d+h \d+m|\d+m) left, started on your (PC|house)\. She's studying too, so keep your phone down( 💜)?$/, (_, t, w) => `باقي ${t}، بدأ على ${w === 'PC' ? 'الكمبيوتر' : 'البيت'}. هي تذاكر أيضًا، فاترك الجوال 💜`],
+    [/^You're joining her: (.+)$/, 'ستنضم إليها: $1'], [/^You're playing (.+), so nothing starts until you're done\.$/, 'أنت تلعب $1، فلن يُشغَّل شيء حتى تنتهي.'],
     [/^(\d+)° from north$/, '$1° من الشمال'], [/^Open \((\d+)\)$/, 'افتح ($1)'], // 10-09 round
     [/^Deleted (.+)$/, (_, x) => 'حُذفت ' + T(x)],
     [/^(Up late|Good morning|Good afternoon|Good evening), Rayan$/, (_, g) => ({ 'Up late': 'سهران يا ريان؟', 'Good morning': 'صباح الخير يا ريان', 'Good afternoon': 'نهارك سعيد يا ريان', 'Good evening': 'مساء الخير يا ريان' })[g]],

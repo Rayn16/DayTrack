@@ -257,7 +257,7 @@ export async function sharedEvent(today, kind, b, by) {
     }
     case 'coins': {
       // Idea 32: a win in the house pays DayTrack coins, once per id
-      const id = s(b.id, 60), n = int(b.n, 1, 200);
+      const id = s(b.id, 60), n = int(b.n, 0, 200);
       if (!id || !n) return { ok: false, error: 'id and n (1-200) needed' };
       const list = (await get('coins')) || [];
       if (!list.some(c => c.id === id)) await h.setJSON('coins', [...list, { id, n, why: s(b.why, 80) || 'A win in the house', at: Date.now() }].slice(-300));

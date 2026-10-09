@@ -211,9 +211,9 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
 {
   // Idea 1: his mount and forged weapon reach the house
   await call('/.netlify/functions/save-reminder', {subscription: sub, tasks: [task], completedDays: [today], tz, gwen: true, hero: {mount: 'wolf', weapon: {id: 'blade', name: 'Blade of Dawn'}}});
-  assert.deepEqual((await call('/api/house?key=k')).hero, {mount: 'wolf', weapon: {id: 'blade', name: 'Blade of Dawn'}});
+  assert.deepEqual((await call('/api/house?key=k')).hero, {mount: 'wolf', weapon: {id: 'blade', name: 'Blade of Dawn'}, stats: null, pet: null});
   await call('/.netlify/functions/save-reminder', {subscription: sub, tasks: [task], completedDays: [today], tz, gwen: true, hero: {mount: 'unicorn', weapon: {id: 'x"y'}}});
-  assert.deepEqual((await call('/api/house?key=k')).hero, {mount: null, weapon: null}, 'only known mounts, clean ids');
+  assert.deepEqual((await call('/api/house?key=k')).hero, {mount: null, weapon: null, stats: null, pet: null}, 'only known mounts, clean ids');
   // Idea 3: a letter for a finished month, once (no Claude key here, so her fallback letter)
   assert.equal((await call('/api/house', {key: 'k', event: 'month', month: today.slice(0, 7), lines: []})).status, 400, 'not the month that is still going');
   const lm = new Date(); lm.setDate(1); lm.setMonth(lm.getMonth() - 1);
@@ -253,6 +253,83 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
   assert.equal((await call('/api/pc', {key: 'k', action: 'send', text: 'look at this', image: png})).ok, true);
   assert.ok(!(await call('/api/backup?key=k'))['daytrack-house']['file-' + sent.id], 'sent files stay out of backups');
   console.log('10-09 round checks passed');
+}
+
+// 10-09 second round (ideas 31-51)
+{
+  // 31: the story, a clue from each side
+  let st = (await call('/api/house?key=k')).story;
+  assert.equal(st.chapter, 1); assert.equal(st.clues.length, 3); assert.ok(st.clues.every(c => !c.found && c.hint));
+  const [ch, cp, cf] = st.clues;
+  assert.equal((await call('/api/house', {key: 'k', event: 'clue', id: 'nope'})).status, 400);
+  assert.equal((await call('/api/house', {key: 'k', event: 'clue', id: ch.id})).ok, true);
+  assert.equal((await call('/api/pc', {key: 'k', action: 'clue', id: cp.id})).ok, true);
+  st = (await call('/api/house', {key: 'k', event: 'clue', id: cf.id, by: 'phone'})).story;
+  assert.ok(st.solved && st.chapter === 1, 'next chapter waits for next week');
+  // 32, 33: coins once per id, firsts
+  await call('/api/house', {key: 'k', event: 'coins', id: 'chess-1', n: 50, why: 'Beat Gwen at chess'});
+  await call('/api/house', {key: 'k', event: 'coins', id: 'chess-1', n: 50});
+  assert.equal((await call('/api/house', {key: 'k', event: 'coins', id: 'x', n: 0})).status, 400);
+  assert.equal((await call('/api/house', {key: 'k', event: 'first', id: 'first boat', text: 'x'})).status, 400);
+  await call('/api/house', {key: 'k', event: 'first', id: 'first_boat', text: 'First boat trip', title: 'Captain'});
+  // 34, 39, 40: her goals, needs, schedule
+  await call('/api/house', {key: 'k', event: 'goals', goals: [{id: 'paint', text: 'Paint 2 pictures', done: 2, total: 2}]});
+  await call('/api/house', {key: 'k', event: 'needs', energy: 80, fun: 140, company: 20});
+  assert.equal((await call('/api/house', {key: 'k', event: 'needs', energy: 1})).status, 400);
+  await call('/api/house', {key: 'k', event: 'schedule', items: [{id: 'paint', day: 1, time: '17:00', what: 'Painting', minutes: 60}, {id: 'bad', day: 9, time: 'x', what: 'y'}]});
+  // The phone's side
+  await call('/api/house', {key: 'k', event: 'app', by: 'phone', levelUp: {level: 12, at: 5}, boss: {name: 'Doomscroll Dragon', state: 'on', until: 9}, mood: null,
+    walking: {since: Date.now()}, stats: {strength: 4, intellect: 7}, pet: {kind: 'fox', name: 'Kitsu'}, sleep: {bed: '23:30', wake: 'bad'},
+    myGoals: {done: 3, total: 3}, today: {done: 2, total: 5, chatMinutes: 14}, joins: [{id: 'paint', date: '2099-01-05'}]});
+  // 45: focus from the PC, everywhere
+  assert.equal((await call('/api/pc', {key: 'k', action: 'focus', minutes: 25, what: 'Math'})).ok, true);
+  // 50: a cleaning task he just ticked
+  await call('/.netlify/functions/save-reminder', {subscription: sub, tz, gwen: true, completedDays: [], tasks: [{id: 'c1', name: 'Wash the dishes', recurring: true, days: [], done: [today]}]});
+  h = await call('/api/house?key=k');
+  assert.deepEqual(h.coins.map(c => [c.id, c.n]), [['chess-1', 50]]);
+  assert.deepEqual(h.firsts.map(f => [f.id, f.title]), [['first_boat', 'Captain']]);
+  assert.equal(h.herGoals.rewarded, true);
+  assert.deepEqual([h.needs.energy, h.needs.fun, h.needs.company], [80, 100, 20]);
+  assert.deepEqual(h.schedule.map(x => x.id), ['paint']);
+  assert.equal(h.levelUp.level, 12); assert.equal(h.boss.state, 'on'); assert.equal(h.mood, null); assert.ok(h.walking);
+  assert.deepEqual(h.hero.stats, {strength: 4, intellect: 7}); assert.equal(h.hero.pet.name, 'Kitsu');
+  assert.deepEqual(h.sleep, {bed: '23:30', wake: null});
+  assert.deepEqual(h.today, {date: today, done: 2, total: 5, chatMinutes: 14}); assert.equal(h.joins.length, 1);
+  assert.equal(h.focus.by, 'pc'); assert.equal(h.focus.what, 'Math');
+  assert.deepEqual(h.chores.map(c => c.kind), ['dishes']);
+  await call('/api/house', {key: 'k', event: 'focus', minutes: 0});
+  const p = await call('/api/pc?key=k');
+  assert.equal(p.focus, null); assert.ok(p.story && 'prayers' in p && p.away.where);
+  // 36: at the PC her texts go to the desktop instead of the phone; held while gaming
+  await call('/api/outbox?auth=abc12345');
+  assert.deepEqual((await call('/api/pc?key=k&inbox=1')).messages, []);
+  await call('/api/pc', {key: 'k', action: 'report', app: 'Code.exe', idle: 3, game: null});
+  assert.equal((await call('/api/pc?key=k')).away.where, 'pc');
+  await call('/api/pc', {key: 'k', action: 'send', text: 'held for the desktop'});
+  assert.deepEqual(await (await fetch(url + '/api/outbox?auth=abc12345')).json(), [], 'no phone buzz at the PC');
+  await call('/api/pc', {key: 'k', action: 'report', app: 'TheIsle.exe', game: 'The Isle'});
+  await call('/api/pc', {key: 'k', action: 'send', text: 'while gaming'});
+  assert.deepEqual((await call('/api/pc?key=k&inbox=1')).messages, [], 'waits while gaming');
+  await call('/api/pc', {key: 'k', action: 'report', app: 'Code.exe', game: null});
+  assert.deepEqual((await call('/api/pc?key=k&inbox=1')).messages.map(m => m.text), ['held for the desktop', 'while gaming']);
+  assert.deepEqual((await call('/api/pc?key=k&inbox=1')).messages, [], 'taken once');
+  await call('/api/pc', {key: 'k', action: 'report', app: 'Code.exe', idle: 900, game: null});
+  await call('/api/pc', {key: 'k', action: 'send', text: 'away from the PC'});
+  assert.equal((await (await fetch(url + '/api/outbox?auth=abc12345')).json()).length, 1, 'idle: the phone gets it');
+  // 38: status page
+  const s = await call('/api/status?key=k');
+  assert.deepEqual(s.parts.map(x => x.id), ['airi', 'voice', 'bridge', 'house', 'daytrack', 'tailscale']);
+  assert.equal((await call('/api/status', {key: 'k', start: 'house'})).status, 400);
+  assert.equal((await call('/api/status?key=no')).status, 401);
+  // 37: one settings page over both files
+  fs.mkdirSync(path.join(dir, 'Gwen', 'shared-settings'));
+  fs.writeFileSync(path.join(dir, 'Gwen', 'shared-settings', 'desktop.json'), JSON.stringify({title: 'Desktop Gwen', items: [{key: 'voice', label: 'Voice', type: 'choice', options: ['bubble', 'velvet'], value: 'bubble'}, {key: 'quiet', label: 'Quiet', type: 'toggle', value: false}]}));
+  assert.deepEqual((await call('/api/settings?key=k')).apps.map(a => a.app), ['desktop']);
+  assert.equal((await call('/api/settings', {key: 'k', app: 'desktop', item: 'voice', value: 'loud'})).status, 400);
+  assert.equal((await call('/api/settings', {key: 'k', app: 'house', item: 'voice', value: 'velvet'})).status, 404);
+  assert.equal((await call('/api/settings', {key: 'k', app: 'desktop', item: 'voice', value: 'velvet'})).ok, true);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'Gwen', 'shared-settings', 'desktop.json'), 'utf8')).items[0].value, 'velvet');
+  console.log('10-09 second round checks passed');
 }
 
 http.close();

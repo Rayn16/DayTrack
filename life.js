@@ -456,7 +456,7 @@ async function pullHouse(){
   // Idea 1: the same outfit everywhere (the house names them; the phone has the ones her PC gave it)
   const o=house.outfit&&house.outfit.by!=='phone'&&house.outfit.outfit;
   if(o&&Date.now()-house.outfit.at<12*3600e3){const mine=o.toLowerCase()==='classic'?'':gwenOutfits().find(x=>x.toLowerCase()===o.toLowerCase());if(mine!==undefined&&(gwenCfg.outfit||'')!==mine)gwenWear(mine);}
-  questFromHouse();renderLife();
+  questFromHouse();houseRewards();renderLife();
 }
 window.lifeOutfit=o=>{if(gwenCfg.key)lifePost('house',{event:'outfit',outfit:o||'Classic',by:'phone'}).catch(()=>{});};
 const houseNow=()=>house&&house.now&&house.now.open!==false&&house.now.activity&&Date.now()-house.now.at<30*60e3?house.now:null;
@@ -1021,12 +1021,171 @@ function lifeGetFile(id){
   const a=document.createElement('a');a.href=path;a.download=name;a.click();
 }
 
+// ── 10-09 second round (ideas 31-51): the phone's side of the three linked together (contract: desktop/API.md) ──
+const isPhone=()=>!!window.DayTrackNative; // the phone is where he walks, picks his mood and gets around, so it tells the house
+const tasksDoneToday=()=>{const tod=toDateStr(new Date()),dow=new Date().getDay();return tasks.filter(t=>isTodayTask(t,tod,dow)&&t.done.includes(tod)).length;};
+const myWeek=()=>{const q=typeof heroQuests==='function'?heroQuests().w:[];return{week:addDays(toDateStr(new Date()),-new Date().getDay()),done:q.filter(x=>x.ready||x.claimed).length,total:q.length};};
+// Idea 39: minutes he spent talking to her today (each minute he wrote to her counts)
+const chatMin=()=>{const c=lifeDev.chat;return c&&c.d===toDateStr(new Date())?c.m.length:0;};
+if(typeof sendGwen==='function'){const sg=sendGwen;sendGwen=function(o){const tod=toDateStr(new Date()),m=Math.floor(Date.now()/6e4);
+  if(!lifeDev.chat||lifeDev.chat.d!==tod)lifeDev.chat={d:tod,m:[]};if(!lifeDev.chat.m.includes(m)){lifeDev.chat.m.push(m);lifeDevStore();}return sg.apply(this,arguments);};}
+
+// What the house and desktop Gwen read about him (level-ups, today's boss, mood, walking, stats, pet, sleep, week, today, joins)
+function appState(){
+  const tod=toDateStr(new Date()),h=typeof heroState==='function'?heroState():null,out={};
+  if(h){
+    const lv=life.lvl=life.lvl||{level:h.L,at:0};if(h.L>lv.level){lv.level=h.L;lv.at=Date.now();lifeStore();}else if(h.L<lv.level)lv.level=h.L; // prestige starts over
+    out.levelUp={...lv};
+    const b=heroDBoss(tod);out.boss=b&&b.state!=='soon'?{name:b.name,state:b.state,until:b.until}:null;
+    const L=id=>heroLvl(h.s.st[id],HERO_SB),body=HERO_STATS.filter(x=>x.g==='Body');
+    out.stats={strength:Math.round(body.reduce((n,x)=>n+L(x.id),0)/body.length),...Object.fromEntries(HERO_STATS.filter(x=>x.g!=='Body').map(x=>[x.id,L(x.id)]))};
+    out.pet=heroP.pet?{kind:heroP.pet.kind,name:heroP.pet.name}:null;
+    out.walking=typeof heroWalkOn!=='undefined'&&heroWalkOn?{since:heroWalkOn.t}:null;
+    out.myGoals=myWeek();
+  }
+  const dow=new Date().getDay();
+  return{...out,mood:moods[tod]||null,sleep:{bed:gwenCfg.bed||null,wake:gwenCfg.wake||null},
+    today:{done:tasksDoneToday(),total:tasks.filter(t=>isTodayTask(t,tod,dow)).length,chatMinutes:chatMin()},joins:(life.joins||[]).filter(j=>j.date>=tod)};
+}
+let appSent='';
+function sendAppState(){
+  if(!gwenCfg.key||!isPhone()||!gwenCfg.pc.trim())return;
+  const s=appState(),k=JSON.stringify(s);if(k===appSent)return;appSent=k;
+  lifePost('house',{event:'app',by:'phone',...s}).catch(()=>{appSent='';});
+}
+
+// After each pull from her house: coins from her games, house firsts, the story and her weekly goals pay out once each
+function houseRewards(){
+  if(!house||typeof heroP==='undefined')return;
+  const tod=toDateStr(new Date()),said=[];let changed=false;
+  heroP.hcoins=heroP.hcoins||{};heroP.hfirsts=heroP.hfirsts||{};heroP.hstory=heroP.hstory||{};heroP.hgoals=heroP.hgoals||{};
+  for(const c of house.coins||[])if(!(c.id in heroP.hcoins)){heroP.hcoins[c.id]=c.n;said.push(`🪙 +${c.n} coins · ${c.why}`);changed=true;}
+  for(const f of house.firsts||[])if(!heroP.hfirsts[f.id]){heroP.hfirsts[f.id]={t:f.text,ti:f.title||f.text,d:toDateStr(new Date(f.at))};changed=true;}
+  const s=house.story;
+  if(s){
+    const ph=s.clues.find(c=>c.where==='phone');
+    if(ph&&!ph.found&&tasksDoneToday()>=3){ph.found=Date.now();lifePost('house',{event:'clue',id:ph.id,by:'phone'}).then(r=>r.json()).then(j=>{if(j.story){house.story=j.story;houseRewards();renderLife();}}).catch(()=>{});showToast('🔎 You found a clue: '+ph.text.slice(0,60)+'…');}
+    if(s.solved&&!heroP.hstory[s.id]){heroP.hstory[s.id]=tod;heroBonus(tod,150,{creativity:1,intellect:1},`Story: ${s.title}`,'📜','hstory');heroP.hcoins['story-'+s.id]=50;said.push(`📜 Chapter solved: ${s.title} · +150 XP, +50 coins`);changed=true;}
+  }
+  const g=house.herGoals;
+  if(g&&g.rewarded&&!heroP.hgoals[g.week]){heroP.hgoals[g.week]=tod;heroBonus(tod,120,{charisma:1,discipline:1},'Our week\'s goals, together','💜','hgoals');heroP.hcoins['goals-'+g.week]=40;said.push('💜 You and Gwen both hit your week\'s goals · +120 XP, +40 coins');changed=true;}
+  if(changed)save();
+  said.slice(0,3).forEach((t,i)=>setTimeout(()=>showToast(t),i*2600));
+}
+
+// Idea 45: a timer on the phone puts the house and desktop in focus too; one started there shows here
+let focusMine=false;
+function focusShare(){
+  if(!gwenCfg.key||!gwenCfg.pc.trim()&&isPhone())return;
+  const run=timerRunning();
+  if(run&&!focusMine){focusMine=true;const m=gwenCfg.study?Math.max(1,Math.round((gwenCfg.study.end-Date.now())/6e4)):25;lifePost('house',{event:'focus',minutes:m,what:gwenCfg.study?gwenCfg.study.what:'focus',by:isPhone()?'phone':'pc'}).catch(()=>{});}
+  else if(!run&&focusMine){focusMine=false;lifePost('house',{event:'focus',minutes:0,by:isPhone()?'phone':'pc'}).catch(()=>{});}
+}
+function focusCard(){
+  const f=house&&house.focus;if(!f||f.until<Date.now()||focusMine)return'';
+  return`<div class="card life-card">${cardHead('🎯 Focus with Gwen','')}<div style="font-size:13px;color:var(--sub);">${esc(f.what)} · ${fmtLeft(Math.ceil((f.until-Date.now())/6e4))} left, started on your ${f.by==='pc'?'PC':'house'}. She's studying too, so keep your phone down 💜</div></div>`;
+}
+
+// Idea 31: the story card
+function storyCard(){
+  const s=house&&house.story;if(!s||s.finished&&heroP.hstory&&heroP.hstory[s.id]&&s.ends<toDateStr(new Date()))return'';
+  const where={house:'🏡',pc:'💻',phone:'📱'};
+  return`<div class="card life-card">${cardHead(`📜 Chapter ${s.chapter} of ${s.of}: ${esc(s.title)}`,'')}<div style="font-size:13px;line-height:1.5;margin-bottom:8px;">${esc(s.text)}</div>
+    ${s.clues.map(c=>`<div style="display:flex;gap:8px;font-size:13px;padding:5px 0;border-top:1px solid var(--brd);${c.found?'':'color:var(--sub);'}"><span>${c.found?'🔎':where[c.where]}</span><span>${c.found?esc(c.text):esc(c.hint)}</span></div>`).join('')}
+    <div style="font-size:12px;color:var(--sub);margin-top:6px;">${s.solved?(s.finished?'The story is finished. Thank you for bringing the light home 💜':'Solved! The next chapter opens next week.'):`Find all three for 150 XP and 50 coins.`}</div></div>`;
+}
+
+// Ideas 34, 39: her needs, her goals and yours this week
+function gwenWeekCard(){
+  const n=house&&house.needs,g=house&&house.herGoals;if(!n&&!g)return'';
+  const bar=(l,v)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin:3px 0;"><span style="width:76px;">${l}</span><span style="flex:1;height:8px;border-radius:4px;background:var(--inp);overflow:hidden;"><i style="display:block;height:100%;width:${v}%;background:${v<30?'#EF4444':'var(--pri)'};"></i></span></div>`;
+  const my=myWeek();
+  return`<div class="card life-card">${cardHead('🏡 Gwen this week','')}
+    ${n?bar('⚡ Energy',n.energy)+bar('🎈 Fun',n.fun)+bar('💜 Company',n.company)+`<div style="font-size:11px;color:var(--sub);margin-bottom:6px;">${n.company<30?'She misses you. Talk to her or visit the house.':'Time with her and finishing your tasks fill these up.'}</div>`:''}
+    ${g?`<div class="sl" style="margin-top:6px;">Her goals</div>${g.goals.map(x=>`<div style="font-size:13px;padding:2px 0;">${x.done>=x.total?'✅':'▫️'} ${esc(x.text)} <span style="color:var(--sub);">${x.done}/${x.total}</span></div>`).join('')}
+      <div class="sl" style="margin-top:6px;">Yours</div><div style="font-size:13px;">${my.done>=my.total&&my.total?'✅':'▫️'} Weekly quests <span style="color:var(--sub);">${my.done}/${my.total}</span></div>
+      <div style="font-size:12px;color:var(--sub);margin-top:6px;">${g.rewarded?'You both did it this week 💜':'Both done = 120 XP and 40 coins for you, and a treat for her.'}</div>`:''}</div>`;
+}
+
+// Idea 40: her weekly routine in the week view; tap to join
+const _dayEv=window.lifeDayEvents;
+window.lifeDayEvents=ds=>(_dayEv?_dayEv(ds):'')+((house&&house.schedule)||[]).filter(x=>x.day===new Date(ds+'T12:00:00').getDay()).map(x=>{const j=(life.joins||[]).some(y=>y.id===x.id&&y.date===ds);
+  return`<span class="wk-chip fixed ev" onclick="joinHer('${esc(x.id)}','${ds}')" style="${j?'background:var(--pril);color:var(--pri);':''}">💜 ${esc(x.what)} · ${fmt12(x.time)}${j?' ✓':''}</span>`;}).join('');
+function joinHer(id,ds){
+  const x=((house&&house.schedule)||[]).find(y=>y.id===id);if(!x)return;
+  life.joins=(life.joins||[]).filter(y=>y.date>=toDateStr(new Date()));const j=life.joins.findIndex(y=>y.id===id&&y.date===ds);
+  if(j>=0){life.joins.splice(j,1);showToast('Okay, maybe next time');}else{life.joins.push({id,date:ds});showToast(`💜 You're joining her: ${x.what}, ${fmtDay(ds)} at ${fmt12(x.time)}`);}
+  lifeSave();if(typeof renderWeek==='function')renderWeek();sendAppState();
+}
+
+// Idea 35: one timeline of us: letters, house photos, firsts, story chapters, milestones and level-ups
+async function openOurStory(){
+  sheet(head('📖 Our story')+'<div id="os-list" style="font-size:13px;color:var(--sub);">Loading…</div>'+closeBtn);
+  let cards=[];try{if(gwenCfg.key)cards=(await (await lifeApi('house?postcards=1&key='+encodeURIComponent(gwenCfg.key))).json()).postcards||[];}catch(e){}
+  const tod=toDateStr(new Date()),it=[],born=house&&house.born;
+  if(born)[0,30,100,365].forEach(n=>{const d=addDays(born,n);if(d<=tod)it.push({d,ic:'🎂',t:n?`${n} days with Gwen`:'Gwen was born'});});
+  if(house&&house.letter)it.push({d:toDateStr(new Date(house.letter.at)),ic:'💌',t:'A letter from Gwen',go:'openLetter()'});
+  cards.forEach(c=>it.push({d:toDateStr(new Date(c.at)),ic:'🖼️',t:c.title||'A postcard from the house',img:c.thumb}));
+  Object.values(heroP.hfirsts||{}).forEach(f=>it.push({d:f.d,ic:'🏡',t:f.t}));
+  Object.entries(heroP.hstory||{}).forEach(([id,d])=>it.push({d,ic:'📜',t:'Solved a story chapter together'}));
+  Object.entries(heroP.hgoals||{}).forEach(([w,d])=>it.push({d,ic:'💜',t:'Hit our week\'s goals together'}));
+  if(typeof heroLevelUps==='function')heroLevelUps(heroAwards()).filter(l=>l.name==='Level'&&l.L%5===0).forEach(l=>it.push({d:l.d,ic:'⭐',t:`You reached level ${l.L}`}));
+  it.sort((a,b)=>b.d.localeCompare(a.d));
+  const el=document.getElementById('os-list');if(!el)return;
+  el.innerHTML=it.length?it.slice(0,150).map(x=>`<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--brd);color:var(--txt);${x.go?'cursor:pointer;':''}"${x.go?` onclick="${x.go}"`:''}><span style="font-size:20px;">${x.ic}</span><div style="flex:1;"><div>${esc(x.t)}</div><div style="font-size:11px;color:var(--sub);">${fmtDay(x.d)}</div></div>${x.img?`<img src="${x.img}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;">`:''}</div>`).join(''):'Your story starts here 💜';
+}
+
+// Idea 37: her settings from the desktop and the house, on one page
+async function openGwenSettings(){
+  sheet(head('⚙️ Gwen everywhere')+'<div id="gs-list" style="font-size:13px;color:var(--sub);">Loading…</div>'+closeBtn);
+  let apps=null;try{const r=await lifeApi('settings?key='+encodeURIComponent(gwenCfg.key));if(r.ok)apps=(await r.json()).apps;}catch(e){}
+  const el=document.getElementById('gs-list');if(!el)return;
+  if(!apps)return el.textContent='Can\'t reach your PC right now.';
+  if(!apps.length)return el.textContent='Desktop Gwen and the house haven\'t shared their settings yet.';
+  gwenSet.apps=apps;
+  el.innerHTML=apps.map((a,ai)=>`<div class="sl" style="margin-top:8px;">${esc(a.title||a.app)}</div>`+a.items.map((it,ii)=>{const id=`${ai}-${ii}`,v=it.value;
+    const ctl=it.type==='toggle'?`<button class="tog${v?' on':''}" onclick="gwenSet('${id}',!${!!v})"></button>`
+      :it.type==='choice'?`<select class="inp" style="width:auto;" onchange="gwenSet('${id}',this.value)">${(it.options||[]).map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</select>`
+      :it.type==='time'?`<input type="time" class="inp" style="width:120px;" value="${esc(v)}" onchange="gwenSet('${id}',this.value)">`
+      :`<input type="number" class="inp" style="width:90px;" value="${Number(v)||0}" onchange="gwenSet('${id}',Number(this.value))">`;
+    return`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--brd);color:var(--txt);"><span>${esc(it.label)}</span>${ctl}</div>`;}).join('')).join('');
+}
+async function gwenSet(id,value){
+  const[ai,ii]=id.split('-').map(Number),a=gwenSet.apps[ai],it=a&&a.items[ii];if(!it)return;
+  try{const r=await lifePost('settings',{app:a.app,item:it.key,value});if(!r.ok)throw 0;it.value=value;showToast('✅ Saved');}catch(e){showToast('Couldn\'t save that');}
+  if(it.type==='toggle')openGwenSettings();
+}
+
+// Idea 38: is every part of her running, with a safe start
+async function openStatus(){
+  sheet(head('🩺 Gwen\'s status')+'<div id="st-list" style="font-size:13px;color:var(--sub);">Checking…</div>'+closeBtn);
+  let s=null;try{const r=await lifeApi('status?key='+encodeURIComponent(gwenCfg.key),{},10000);if(r.ok)s=await r.json();}catch(e){}
+  const el=document.getElementById('st-list');if(!el)return;
+  if(!s)return el.textContent='Can\'t reach your PC. It may be off or asleep (you can wake it from the PC sheet).';
+  el.innerHTML=(s.game?`<div style="margin-bottom:6px;">🎮 You're playing ${esc(s.game)}, so nothing starts until you're done.</div>`:'')
+    +s.parts.map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--brd);color:var(--txt);"><span>${p.ok?'✅':p.id==='house'?'💤':'❌'}</span><div style="flex:1;"><div>${esc(p.name)}</div><div style="font-size:11px;color:var(--sub);">${esc(p.detail)}</div></div>${!p.ok&&!s.game&&['airi','voice','bridge'].includes(p.id)?`<button class="minibtn" onclick="statusStart('${p.id}')">Start</button>`:''}</div>`).join('');
+}
+async function statusStart(id){
+  try{const r=await lifePost('status',{start:id},10000),j=await r.json();showToast(j.ok?'▶️ Starting Gwen… give her a minute':j.error==='game'?'Not while you\'re playing':'Couldn\'t start it');}catch(e){showToast('Can\'t reach your PC');}
+  setTimeout(openStatus,45e3);
+}
+
+// Gwen's own lines about all this, for her context
+function linkedLines(){
+  if(!house)return'';const tod=toDateStr(new Date()),s=house.story,g=house.herGoals,n=house.needs,dow=new Date().getDay();
+  const today=(house.schedule||[]).filter(x=>x.day===dow);
+  return[s&&!s.finished?`You and he are in the middle of a story together, "${s.title}" (chapter ${s.chapter} of ${s.of}): ${s.text} Clues he has found: ${s.clues.filter(c=>c.found).map(c=>c.text).join(' ')||'none yet.'} Don't give away clues he hasn't found.`:'',
+    n?`How you feel today in your house: energy ${n.energy}/100, fun ${n.fun}/100, company ${n.company}/100.`:'',
+    g?`Your goals this week: ${g.goals.map(x=>`${x.text} (${x.done}/${x.total})`).join(', ')}.`:'',
+    today.length?`Your routine today: ${today.map(x=>`${x.what} at ${x.time}${(life.joins||[]).some(j=>j.id===x.id&&j.date===tod)?' (he said he\'ll join you!)':''}`).join(', ')}.`:''].filter(Boolean).join(' ');
+}
+
 // ── Cards, settings, Gwen's context ───────────────────────────────────────────
 function renderLife(){
   const top=document.getElementById('life-top'),bot=document.getElementById('life-bottom');if(!top)return;
-  top.innerHTML=letterCard()+bdayCard()+top3Card()+waterCard()+ramadanCard()+adhkarCard()+sundayCard()+spreadCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
+  top.innerHTML=focusCard()+letterCard()+storyCard()+bdayCard()+top3Card()+waterCard()+ramadanCard()+adhkarCard()+sundayCard()+spreadCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
   renderHeroMini();
-  bot.innerHTML=chainsCard()+billsCard()+pcTimeCard()+photosCard()+routinesCard();
+  bot.innerHTML=gwenWeekCard()+chainsCard()+billsCard()+pcTimeCard()+photosCard()+routinesCard();
   renderSpend();chainHighlight();renderFriends();
 }
 function renderLifeSettings(){
@@ -1052,6 +1211,11 @@ function renderLifeSettings(){
       ${has('nowNext')?row('🔒 Now and next on the lock screen','Your current task and the next one, with a Done button',tog(lifeDev.nowNext,'toggleNowNext()')):''}
       ${has('focusStart')?row('🎯 Focus lock','While a timer runs, opening TikTok, YouTube, Instagram, Snapchat or a game gets you told off. Stay focused for bonus XP',tog(lifeDev.focus,'toggleFocus()')):''}
     </div>
+    ${gwenCfg.key?`<div class="card"><div class="cl">Gwen everywhere</div>
+      ${row('⚙️ Her settings','Voice, outfit, quiet hours and features for desktop Gwen and her house, in one place','<button class="minibtn" onclick="openGwenSettings()">Open</button>')}
+      ${row('🩺 Status','Is AIRI, her voice, the house, DayTrack and Tailscale running? Start what\'s down (never during a game)','<button class="minibtn" onclick="openStatus()">Check</button>')}
+      ${row('📖 Our story','Letters, house photos, firsts and milestones on one timeline','<button class="minibtn" onclick="openOurStory()">Open</button>')}
+    </div>`:''}
     ${placesSection()}
     ${N()&&N().hasPerm?`<div class="card"><div class="cl">From your phone</div>
       ${has('calendar')?row('📆 Phone calendar','Your events in the Week view; Gwen plans around them',tog(lifeDev.cal,'toggleCal()')):''}
@@ -1085,13 +1249,14 @@ window.lifeContext=()=>{
     planCtx,
     bdaysSoon(14).map(b=>`${b.name}${b.rel?` (his ${b.rel})`:''} has a birthday ${b.in===0?'today':b.in===1?'tomorrow':`in ${b.in} days`}.`).join(' '),
     historyLines(),
+    linkedLines(),
   ].filter(Boolean).join('\n\n');
 };
 // Her action lines this file adds: SPEND
 window.lifeActions=text=>text.replace(/^[ \t*-]*SPEND:\s*(.+)$/gim,(_,spec)=>{const[what,amt]=spec.split('|').map(x=>(x||'').trim());const e=addSpend(`${what} ${amt}`,true);if(e)showToast(`💰 Logged ${e.label} · ${e.amt} SAR`);return'';});
 // What the server needs for reminders and Gwen's texts
 window.lifeReminders=()=>({nudges:[...bdayNudges(),...lifeNudges()].slice(0,20),hero:heroForHouse(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`}))});
-window.lifeSaved=()=>{syncPlaces();queueShare();syncNowNext();};
+window.lifeSaved=()=>{syncPlaces();queueShare();syncNowNext();houseRewards();setTimeout(sendAppState,1500);};
 
 (function lifeBoot(){
   document.head.insertAdjacentHTML('beforeend',`<style>
@@ -1122,14 +1287,15 @@ window.lifeSaved=()=>{syncPlaces();queueShare();syncNowNext();};
     .pcmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;}.pcmp img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block;margin-bottom:6px;}
   </style>`);
   renderLife();renderLifeSettings();
+  {const c=document.querySelector('#tab-gwen .hscroll');if(c)c.insertAdjacentHTML('afterbegin','<button class="gchip" onclick="openOurStory()">📖 Our story</button>');}
   if(new Date().toISOString()>=YEAR_DAY&&toDateStr(new Date())>=YEAR_DAY){
     const c=document.querySelector('#tab-gwen .hscroll');if(c)c.insertAdjacentHTML('afterbegin','<button class="gchip" onclick="openYear()">🎂 Our first year</button>');
     if(!life.yearShown)setTimeout(openYear,2500);
   }
   pullHouse().then(monthLetter);syncShares();readSteps();syncPlaces();syncNowNext();setTimeout(pullPcApps,3000);
-  setInterval(focusCheck,2000);document.addEventListener('click',()=>setTimeout(focusCheck,0),true);
+  setInterval(()=>{focusCheck();focusShare();},2000);document.addEventListener('click',()=>setTimeout(focusCheck,0),true);
   setInterval(()=>{if(!document.hidden&&window.__dtResume)__dtResume();},30e3); // ticks from the home-screen widget
-  setInterval(()=>{syncNowNext();if(document.hidden)return;renderLife();},60e3);
+  setInterval(()=>{syncNowNext();sendAppState();if(document.hidden)return;renderLife();},60e3);
   setInterval(()=>{if(document.hidden)return;pullHouse().then(monthLetter);readSteps();friendsPush();pullPcApps();},5*60e3);
   setInterval(()=>{if(!document.hidden&&document.getElementById('dt-ov').classList.contains('on'))syncShares();},20e3);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;pullPcApps();pullHouse();syncShares();readSteps();renderLifeSettings();focusBack();});

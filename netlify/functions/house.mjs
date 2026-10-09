@@ -140,7 +140,7 @@ const handler = async (event) => {
       return json(200, { ok: true });
     }
   }
-  const r = await sharedEvent(today, body.event, body, body.by === 'phone' ? 'phone' : 'house');
+  const r = await sharedEvent(today, body.event, body, ['phone', 'pc'].includes(body.by) ? body.by : 'house');
   return r ? json(r.ok === false ? 400 : 200, r) : json(400, { error: 'Unknown event' });
 };
 
