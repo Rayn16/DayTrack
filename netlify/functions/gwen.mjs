@@ -16,6 +16,13 @@ const handler = async (event) => {
 
   const store = blobStore('daytrack-gwen');
 
+  // The phone app keeps her persona and the Claude key so she can answer with the PC off ("Hey Gwen").
+  // Only DayTrack.exe on his PC hands them out (over Tailscale, with the Gwen key), never the website.
+  if (body.kit === true) {
+    if (!process.env.DT_GWEN_DIR || !ANTHROPIC_API_KEY) return reply(404, { error: 'Not available here' });
+    return reply(200, { apiKey: ANTHROPIC_API_KEY, system: await gwenPersona() });
+  }
+
   if (typeof body.persona === 'string') {
     // Notes only come when they changed, so keep the last ones otherwise
     const fresh = body.notes && typeof body.notes === 'object' && JSON.stringify(body.notes).length < 50000;

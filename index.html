@@ -1741,6 +1741,8 @@ async function askGwen(body,cloud){
   if(!cloud&&await pcAlive()){
     try{const r=await fetchT(pcUrl()+'/daytrack/chat',opts,90000);if(r.ok){const j=await r.json();if(j.text)return{text:j.text,brain:'pc',did:j.did};}}catch(e){}
   }
+  // The phone asks Claude itself (works with the PC off); the PC's cloud brain is the fallback
+  if(gwenKit&&!body.image)try{return await askHaiku(body);}catch(e){}
   // pcAlive() above waits out a Tailscale reconnect; skipping it, this does the same
   let r;
   for(let i=0;;i++){try{r=await fetchT('/.netlify/functions/gwen',opts,20000);break;}catch(e){if(!cloud||e.name==='AbortError'||i>=3)throw e;await new Promise(z=>setTimeout(z,2500));}}
@@ -1803,7 +1805,31 @@ function renderGwen(){
   el.scrollTop=el.scrollHeight;renderGwenHi();
 }
 // Messages she sent as notifications while the app was closed
+// The phone keeps her persona and the Claude key from DayTrack on the PC (refreshed hourly while it's reachable),
+// so her cloud brain answers even with the PC off
+let gwenKit=null;try{gwenKit=JSON.parse(localStorage.getItem('dt_gwen_kit')||'null');}catch(e){}
+async function pullGwenKit(){
+  if(!window.DayTrackNative||!gwenCfg.key||(gwenKit&&Date.now()-gwenKit.at<36e5))return;
+  try{
+    const r=await fetchT('/.netlify/functions/gwen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:gwenCfg.key,kit:true})},10000);
+    const j=r.ok?await r.json():{};if(!j.apiKey)return;
+    gwenKit={apiKey:j.apiKey,system:j.system||'',at:Date.now()};localStorage.setItem('dt_gwen_kit',JSON.stringify(gwenKit));
+  }catch(e){}
+}
+// Claude Haiku straight from the phone, with the same persona and rules as the PC's cloud brain
+async function askHaiku(body){
+  const messages=body.messages.filter(m=>typeof m.content==='string'&&m.content.trim()).map(m=>({role:m.role,content:m.content.slice(0,4000)}));
+  while(messages.length&&messages[0].role!=='user')messages.shift();
+  const r=await fetchT('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'content-type':'application/json','x-api-key':gwenKit.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-haiku-4-5',max_tokens:1024,system:[gwenKit.system,String(body.context||'').slice(0,8000)].filter(Boolean).join('\n\n'),messages})},20000);
+  if(r.status===401){gwenKit=null;try{localStorage.removeItem('dt_gwen_kit');}catch(e){}} // the key changed: fetch it again from the PC
+  if(!r.ok)throw new Error('Claude '+r.status);
+  const j=await r.json(),text=(j.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+  return{text:text||"Hmm, I can't answer that one from here. Ask me again when you're at your PC?",brain:'cloud'};
+}
 async function pullGwenInbox(){
+  pullGwenKit();
   try{
     if(!gwenCfg.key||!('serviceWorker' in navigator))return;
     const sub=await(await navigator.serviceWorker.ready).pushManager.getSubscription();if(!sub)return;

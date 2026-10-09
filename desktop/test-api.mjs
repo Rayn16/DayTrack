@@ -50,6 +50,15 @@ assert.ok(box.some(m => m.body.startsWith('Yasuo') && m.image === png));
 const inbox = await call('/.netlify/functions/gwen', {key: 'k', inbox: 'abc12345'});
 assert.ok(inbox.messages.some(m => m.image === png));
 
+// The phone's kit (persona + Claude key, so "Hey Gwen" works with the PC off): Gwen key only, and only once there's a Claude key
+assert.equal((await call('/.netlify/functions/gwen', {key: 'wrong', kit: true})).status, 401);
+assert.equal((await call('/.netlify/functions/gwen', {key: 'k', kit: true})).status, 404);
+process.env.ANTHROPIC_API_KEY = 'sk-test';
+const kit = await call('/.netlify/functions/gwen', {key: 'k', kit: true});
+delete process.env.ANTHROPIC_API_KEY;
+assert.equal(kit.apiKey, 'sk-test');
+assert.ok(kit.system.includes('Gwen'));
+
 // Postcards: saved for the gallery, full picture served as an image
 const pc = await call('/api/house', {key: 'k', event: 'postcard', title: 'Sunset painting', image: png});
 assert.ok(pc.id);
