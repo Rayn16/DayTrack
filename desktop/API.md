@@ -114,3 +114,28 @@ process list itself (airi.exe and a short list of known games).
 only a POST with `name` can create a list). People without DayTrack open `https://<pc>.ts.net:8443/s/<code>`: a small page served
 by DayTrack.exe at `/s/<code>` (data at `/s/<code>/data`, items only). To make it reachable from outside the tailnet, once:
 `tailscale funnel --bg --https=8443 --set-path /s http://127.0.0.1:5053/s` (only `/s/` is public, and only on port 8443).
+
+## 2026-10-09 round (ideas 1-3, 9-29 of /mnt/project-files/gwen/ideas-2026-10-09.md)
+
+Every new field is optional to read; old clients ignore it.
+
+### Gwen's house
+- `GET /api/house` adds:
+  - `hero` `{mount, weapon}` (idea 1): `mount` is the best DayTrack mount he has, `"horse"`, `"wolf"`, `"dragon"` or `null`;
+    `weapon` is `{id, name}` of the last legendary weapon he forged, or `null`. The house shows the mount by the yard (ride it on
+    the trail with her) and the weapon over the fireplace.
+  - `letter` `{id, month, text, at}` or `null` (idea 3): her letter for last month, written by DayTrack on the 1st (from his
+    DayTrack month and the house's texts/firsts of that month). The mail carrier (idea 14) brings it to the door like a parcel; F
+    opens it and she reads it with him. Answer with `{"key", "event": "letter", "id"}` once he's read it (DayTrack then shows
+    it as read on the phone too). Kept until the next one.
+- The house as a wallpaper (idea 2) and the mail carrier (idea 14) need nothing new from DayTrack: pause the wallpaper while
+  `GET /api/pc` says `game` is not `null`, and the carrier brings what `parcels` and `letter` list.
+
+### Desktop Gwen
+- `report` takes `app` (idea 21): the exe name of the window in front (`"Code.exe"`, `"chrome.exe"`), or `null` when idle/locked.
+  Only the exe name, never window titles. DayTrack counts the minutes per app per day for the PC time log.
+- `GET /api/pc?key=K&tomorrow=1` → `{"tomorrow": [{"name", "time"}]}` (idea 22): tomorrow's tasks, timed ones first by time
+  (`time` "HH:MM" or `null`). For the bedtime nudge.
+- `POST /api/pc {"key", "action": "send", "text"?, "image"?, "file"?, "name"?}` (idea 24): "Gwen, send this to my phone".
+  `image` a data URL (as above), `file` any data URL up to 20 MB with its `name`. It lands in her DayTrack chat as a message with
+  a phone notification; files get a download button. Replies `{"ok": true, "id"}`.
