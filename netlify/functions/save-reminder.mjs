@@ -1,5 +1,5 @@
 import { lambda, blobStore } from '../lib/fn.mjs';
-import { localNow, parcelFor, trophyParcels } from '../lib/house.mjs';
+import { localNow, parcelFor, trophyParcels, choresTicked } from '../lib/house.mjs';
 
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405 };
@@ -39,6 +39,8 @@ const handler = async (event) => {
     // Finished every task today: a parcel goes to Gwen's house
     const today = localNow(tz).date;
     await parcelFor(today, completedDays, tasks.filter(t => (t.done || []).includes(today)).length).catch(e => console.error('Parcel:', e.message));
+    // 10-09 idea 50: a cleaning task he just ticked, for the house
+    await choresTicked(today, old.tasks, tasks).catch(e => console.error('Chores:', e.message));
     // Bosses beaten in the level system: a trophy each
     await trophyParcels(trophies).catch(e => console.error('Trophy:', e.message));
     // 10-09 idea 1: his best mount and last forged weapon, for the house

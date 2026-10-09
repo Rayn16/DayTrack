@@ -649,11 +649,12 @@ function heroAchievements(h=heroState()){
     ...heroProfs().map(p=>['pf-'+p.id,'🔨',`Master ${p.name}`,`Reach Master rank as a ${p.name}`,p.n,150,`Master ${p.name}`]),
     ...HERO_STATS.map(x=>['st-'+x.id,x.ic,HERO_TITLES[x.id],`${x.name} level 10`,heroLvl(h.s.st[x.id],HERO_SB),10,HERO_TITLES[x.id]]),
     ...mastered.map(s=>['m-'+s.id,s.ic,`Master of ${s.name}`,'Mastered every step',1,1,`${s.name} Master`]),
+    ...Object.entries(heroP.hfirsts||{}).map(([id,f])=>['h-'+id,'🏡',f.t,'A first in Gwen\'s house',1,1,f.ti]),
     ...Object.entries(heroP.pass||{}).filter(([,p])=>(p.got||[]).includes(30)).map(([m])=>['pass-'+m,'👑',heroPassTitle(m),'Finished a monthly pass',1,1,heroPassTitle(m)]),
   ];
   const AG={first:['check','green'],t100:['check','silver'],t500:['check','gold'],s7:['flame','orange'],s30:['flame','red'],l10:['star','silver'],l25:['star','gold'],l50:['crown','gold'],q10:['swords','blue'],qm:['moon','purple'],
     sk:['trophy','gold'],bal:['gem','teal'],db1:['skull','bronze'],db10:['skull','silver'],db50:['skull','gold'],cb5:['bolt','orange'],jr30:['pen','blue'],ch3:['scroll','purple'],quit30:['shield','teal'],pet:['paw','orange'],pr:['star','legend'],'k-light':['sun','gold'],'k-dark':['moon','dark'],rival:['swords','red'],forge:['swords','legend'],mount3:['wings','green']};
-  return list.map(([id,ic,name,desc,v,n,title])=>{const st=HERO_BY[id.slice(3)],sk=id.startsWith('m-')&&heroSkill(id.slice(2)),[gl,col]=AG[id]||(st?[st.gl,'gold']:sk?[skGl(sk),'purple']:['star','gold']);
+  return list.map(([id,ic,name,desc,v,n,title])=>{const st=HERO_BY[id.slice(3)],sk=id.startsWith('m-')&&heroSkill(id.slice(2)),[gl,col]=AG[id]||(id.startsWith('h-')?['heart','pink']:st?[st.gl,'gold']:sk?[skGl(sk),'purple']:['star','gold']);
     return{id,ic,gl,col,f:st?'hex':sk?'burst':'shield',name,desc,v:Math.min(v,n),n,title,got:v>=n};});
 }
 function heroTitle(ach){const t=heroP.title&&ach.find(a=>a.got&&a.title===heroP.title);return t?t.title:'';}
@@ -850,7 +851,7 @@ function heroReroll(i){
 }
 
 // ── Coins and the shop: 1 coin for every 10 XP, spent on items and real-life rewards you set ──
-const heroCoins=h=>Math.max(0,Math.floor(h.s.total/10))-(heroP.spent||0);
+const heroCoins=h=>Math.max(0,Math.floor(h.s.total/10))+Object.values(heroP.hcoins||{}).reduce((n,c)=>n+(c|0),0)-(heroP.spent||0); // hcoins: won in Gwen's house, her story and your shared goals (life.js)
 const heroShop=()=>heroP.shop=heroP.shop||[{id:'r1',name:'1 hour of gaming',cost:100},{id:'r2',name:'Movie night',cost:200},{id:'r3',name:'Order food',cost:300}];
 function heroBuy(kind,id){
   const h=heroState(),c=heroCoins(h),r=kind==='item'?{name:HERO_ITEMS[id][0],cost:HERO_ITEMS[id][4]}:heroShop().find(x=>x.id===id);if(!r)return;

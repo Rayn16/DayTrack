@@ -140,3 +140,45 @@ Every new field is optional to read; old clients ignore it.
 - `POST /api/pc {"key", "action": "send", "text"?, "image"?, "file"?, "name"?}` (idea 24): "Gwen, send this to my phone".
   `image` a data URL (as above), `file` any data URL up to 20 MB with its `name`. It lands in her DayTrack chat as a message with
   a phone notification; files get a download button. Replies `{"ok": true, "id"}`.
+
+## 2026-10-09 second round (ideas 31-51 of /mnt/project-files/gwen/ideas-2026-10-09.md)
+
+Every new field is optional to read. "House" = `GET/POST /api/house`, "PC" = `GET/POST /api/pc`.
+
+### What DayTrack adds to `GET /api/house` (and `GET /api/pc`, same fields)
+| field | idea | what it is |
+|---|---|---|
+| `story` `{id, chapter, of, title, text, clues: [{id, where: "house"\|"pc"\|"phone", text, hint, found}], ends, solved, finished}` | 31 | The story chapter (4 chapters, one a week; the next opens the week after one is `solved`). `text` of a clue is what he finds; `hint` says where to look. The house hides `where: "house"` clues somewhere he can find them; desktop Gwen talks about the story and gives `"pc"` clues when he asks her about it. |
+| `herGoals` `{week, goals: [{id, text, done, total}]}` and `myGoals` `{done, total}` | 34 | Her goals for this week (what the house last sent) and how his DayTrack week is going. `rewarded: true` once both are done. |
+| `levelUp` `{level, at}` | 41 | His last level-up. The house throws a party if `at` is newer than the last one it saw. |
+| `boss` `{name, state: "on"\|"won"\|"escaped", until}` or `null` | 42 | Today's DayTrack boss while it's live, and how it ended. |
+| `mood` (1-5 or `null`) | 43 | The mood he picked today (1 very low … 5 great). |
+| `walking` `{since}` or `null` | 44 | He's on a walk with his phone right now. |
+| `focus` `{until, what, by}` or `null` | 45 | A focus timer is running somewhere (`by` phone/pc/house). Stay quiet / study until `until` (ms). |
+| `hero.stats` `{strength, intellect, faith, …}` | 46 | His stat levels (1+). Body stats are averaged into `strength`. |
+| `hero.pet` `{kind, name}` or `null` | 48 | His DayTrack pet (fox, cat, dragon, owl). |
+| `sleep` `{bed, wake}` ("HH:MM" or `null`) | 49 | His bedtime and wake-up alarm from DayTrack. |
+| `chores` `[{kind, at}]` | 50 | Cleaning tasks he ticked in the last hour: `kind` is dishes, laundry, vacuum, trash, bed or tidy. Do each `at` once. |
+| `prayers` | 47 | Already on house; now on PC too. Quiet for ~5 minutes from each time. |
+| `away` `{where: "pc"\|"phone"\|"gaming", since}` | 36 | Where he is: at the PC (the last `report` had an `app`, no game, and `idle` under 300 s), gaming, or away from the PC (phone). Desktop Gwen's report can add `idle` (seconds since his last keyboard or mouse input). |
+| `needs`, `schedule`, `firsts`, `coins` | 39, 40, 33, 32 | What the house last sent, echoed back (the phone reads them from here). |
+
+### What the house and desktop send
+| body | idea | what it does |
+|---|---|---|
+| House `{"key", "event": "clue", "id"}` / PC `{"key", "action": "clue", "id"}` | 31 | He found that clue. When all clues of a chapter are found, DayTrack gives the chapter reward (XP + coins) and the next chapter opens the next week. |
+| House `{"key", "event": "coins", "id", "n", "why"}` | 32 | He won something in the house (`n` 1-200 coins, `id` unique per win). DayTrack adds them to his coins once per `id`. Suggested: chess 50, checkers/Uno/Connect Four/Reversi 30, Pong 20. |
+| House `{"key", "event": "first", "id", "text", "title"?}` | 33 | A house first (`id` "first_boat", `text` "First boat trip", `title` "Captain"). Becomes a DayTrack achievement (the title is `title`, or `text`), once per `id`. |
+| House `{"key", "event": "goals", "week", "goals": [{id, text, done, total}]}` | 34 | Her goals for the week (Sunday start), sent again when progress changes. |
+| House `{"key", "event": "needs", "energy", "fun", "company"}` (0-100) | 39 | Her needs, shown on the phone. `GET /api/house` gives `today` `{done, total, chatMinutes}` to fill them from. |
+| House `{"key", "event": "schedule", "items": [{id, day: 0-6, time: "HH:MM", what, minutes}]}` | 40 | Her weekly routine, shown in DayTrack's week view. `GET /api/house` gives `joins` `[{id, date}]`: events he said he'll join. |
+| House / PC `{"key", "event"\|"action": "focus", "minutes", "what"}` | 45 | Starts focus everywhere (`minutes: 0` ends it). |
+| `GET /api/pc?key=K&inbox=1` (poll every 20-30 s) | 36 | `{"messages": [{text, image?, at}]}`: her texts and reminders that DayTrack held for the desktop because he's at the PC (taken once). Show them on the desktop instead of the phone. While he's gaming they wait until the game ends. Messages are only held while desktop Gwen has polled this in the last 2 minutes, so without it everything still goes to the phone. |
+
+### One settings page (idea 37)
+Desktop Gwen and the house each keep `Documents\Gwen\shared-settings\<desktop|house>.json`:
+`{"title", "items": [{"key", "label", "type": "toggle"|"choice"|"time"|"number", "options"?: [...], "value"}]}`.
+DayTrack shows both on one page (`GET /api/settings`) and writes a changed `value` back into the same file (`POST /api/settings {"key", "app": "desktop"|"house", "item", "value"}`). Each side watches its file and applies changes.
+
+### Status page (idea 38)
+`GET /api/status` → `{"parts": [{id, name, ok, detail}], "game"}` for AIRI, her voice server (5050), her bridge (5052), the house (polled in the last minute), DayTrack and Tailscale. `POST /api/status {"key", "start": "<id>"}` starts a part that's down (never kills anything, refuses while a game is open).
