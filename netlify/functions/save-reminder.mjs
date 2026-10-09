@@ -4,7 +4,7 @@ import { localNow, parcelFor, trophyParcels } from '../lib/house.mjs';
 const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405 };
   try {
-    const { subscription, tasks, completedDays, tz, quiet, gwen, moods, gwenWake, gwenBed, gwenCheered, gwenLoc, gwenStudy, prayers, goals, sleep, adhkar, spend, events, trophies, nudges } = JSON.parse(event.body);
+    const { subscription, tasks, completedDays, tz, quiet, gwen, moods, gwenWake, gwenBed, gwenCheered, gwenLoc, gwenStudy, prayers, goals, sleep, adhkar, spend, events, trophies, nudges, hero } = JSON.parse(event.body);
     if (!subscription || !subscription.keys || !subscription.keys.auth) {
       console.log('Missing subscription or keys');
       return { statusCode: 400, body: 'Missing subscription' };
@@ -41,6 +41,10 @@ const handler = async (event) => {
     await parcelFor(today, completedDays, tasks.filter(t => (t.done || []).includes(today)).length).catch(e => console.error('Parcel:', e.message));
     // Bosses beaten in the level system: a trophy each
     await trophyParcels(trophies).catch(e => console.error('Trophy:', e.message));
+    // 10-09 idea 1: his best mount and last forged weapon, for the house
+    if (hero && typeof hero === 'object') await blobStore('daytrack-house').setJSON('hero', {
+      mount: ['horse', 'wolf', 'dragon'].includes(hero.mount) ? hero.mount : null,
+      weapon: hero.weapon && /^[a-z]{1,20}$/.test(hero.weapon.id || '') ? { id: hero.weapon.id, name: String(hero.weapon.name || '').slice(0, 40) } : null }).catch(e => console.error('Hero:', e.message));
     console.log(`Saved subscription key=${key.slice(0,8)}... tasks=${tasks.length} tz=${tz}`);
     // The push service said this phone's subscription expired: tell the app to make a new one
     const gone = !!(old.subscription && old.subscription.gone && old.subscription.endpoint === subscription.endpoint);

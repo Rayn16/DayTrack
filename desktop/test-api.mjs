@@ -207,6 +207,54 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
   assert.deepEqual(r.data.tasks.map(t => t.id), ['a']);
 }
 
+// 10-09 round
+{
+  // Idea 1: his mount and forged weapon reach the house
+  await call('/.netlify/functions/save-reminder', {subscription: sub, tasks: [task], completedDays: [today], tz, gwen: true, hero: {mount: 'wolf', weapon: {id: 'blade', name: 'Blade of Dawn'}}});
+  assert.deepEqual((await call('/api/house?key=k')).hero, {mount: 'wolf', weapon: {id: 'blade', name: 'Blade of Dawn'}});
+  await call('/.netlify/functions/save-reminder', {subscription: sub, tasks: [task], completedDays: [today], tz, gwen: true, hero: {mount: 'unicorn', weapon: {id: 'x"y'}}});
+  assert.deepEqual((await call('/api/house?key=k')).hero, {mount: null, weapon: null}, 'only known mounts, clean ids');
+  // Idea 3: a letter for a finished month, once (no Claude key here, so her fallback letter)
+  assert.equal((await call('/api/house', {key: 'k', event: 'month', month: today.slice(0, 7), lines: []})).status, 400, 'not the month that is still going');
+  const lm = new Date(); lm.setDate(1); lm.setMonth(lm.getMonth() - 1);
+  const month = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, '0')}`;
+  const l1 = (await call('/api/house', {key: 'k', event: 'month', month, lines: ['He finished 80 tasks on 25 days.']})).letter;
+  assert.ok(l1 && l1.id === 'l-' + month && l1.text.startsWith('Dear Rayan') && l1.text.includes('80 tasks'), JSON.stringify(l1));
+  assert.equal((await call('/api/house', {key: 'k', event: 'month', month, lines: ['other']})).letter.at, l1.at, 'written once');
+  assert.equal((await call('/api/house?key=k')).letter.id, l1.id);
+  assert.equal((await call('/api/house', {key: 'k', event: 'letter', id: l1.id})).ok, true);
+  assert.ok((await call('/api/house?key=k')).letter.read);
+  // Idea 21: the app in front, once a minute, not while a game is open
+  await call('/api/pc', {key: 'k', action: 'report', game: null, app: 'Code.exe'});
+  await call('/api/pc', {key: 'k', action: 'report', game: null, app: 'Code.exe'}); // same minute
+  await call('/api/pc', {key: 'k', action: 'report', game: 'The Isle', app: 'TheIsle.exe'});
+  const apps = (await call('/api/pc?key=k&apps=1')).days;
+  assert.deepEqual(apps[Object.keys(apps).pop()], {'Code.exe': 1});
+  // Idea 22: tomorrow's tasks for the bedtime nudge, timed first
+  await call('/.netlify/functions/save-reminder', {subscription: sub, tz, gwen: true, completedDays: [], tasks: [
+    {id: 'r1', name: 'Gym', recurring: true, days: [], done: [], reminder: {type: 'time', time: '18:00'}},
+    {id: 'r2', name: 'Read', recurring: true, days: [], done: []},
+    {id: 'o1', name: 'Dentist', recurring: false, days: [], done: [], date: '2099-01-01', reminder: '9:30'}]});
+  const tm = await call('/api/pc?key=k&tomorrow=1');
+  assert.match(tm.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(tm.tomorrow, [{name: 'Gym', time: '18:00'}, {name: 'Read', time: null}], 'far-off one-off tasks left out');
+  // Idea 24: send to phone, a file that downloads by its id alone
+  const txt = 'data:text/plain;base64,' + Buffer.from('hello from the PC').toString('base64');
+  const sent = await call('/api/pc', {key: 'k', action: 'send', file: txt, name: 'notes "v2".txt'});
+  assert.equal(sent.ok, true); assert.match(sent.id, /^[a-f0-9]{32}$/);
+  const dl = await fetch(url + '/dt/api/pc?file=' + sent.id);
+  assert.equal(dl.status, 200); assert.equal(await dl.text(), 'hello from the PC');
+  assert.match(dl.headers.get('content-disposition'), /filename="notes v2.txt"|filename="notes _v2_.txt"/);
+  assert.equal((await fetch(url + '/api/pc?file=' + 'f'.repeat(32))).status, 404);
+  assert.equal((await call('/api/pc', {key: 'k', action: 'send'})).status, 400);
+  const msgs = (await call('/.netlify/functions/gwen', {key: 'k', inbox: 'abc12345'})).messages;
+  const fm = msgs.find(m => m.file);
+  assert.ok(fm && fm.file.id === sent.id && fm.file.name === 'notes _v2_.txt' && fm.text === '📎 notes _v2_.txt', JSON.stringify(fm));
+  assert.equal((await call('/api/pc', {key: 'k', action: 'send', text: 'look at this', image: png})).ok, true);
+  assert.ok(!(await call('/api/backup?key=k'))['daytrack-house']['file-' + sent.id], 'sent files stay out of backups');
+  console.log('10-09 round checks passed');
+}
+
 http.close();
 console.log('All API checks passed');
 process.exit(0);

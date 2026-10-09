@@ -129,3 +129,14 @@ console.log('Round 5 checks passed');
   assert.ok(r6.heroHC(back(7)) && !r6.heroHC(back(4)) && r6.heroHC(tod), 'hardcore runs');
   console.log('Round 6 checks passed');
 }
+// 10-09 round: Qibla direction (Riyadh ~244°, London ~119°), next birthday date
+{
+  const life = fs.readFileSync(new URL('../life.js', import.meta.url), 'utf8'), g = n => life.match(new RegExp(`(?:const ${n}=.*|function ${n}\\([\\s\\S]*?\\n})`))[0];
+  const q = new Function(g('KAABA') + '\n' + g('qiblaBearing') + '\nreturn qiblaBearing;')();
+  assert.ok(Math.abs(q(24.71, 46.68) - 244) < 1, 'Riyadh ' + q(24.71, 46.68));
+  assert.ok(Math.abs(q(51.5, -0.13) - 119) < 1, 'London ' + q(51.5, -0.13));
+  const next = new Function('tod0', 'dayDiff', g('bdayNext') + '\nreturn bdayNext;')(() => '2026-10-09', null);
+  assert.equal(next({date: '10-09'}), '2026-10-09'); assert.equal(next({date: '10-08'}), '2027-10-08'); assert.equal(next({date: '12-29'}), '2026-12-29');
+  assert.equal(next({date: '02-29'}), '2027-02-28');
+  console.log('10-09 round checks passed');
+}

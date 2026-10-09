@@ -8,7 +8,7 @@ import android.content.Intent;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-// Done / Tomorrow / 10 min tapped on a notification, or a task tapped on the widget (Done)
+// Done / Tomorrow / 10 min tapped on a notification, a task tapped on the widget (Done), or a place's auto-tick
 public class ActionReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context c, Intent i) {
@@ -28,6 +28,7 @@ public class ActionReceiver extends BroadcastReceiver {
             }
         } else Poller.addTime(app, System.currentTimeMillis() + 11 * 60000L);
         if ("done".equals(action)) DayWidget.done(app, taskId);
+        if ("done".equals(action)) NowNext.done(app, taskId); // the lock-screen card moves on to the next task
         // Tell the PC so it stops (done), moves it (tomorrow) or comes back in 10 minutes (snooze)
         String server = Poller.prefs(app).getString("server", "");
         if (server.isEmpty()) return;

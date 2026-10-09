@@ -229,8 +229,8 @@ let dPlace=null;
 const isShop=n=>/grocer|super|market|panda|danube|tamimi|othaim|lulu|carrefour|بقالة|سوبر/i.test(n);
 function placesSection(){
   if(!has('places'))return'';
-  return`<div class="card"><div class="cl">📍 Places</div><div style="font-size:12px;color:var(--sub);margin-bottom:8px;">Save places like Home or the supermarket, then give a task a place: you get the reminder when you get there. At a supermarket you also see your grocery list.</div>
-    ${life.places.map(p=>`<div class="row" style="cursor:default;"><span style="flex:1;font-size:14px;">${isShop(p.name)?'🛒':/home|بيت|منزل/i.test(p.name)?'🏠':'📍'} ${esc(p.name)}</span><button onclick="placeDel('${p.id}')" style="background:none;border:none;color:var(--sub);cursor:pointer;" aria-label="Delete">✕</button></div>`).join('')}
+  return`<div class="card"><div class="cl">📍 Places</div><div style="font-size:12px;color:var(--sub);margin-bottom:8px;">Save places like Home or the supermarket, then give a task a place: you get the reminder when you get there. At a supermarket you also see your grocery list. Auto-tick ticks a place's tasks once you've been there 15 minutes (the gym, the mosque).</div>
+    ${life.places.map(p=>`<div class="row" style="cursor:default;"><span style="flex:1;font-size:14px;">${isShop(p.name)?'🛒':/home|بيت|منزل/i.test(p.name)?'🏠':'📍'} ${esc(p.name)}</span><button class="rb${p.auto?' on':''}" onclick="placeAuto('${p.id}')" title="Tick this place's tasks after 15 minutes there">✅ Auto-tick</button><button onclick="placeDel('${p.id}')" style="background:none;border:none;color:var(--sub);cursor:pointer;" aria-label="Delete">✕</button></div>`).join('')}
     <button onclick="placeAdd()" style="width:100%;margin-top:8px;background:var(--pril);color:var(--pri);${btnS}">📍 Save where I am now</button>
     ${life.places.length&&!N().hasPerm('locationAlways')?`<div style="font-size:11px;color:#F97316;margin-top:6px;">Reminders need location "Allow all the time". <a href="#" onclick="N().askPerm('locationAlways');return false;">Allow</a></div>`:''}</div>`;
 }
@@ -271,7 +271,7 @@ function syncPlaces(){
     const due=tasks.filter(t=>t.place===p.id&&!t.done.includes(tod)&&(t.recurring?isTodayTask(t,tod,dow):!t.done.length));
     const items=isShop(p.name)&&groc?groc.items.filter(i=>!i.done).map(i=>i.text):[];
     if(!due.length&&!items.length)return null;
-    return{id:p.id,lat:p.lat,lon:p.lon,radius:150,title:`📍 ${p.name}`,body:[...due.map(t=>t.name),...(items.length?[`🛒 ${items.slice(0,12).join(', ')}`]:[])].join(' · ').slice(0,400)};
+    return{id:p.id,lat:p.lat,lon:p.lon,radius:150,title:`📍 ${p.name}`,body:[...due.map(t=>t.name),...(items.length?[`🛒 ${items.slice(0,12).join(', ')}`]:[])].join(' · ').slice(0,400),...(p.auto&&due.length?{tick:due.map(t=>t.id),name:p.name}:{})};
   }).filter(Boolean),j=JSON.stringify(out);
   if(j!==lastPlaces){lastPlaces=j;try{N().places(j);}catch(e){}}
 }
@@ -853,12 +853,180 @@ function lifeNudges(){
   return out.slice(0,20);
 }
 
+// ── 10-09 round: undo a delete, Gwen knows your history, auto-tick by place, now/next on the lock screen, Qibla,
+// PC time log, birthdays, and the app's side of the RPG in her house, her monthly letter and files sent from the PC ──
+
+// Idea 16: deleted tasks wait 30 days in life.trash ({id, t, at}); a task in the bin never comes back with a sync
+const trashKeep=()=>(life.trash||[]).filter(x=>Date.now()-x.at<30*864e5);
+window.lifeTrash=t=>{life.trash=[{id:t.id,t,at:Date.now()},...trashKeep().filter(x=>x.id!==t.id)].slice(0,100);lifeStore();};
+const lifeApply0=window.lifeApply;
+window.lifeApply=d=>{lifeApply0(d);const gone=new Set((life.trash||[]).map(x=>x.id));if(gone.size)tasks=tasks.filter(t=>!gone.has(t.id));};
+function openTrash(){
+  const l=trashKeep();
+  sheet(head('🗑️ Recently deleted')+(l.length?l.map(x=>`<div class="row" style="cursor:default;"><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.t.name)}</div><div style="font-size:11px;color:var(--sub);">Deleted ${fmtDay(toDateStr(new Date(x.at)))}</div></div><button class="minibtn" onclick="trashRestore('${x.id}')">↩ Restore</button></div>`).join('')
+    :'<div style="text-align:center;color:var(--sub);font-size:13px;padding:10px;">Nothing deleted in the last 30 days.</div>')+'<div style="font-size:11px;color:var(--sub);text-align:center;margin-top:8px;">Deleted tasks stay here for 30 days.</div>'+closeBtn);
+}
+function trashRestore(id){
+  const x=(life.trash||[]).find(y=>y.id===id);if(!x)return;
+  life.trash=life.trash.filter(y=>y.id!==id);lifeStore();
+  if(!tasks.some(t=>t.id===id))tasks.push(x.t);
+  // The XP it earned was kept when it was deleted: take that back so it isn't counted twice
+  const what=`${x.t.name} (deleted, XP kept)`,i=(heroP.bank||[]).map(b=>b.what).lastIndexOf(what);if(i>=0)heroP.bank.splice(i,1);
+  save();renderTaskList();openTrash();showToast(`↩ ${x.t.name} is back`);
+}
+
+// Idea 17: what Gwen knows about his past, so "how many gym days this month?" gets a real answer
+function historyLines(){
+  const tod=tod0(),month=tod.slice(0,7),since=addDays(tod,-60);
+  const rec=tasks.filter(t=>t.recurring&&t.done.length).map(t=>{const d=[...t.done].sort();return`${t.name}: done ${d.filter(x=>x.startsWith(month)).length} times this month, ${d.filter(x=>x>=addDays(tod,-6)).length} in the last 7 days, ${d.length} in all, last on ${fmtDay(d[d.length-1])}`;}).slice(0,40);
+  const once=tasks.filter(t=>!t.recurring&&t.done.length&&t.done[0]>=since).sort((a,b)=>a.done[0]<b.done[0]?1:-1).slice(0,30).map(t=>`${t.name} (${fmtDay(t.done[0])})`);
+  const sl=Object.keys(sleepLog).length;
+  return rec.length||once.length?`His history in DayTrack (use it to answer questions about his past):\nHabits: ${rec.join('; ')||'none'}\nOne-off tasks he finished in the last 60 days: ${once.join('; ')||'none'}${sl?`\nHe has logged sleep on ${sl} nights.`:''}`:'';
+}
+
+// Idea 18: a place can tick its tasks by itself once he's been there 15 minutes (the phone does it, even with the app closed)
+function placeAuto(id){const p=life.places.find(x=>x.id===id);if(!p)return;p.auto=!p.auto;lastPlaces='';lifeSave();renderLifeSettings();if(p.auto)showToast(`✅ Tasks at ${p.name} will tick after 15 minutes there`);}
+
+// Idea 19: now and next on the lock screen (an ongoing notification; Done moves to the next one)
+const tTime=t=>{const r=t.reminder,s=typeof r==='string'?r:r&&r.type==='time'?r.time:null;return/^\d{1,2}:\d{2}$/.test(s||'')?s.padStart(5,'0'):null;};
+function todayLeft(){
+  const tod=tod0(),dow=new Date().getDay();
+  return tasks.filter(t=>isTodayTask(t,tod,dow)&&!t.done.includes(tod)&&!t.steps).sort((a,b)=>(tTime(a)?0:1)-(tTime(b)?0:1)||(tTime(a)||'').localeCompare(tTime(b)||''));
+}
+let lastNow='';
+function syncNowNext(){
+  if(!has('nowNext'))return;
+  const j=lifeDev.nowNext?JSON.stringify(todayLeft().slice(0,12).map(t=>({id:t.id,name:t.name,time:tTime(t)?fmt12(tTime(t)):''}))):'[]';
+  if(j!==lastNow){lastNow=j;try{N().nowNext(j);}catch(e){}}
+}
+function toggleNowNext(){if(!lifeDev.nowNext&&N().notifOn&&!N().notifOn())N().askNotif();lifeDev.nowNext=!lifeDev.nowNext;lifeDevStore();syncNowNext();renderLifeSettings();}
+
+// Idea 20: Qibla compass, from the prayer-times location
+const KAABA=[21.4225,39.8262];
+function qiblaBearing(lat,lon){
+  const r=Math.PI/180,f1=lat*r,f2=KAABA[0]*r,dl=(KAABA[1]-lon)*r;
+  return(Math.atan2(Math.sin(dl)*Math.cos(f2),Math.cos(f1)*Math.sin(f2)-Math.sin(f1)*Math.cos(f2)*Math.cos(dl))/r+360)%360;
+}
+let qiblaOn=null;
+async function openQibla(){
+  if(!prayerCfg.loc){await togglePrayer();if(!prayerCfg.loc)return;}
+  const b=qiblaBearing(prayerCfg.loc.lat,prayerCfg.loc.lon);
+  sheet(head('🕋 Qibla')+`<div class="qibla"><div class="qibla-dial" id="qb-dial"><span>N</span><i id="qb-arrow" style="transform:rotate(${b}deg)">🕋</i></div></div>
+    <div style="text-align:center;font-size:15px;font-weight:600;margin-top:10px;">${Math.round(b)}° from north</div>
+    <div id="qb-tip" style="text-align:center;font-size:12px;color:var(--sub);margin-top:4px;">Hold your phone flat. If it points wrong, move it in a figure 8.</div>`+closeBtn);
+  if(qiblaOn)removeEventListener('deviceorientationabsolute',qiblaOn);
+  qiblaOn=e=>{
+    const dial=document.getElementById('qb-dial');if(!dial){removeEventListener('deviceorientationabsolute',qiblaOn);qiblaOn=null;return;}
+    if(e.alpha==null)return;const hd=(360-e.alpha)%360;
+    dial.style.transform=`rotate(${-hd}deg)`;dial.classList.toggle('on',Math.abs(((b-hd+540)%360)-180)<5);
+  };
+  addEventListener('deviceorientationabsolute',qiblaOn);
+}
+
+// Idea 21: PC time log. Desktop Gwen reports the app in front every minute; study and work apps turn into Intellect XP.
+const STUDY_APPS=/^(code|code - insiders|devenv|idea64|pycharm64|webstorm64|rider64|clion64|android studio|studio64|sublime_text|notepad\+\+|notepad|winword|excel|powerpnt|onenote|acrobat|acrord32|sumatrapdf|notion|obsidian|anki|matlab|rstudio|blender|unity|unity hub|photoshop|figma|godot.*|wps|xmind|zotero|logseq|teams|zoom)\.exe$/i;
+let pcApps=null,pcAppsAt=0;
+async function pullPcApps(){
+  if(!gwenCfg.key||(window.DayTrackNative&&!gwenCfg.pc.trim())||Date.now()-pcAppsAt<4*60e3)return;pcAppsAt=Date.now();
+  try{const r=await lifeApi('pc?apps=1&key='+encodeURIComponent(gwenCfg.key),{},6000);if(!r.ok)return;pcApps=(await r.json()).days||{};}catch(e){return;}
+  // Finished days give their XP once: 10 XP per half hour of study or work, up to 80 a day
+  const tod=tod0(),have=new Set((heroP.bonus||[]).filter(b=>b.k==='pctime').map(b=>b.d));let n=0;
+  for(const[d]of Object.entries(pcApps)){const m=pcStudy(d);if(d<tod&&!have.has(d)&&m>=30){heroBonus(d,Math.min(80,Math.floor(m/30)*10),{intellect:1},`${fmtLeft(m)} of study and work on the PC`,'💻','pctime');n++;}}
+  if(n)save();renderLife();
+}
+const pcStudy=d=>Object.entries((pcApps||{})[d]||{}).filter(([a])=>STUDY_APPS.test(a)).reduce((s,[,m])=>s+m,0);
+function pcTimeCard(){
+  const d=(pcApps||{})[tod0()];if(!d)return'';
+  const top=Object.entries(d).sort((a,b)=>b[1]-a[1]).slice(0,4),all=Object.values(d).reduce((s,m)=>s+m,0),st=pcStudy(tod0());
+  return`<div class="card life-card">${cardHead('💻 PC time today','')}<div style="font-size:13px;color:var(--sub);margin-bottom:6px;"><b style="color:var(--pri);">${fmtLeft(st)}</b> study and work of ${fmtLeft(all)} (games not counted)</div>
+    ${top.map(([a,m])=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;"><span>${STUDY_APPS.test(a)?'📘':'🖥️'} ${esc(a.replace(/\.exe$/i,''))}</span><span style="color:var(--sub);">${fmtLeft(m)}</span></div>`).join('')}
+    <div style="font-size:11px;color:var(--sub);margin-top:6px;">Every half hour of study or work is 10 Intellect XP, added the next day.</div></div>`;
+}
+
+// Idea 29: family and friends' birthdays, a reminder the day before and on the day, and Gwen helps write the message
+const bdayNext=b=>{const tod=tod0(),y=+tod.slice(0,4);let d=`${y}-${b.date}`;if(b.date==='02-29'&&!(new Date(y,1,29).getDate()===29))d=`${y}-02-28`;if(d<tod)d=`${y+1}-${b.date==='02-29'?'02-28':b.date}`;return d;};
+const bdaysSoon=n=>(life.bdays||[]).map(b=>({...b,next:bdayNext(b),in:dayDiff(tod0(),bdayNext(b))})).filter(b=>b.in<=n).sort((a,b)=>a.in-b.in);
+function bdayCard(){
+  const l=bdaysSoon(7);if(!l.length)return'';
+  return`<div class="card life-card">${cardHead('🎂 Birthdays','')}${l.map(b=>`<div class="row" style="cursor:default;"><div style="flex:1;"><div style="font-size:14px;font-weight:600;">${esc(b.name)}${b.year?` turns ${+b.next.slice(0,4)-b.year}`:''}</div><div style="font-size:11px;color:var(--sub);">${b.in===0?'Today!':b.in===1?'Tomorrow':`In ${b.in} days, ${fmtDay(b.next)}`}</div></div><button class="minibtn" onclick="bdayGwen('${b.id}')">✍️ Message</button></div>`).join('')}</div>`;
+}
+function openBdays(){
+  const l=(life.bdays||[]).map(b=>({...b,in:dayDiff(tod0(),bdayNext(b))})).sort((a,b)=>a.in-b.in);
+  sheet(head('🎂 Birthdays')+l.map(b=>`<div class="row" style="cursor:default;"><span style="flex:1;font-size:14px;">${esc(b.name)}${b.rel?` <small style="color:var(--sub);">(${esc(b.rel)})</small>`:''}</span><span style="font-size:12px;color:var(--sub);margin-inline-end:8px;">${fmtDay(bdayNext(b)).replace(/^\w+, /,'')}</span><button onclick="bdayDel('${b.id}')" style="background:none;border:none;color:var(--sub);cursor:pointer;" aria-label="Delete">✕</button></div>`).join('')
+    +`<div class="sl" style="margin-top:10px;">Add someone</div><input class="inp" id="bd-name" placeholder="Name"><input class="inp" id="bd-rel" placeholder="Who they are (mum, friend…), optional" style="margin-top:6px;">
+    <div style="display:flex;gap:8px;margin-top:6px;align-items:center;"><input type="date" class="inp" id="bd-date" style="flex:1;"><label style="font-size:12px;color:var(--sub);display:flex;gap:4px;align-items:center;"><input type="checkbox" id="bd-year"> Year is right</label></div>
+    <button onclick="bdayAdd()" style="width:100%;margin-top:8px;background:var(--pri);color:white;${btnS}">Add</button>`+closeBtn);
+}
+function bdayAdd(){
+  const v=id=>document.getElementById(id),name=v('bd-name').value.trim().slice(0,40),d=v('bd-date').value;
+  if(!name||!/^\d{4}-\d{2}-\d{2}$/.test(d))return showToast('Add a name and a date');
+  life.bdays=[...(life.bdays||[]),{id:uid(),name,rel:v('bd-rel').value.trim().slice(0,30),date:d.slice(5),year:v('bd-year').checked?+d.slice(0,4):null}];
+  lifeSave();openBdays();renderLife();
+}
+function bdayDel(id){if(!confirm('Remove this birthday?'))return;life.bdays=life.bdays.filter(b=>b.id!==id);lifeSave();openBdays();renderLife();}
+function bdayGwen(id){
+  const b=(life.bdays||[]).find(x=>x.id===id);if(!b)return;
+  if(!gwenCfg.key)return showToast('Add your Gwen key in Settings first');
+  switchTab('gwen');const age=b.year?` They turn ${+bdayNext(b).slice(0,4)-b.year}.`:'';
+  setTimeout(()=>sendGwen({said:`Help me write a short birthday message for ${b.name}${b.rel?` (my ${b.rel})`:''}.${age} Give me one I can send as it is.`}),300);
+}
+const bdayNudges=()=>{
+  const wake=gwenCfg.wake||'09:00',last=addDays(tod0(),1),out=[];
+  for(const b of bdaysSoon(2)){
+    if(b.in>=1)out.push({id:'bd1'+b.id,date:addDays(b.next,-1),at:'20:00',title:'🎂 '+b.name,text:`${b.name}'s birthday is tomorrow. Want me to help you write something? 💜`});
+    out.push({id:'bd0'+b.id,date:b.next,at:wake,title:'🎂 '+b.name,text:`It's ${b.name}'s birthday today! Don't forget to send them something 💜`});
+  }
+  return out.filter(n=>n.date<=last);
+};
+
+// Idea 1: his mount and forged weapon, for her house
+function heroForHouse(){
+  if(typeof heroMount!=='function')return undefined;
+  const m=heroMount().cur,f=(heroP.forged||[]),w=f[f.length-1];
+  return{mount:m?m[0]:null,weapon:w&&HERO_WEAPONS[w]?{id:w,name:HERO_WEAPONS[w][0]}:null};
+}
+
+// Idea 3: on the first day of a month the app tells DayTrack.exe how his month went and Gwen writes him a letter
+const LETTERS_FROM='2026-10'; // her first full month
+async function monthLetter(){
+  if(!gwenCfg.key||!house)return;
+  const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);const m=toDateStr(d).slice(0,7);
+  if(m<LETTERS_FROM||life.letterSent===m||(house.letter&&house.letter.month>=m))return;
+  life.letterSent=m;lifeSave();
+  const days=new Set(),count={};tasks.forEach(t=>t.done.filter(x=>x.startsWith(m)).forEach(x=>{days.add(x);count[t.name]=(count[t.name]||0)+1;}));
+  const done=Object.values(count).reduce((s,n)=>s+n,0),full=completedDays.filter(x=>x.startsWith(m)).length;
+  const top=Object.entries(count).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([n,c])=>`${n} (${c}x)`);
+  const km=(heroP.walks||[]).filter(w=>(w.d||'').startsWith(m)).reduce((s,w)=>s+(w.m||0),0)/1000;
+  const md=Object.entries(moods).filter(([x])=>x.startsWith(m)).map(([,v])=>v),h=typeof heroState==='function'?heroState():null;
+  const lines=[`He finished ${done} tasks on ${days.size} days, and every task on ${full} of them.`,top.length&&`What he did most: ${top.join(', ')}.`,
+    h&&`He is now Level ${h.L} (${h.rank} ${h.cls}).`,km>=1&&`He walked ${km.toFixed(1)} km.`,md.length&&`His average mood was ${['very low','low','okay','good','great'][Math.round(md.reduce((s,v)=>s+v,0)/md.length)-1]}.`,
+    (life.bdays||[]).some(b=>b.date.startsWith(m.slice(5)))&&`Birthdays this month: ${life.bdays.filter(b=>b.date.startsWith(m.slice(5))).map(b=>b.name).join(', ')}.`].filter(Boolean);
+  try{const r=await lifePost('house',{event:'month',month:m,lines},60000),j=await r.json();if(j.letter){house.letter=j.letter;renderLife();}}catch(e){life.letterSent=null;lifeSave();}
+}
+function letterCard(){
+  const l=house&&house.letter;if(!l||l.read)return'';
+  return`<div class="card life-card" style="cursor:pointer;" onclick="openLetter()">${cardHead('💌 A letter from Gwen','')}<div style="font-size:13px;color:var(--sub);">She wrote you about ${new Date(l.month+'-15T12:00:00').toLocaleDateString('en-US',{month:'long'})}. Tap to read it.</div></div>`;
+}
+function openLetter(){
+  const l=house&&house.letter;if(!l)return;
+  sheet(head('💌 '+new Date(l.month+'-15T12:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'}))+`<div class="letter">${esc(l.text)}</div>`+closeBtn);
+  if(!l.read){l.read=Date.now();renderLife();lifePost('house',{event:'letter',id:l.id}).catch(()=>{});}
+}
+
+// Idea 24: a file sent from the PC ("Gwen, send this to my phone") downloads into the phone's Downloads
+window.lifeFileBtn=f=>/^[a-f0-9]{32}$/.test(f.id)?`<button onclick="event.stopPropagation();lifeGetFile('${f.id}')" class="minibtn" style="display:block;margin-top:6px;">⬇️ ${esc(f.name)}${f.size?` · ${f.size>1e6?(f.size/1e6).toFixed(1)+' MB':Math.ceil(f.size/1e3)+' KB'}`:''}</button>`:'';
+function lifeGetFile(id){
+  const f=(gwenChat.find(m=>m.file&&m.file.id===id)||{}).file,name=(f&&f.name)||'file',path='/.netlify/functions/pc?file='+id;
+  if(has('download')){N().download(path,name);showToast('⬇️ Downloading…');return;}
+  const a=document.createElement('a');a.href=path;a.download=name;a.click();
+}
+
 // ── Cards, settings, Gwen's context ───────────────────────────────────────────
 function renderLife(){
   const top=document.getElementById('life-top'),bot=document.getElementById('life-bottom');if(!top)return;
-  top.innerHTML=top3Card()+waterCard()+ramadanCard()+adhkarCard()+sundayCard()+spreadCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
+  top.innerHTML=letterCard()+bdayCard()+top3Card()+waterCard()+ramadanCard()+adhkarCard()+sundayCard()+spreadCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
   renderHeroMini();
-  bot.innerHTML=chainsCard()+billsCard()+photosCard()+routinesCard();
+  bot.innerHTML=chainsCard()+billsCard()+pcTimeCard()+photosCard()+routinesCard();
   renderSpend();chainHighlight();renderFriends();
 }
 function renderLifeSettings(){
@@ -868,6 +1036,7 @@ function renderLifeSettings(){
   el.innerHTML=`<div class="card"><div class="cl">Faith</div>
       ${row('🤲 Adhkar reminders','After Fajr and Asr (needs prayer times on)',tog(life.adhkar.on,'toggleAdhkar()'))}
       <div style="display:flex;gap:8px;margin-top:6px;"><button class="minibtn" style="flex:1;" onclick="openAdhkar('m')">🌅 Morning</button><button class="minibtn" style="flex:1;" onclick="openAdhkar('e')">🌇 Evening</button><button class="minibtn" style="flex:1;" onclick="openTasbih()">📿 Tasbih</button></div>
+      ${row('🕋 Qibla','A compass pointing to the Kaaba, from your prayer-times location','<button class="minibtn" onclick="openQibla()">Open</button>')}
       ${row('📖 Quran plan',life.quran?`Page ${life.quran.page} · ${life.quran.mode==='daily'?life.quran.perDay+' a day':'khatma by '+fmtDay(life.quran.by)}`:'A page a day, or a khatma by a date',`<button class="minibtn" onclick="quranSetup()">${life.quran?'Edit':'Set up'}</button>`)}
     </div>
     <div class="card"><div class="cl">Daily helpers</div>
@@ -878,6 +1047,9 @@ function renderLifeSettings(){
       ${row('🚗 Car and bills','Oil change, insurance, phone bill: a heads-up a few days before',`<button class="minibtn" onclick="editBill()">+ Add</button>`)}
       ${row('📸 Progress photos','A weekly photo of your body or room, kept on this device only',tog(lifeDev.photos,'lifeDev.photos=!lifeDev.photos;lifeDevStore();renderLifeSettings();renderLife();'))}
       ${lifeDev.photos?row('📅 Weekly photo reminder','Same day each week',tog(lifeDev.photoRemind,'lifeDev.photoRemind=!lifeDev.photoRemind;lifeDevStore();renderLifeSettings();save();')):''}
+      ${row('🎂 Birthdays','Family and friends: a reminder the day before, and Gwen helps you write the message',`<button class="minibtn" onclick="openBdays()">${(life.bdays||[]).length?'Edit':'+ Add'}</button>`)}
+      ${row('🗑️ Recently deleted','Bring back a task you deleted in the last 30 days',`<button class="minibtn" onclick="openTrash()">Open${trashKeep().length?` (${trashKeep().length})`:''}</button>`)}
+      ${has('nowNext')?row('🔒 Now and next on the lock screen','Your current task and the next one, with a Done button',tog(lifeDev.nowNext,'toggleNowNext()')):''}
       ${has('focusStart')?row('🎯 Focus lock','While a timer runs, opening TikTok, YouTube, Instagram, Snapchat or a game gets you told off. Stay focused for bonus XP',tog(lifeDev.focus,'toggleFocus()')):''}
     </div>
     ${placesSection()}
@@ -911,13 +1083,15 @@ window.lifeContext=()=>{
     life.chains.length?`His habit chains (one leads into the next): ${life.chains.map(c=>`${c.name}: ${chainTasks(c).map(t=>t.name+(t.done.includes(tod)?' ✓':'')).join(' → ')}`).join('; ')}.`:'',
     life.bills.filter(b=>dayDiff(tod,b.due)<=b.warn).map(b=>`${b.name} is due ${fmtDay(b.due)}.`).join(' '),
     planCtx,
+    bdaysSoon(14).map(b=>`${b.name}${b.rel?` (his ${b.rel})`:''} has a birthday ${b.in===0?'today':b.in===1?'tomorrow':`in ${b.in} days`}.`).join(' '),
+    historyLines(),
   ].filter(Boolean).join('\n\n');
 };
 // Her action lines this file adds: SPEND
 window.lifeActions=text=>text.replace(/^[ \t*-]*SPEND:\s*(.+)$/gim,(_,spec)=>{const[what,amt]=spec.split('|').map(x=>(x||'').trim());const e=addSpend(`${what} ${amt}`,true);if(e)showToast(`💰 Logged ${e.label} · ${e.amt} SAR`);return'';});
 // What the server needs for reminders and Gwen's texts
-window.lifeReminders=()=>({nudges:lifeNudges(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`}))});
-window.lifeSaved=()=>{syncPlaces();queueShare();};
+window.lifeReminders=()=>({nudges:[...bdayNudges(),...lifeNudges()].slice(0,20),hero:heroForHouse(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`}))});
+window.lifeSaved=()=>{syncPlaces();queueShare();syncNowNext();};
 
 (function lifeBoot(){
   document.head.insertAdjacentHTML('beforeend',`<style>
@@ -941,6 +1115,10 @@ window.lifeSaved=()=>{syncPlaces();queueShare();};
     .task-item.chain-next .task-main{border-inline-start:3px solid var(--pri);padding-inline-start:8px;}
     .pstrip{display:flex;gap:6px;overflow-x:auto;}.pstrip img,.pstrip button{width:64px;height:64px;border-radius:10px;object-fit:cover;flex-shrink:0;cursor:pointer;}
     .pstrip button{border:1.5px dashed var(--brd);background:none;color:var(--pri);font-size:22px;}
+    .qibla{display:flex;justify-content:center;}.qibla-dial{width:220px;height:220px;border-radius:50%;border:3px solid var(--brd);position:relative;transition:transform .2s linear;}
+    .qibla-dial.on{border-color:var(--grn);box-shadow:0 0 24px var(--grn);}.qibla-dial span{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-weight:700;color:#EF4444;}
+    .qibla-dial i{position:absolute;inset:0;display:flex;justify-content:center;font-style:normal;font-size:30px;padding-top:28px;}
+    .letter{white-space:pre-wrap;font-size:15px;line-height:1.7;background:var(--pril);border-radius:14px;padding:16px;font-family:Georgia,serif;}
     .pcmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;}.pcmp img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block;margin-bottom:6px;}
   </style>`);
   renderLife();renderLifeSettings();
@@ -948,11 +1126,11 @@ window.lifeSaved=()=>{syncPlaces();queueShare();};
     const c=document.querySelector('#tab-gwen .hscroll');if(c)c.insertAdjacentHTML('afterbegin','<button class="gchip" onclick="openYear()">🎂 Our first year</button>');
     if(!life.yearShown)setTimeout(openYear,2500);
   }
-  pullHouse();syncShares();readSteps();syncPlaces();
+  pullHouse().then(monthLetter);syncShares();readSteps();syncPlaces();syncNowNext();setTimeout(pullPcApps,3000);
   setInterval(focusCheck,2000);document.addEventListener('click',()=>setTimeout(focusCheck,0),true);
   setInterval(()=>{if(!document.hidden&&window.__dtResume)__dtResume();},30e3); // ticks from the home-screen widget
-  setInterval(()=>{if(document.hidden)return;renderLife();},60e3);
-  setInterval(()=>{if(document.hidden)return;pullHouse();readSteps();friendsPush();},5*60e3);
+  setInterval(()=>{syncNowNext();if(document.hidden)return;renderLife();},60e3);
+  setInterval(()=>{if(document.hidden)return;pullHouse().then(monthLetter);readSteps();friendsPush();pullPcApps();},5*60e3);
   setInterval(()=>{if(!document.hidden&&document.getElementById('dt-ov').classList.contains('on'))syncShares();},20e3);
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;pullHouse();syncShares();readSteps();renderLifeSettings();focusBack();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;pullPcApps();pullHouse();syncShares();readSteps();renderLifeSettings();focusBack();});
 })();

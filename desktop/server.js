@@ -19,6 +19,7 @@ function fileStore(dir) {
     return {
       async get(k) { try { return JSON.parse(fs.readFileSync(file(k), 'utf8')); } catch (_) { return null; } },
       async setJSON(k, v) { fs.mkdirSync(d, {recursive: true}); fs.writeFileSync(file(k) + '.tmp', JSON.stringify(v)); fs.renameSync(file(k) + '.tmp', file(k)); },
+      async delete(k) { try { fs.unlinkSync(file(k)); } catch (_) {} },
       async list() { try { return {blobs: fs.readdirSync(d).filter(f => f.endsWith('.json')).map(f => ({key: decodeURIComponent(f.slice(0, -5))}))}; } catch (_) { return {blobs: []}; } },
     };
   };

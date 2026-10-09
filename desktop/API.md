@@ -134,8 +134,9 @@ Every new field is optional to read; old clients ignore it.
 ### Desktop Gwen
 - `report` takes `app` (idea 21): the exe name of the window in front (`"Code.exe"`, `"chrome.exe"`), or `null` when idle/locked.
   Only the exe name, never window titles. DayTrack counts the minutes per app per day for the PC time log.
-- `GET /api/pc?key=K&tomorrow=1` → `{"tomorrow": [{"name", "time"}]}` (idea 22): tomorrow's tasks, timed ones first by time
-  (`time` "HH:MM" or `null`). For the bedtime nudge.
+- `GET /api/pc?key=K&tomorrow=1` → `{"date", "tomorrow": [{"name", "time"}]}` (idea 22): tomorrow's tasks, timed ones first by
+  time (`time` "HH:MM" or `null`). Before 05:00 "tomorrow" is the day that already started (`date` says which). For the bedtime nudge.
+- `GET /api/pc?key=K&apps=1` → `{"days": {"YYYY-MM-DD": {"Code.exe": 95}}}`: minutes per app, last 14 days (game time not counted).
 - `POST /api/pc {"key", "action": "send", "text"?, "image"?, "file"?, "name"?}` (idea 24): "Gwen, send this to my phone".
   `image` a data URL (as above), `file` any data URL up to 20 MB with its `name`. It lands in her DayTrack chat as a message with
   a phone notification; files get a download button. Replies `{"ok": true, "id"}`.

@@ -266,7 +266,7 @@
     'Food': 'طعام', 'Transport': 'مواصلات', 'Bills': 'فواتير', 'Shopping': 'تسوّق', 'Health': 'صحة', 'Gifts': 'هدايا', 'Other': 'أخرى',
     'Type what you spent, like "coffee 18" or "fuel 90". No bank link, just what you type. Gwen notices trends.': 'اكتب ما صرفته، مثل "قهوة 18" أو "بنزين 90". بدون ربط بنكي، فقط ما تكتبه. وغوين تلاحظ التغيّرات.',
     'Places': 'الأماكن',
-    'Save places like Home or the supermarket, then give a task a place: you get the reminder when you get there. At a supermarket you also see your grocery list.': 'احفظ أماكن مثل البيت أو السوبرماركت، ثم اربط المهمة بمكان: يصلك التذكير عند وصولك. وفي السوبرماركت ترى قائمة البقالة أيضًا.',
+    'Save places like Home or the supermarket, then give a task a place: you get the reminder when you get there. At a supermarket you also see your grocery list. Auto-tick ticks a place\'s tasks once you\'ve been there 15 minutes (the gym, the mosque).': 'احفظ أماكن مثل البيت أو السوبرماركت، ثم اربط المهمة بمكان: يصلك التذكير عند وصولك. وفي السوبرماركت ترى قائمة البقالة أيضًا. والإنجاز التلقائي ينجز مهام المكان بعد 15 دقيقة فيه (النادي، المسجد).',
     'Save where I am now': 'احفظ موقعي الحالي',
     'Reminders need location "Allow all the time".': 'التذكيرات تحتاج إذن الموقع «السماح طوال الوقت».',
     'Finding where you are…': 'جارٍ تحديد موقعك…',
@@ -681,6 +681,18 @@
     "Gwen's top 3 for today": 'أهم 3 مهام لليوم من غوين', 'Your top 3 today': 'أهم 3 مهام لك اليوم', "Gwen's top 3": 'أهم 3 من غوين', 'Pin': 'تثبيت', 'overdue': 'متأخرة', 'high priority': 'أولوية عالية',
     'Each morning she picks the 3 tasks to do first, the ones you usually skip': 'كل صباح تختار أول 3 مهام تبدأ بها، وهي التي تتركها عادةً',
     'Daily helpers': 'مساعدات يومية', 'One tap per glass; Gwen nudges you if you fall behind': 'ضغطة لكل كوب، وغوين تذكّرك إن تأخرت',
+    // 10-09 round
+    'Qibla': 'القبلة', 'A compass pointing to the Kaaba, from your prayer-times location': 'بوصلة تشير إلى الكعبة، من موقع أوقات الصلاة',
+    'Hold your phone flat. If it points wrong, move it in a figure 8.': 'أمسك الجوال مستويًا. إن أشار بشكل خاطئ، حرّكه على شكل 8.',
+    'Birthdays': 'أعياد الميلاد', 'Family and friends: a reminder the day before, and Gwen helps you write the message': 'العائلة والأصدقاء: تذكير قبلها بيوم، وغوين تساعدك في كتابة الرسالة',
+    'Add someone': 'أضف شخصًا', 'Who they are (mum, friend…), optional': 'من هو (أمي، صديق…)، اختياري', 'Year is right': 'السنة صحيحة', 'Add a name and a date': 'أضف اسمًا وتاريخًا',
+    'Remove this birthday?': 'حذف عيد الميلاد هذا؟', 'Message': 'رسالة', 'Today!': 'اليوم!',
+    'Recently deleted': 'المحذوفة مؤخرًا', 'Bring back a task you deleted in the last 30 days': 'استرجع مهمة حذفتها خلال آخر 30 يومًا', 'Restore': 'استرجاع',
+    'Deleted tasks stay here for 30 days.': 'تبقى المهام المحذوفة هنا 30 يومًا.', 'Nothing deleted in the last 30 days.': 'لم يُحذف شيء خلال آخر 30 يومًا.',
+    'Now and next on the lock screen': 'الآن والتالي على شاشة القفل', 'Your current task and the next one, with a Done button': 'مهمتك الحالية والتي بعدها، مع زر تم',
+    'Auto-tick': 'إنجاز تلقائي', "Tick this place's tasks after 15 minutes there": 'إنجاز مهام هذا المكان بعد 15 دقيقة فيه',
+    'PC time today': 'وقت الكمبيوتر اليوم', 'Every half hour of study or work is 10 Intellect XP, added the next day.': 'كل نصف ساعة دراسة أو عمل تعطي 10 XP للذكاء، تُضاف في اليوم التالي.',
+    'A letter from Gwen': 'رسالة من غوين', 'Downloading…': 'جارٍ التنزيل…', 'Add': 'إضافة', 'Tomorrow': 'غدًا',
     // Level round 6
     '🗺️ World': '🗺️ العالم', 'World map': 'خريطة العالم', 'Villagers · weekly side quests': 'أهل القرى · مهام جانبية أسبوعية', 'On the road': 'على الطريق', 'Rival': 'الغريم',
     'Legendary weapon': 'السلاح الأسطوري', 'Your home': 'بيتك', 'Guild': 'النقابة', 'Hardcore run': 'الوضع القاسي', 'Mana and powers': 'المانا والقوى',
@@ -779,6 +791,8 @@
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const G6 = { Body: 'للجسد', Mind: 'للعقل', Spirit: 'للروح', Life: 'للحياة' }; // Level round 6
   const AR_RE = [
+    [/^(\d+)° from north$/, '$1° من الشمال'], [/^Open \((\d+)\)$/, 'افتح ($1)'], // 10-09 round
+    [/^Deleted (.+)$/, (_, x) => 'حُذفت ' + T(x)],
     [/^(Up late|Good morning|Good afternoon|Good evening), Rayan$/, (_, g) => ({ 'Up late': 'سهران يا ريان؟', 'Good morning': 'صباح الخير يا ريان', 'Good afternoon': 'نهارك سعيد يا ريان', 'Good evening': 'مساء الخير يا ريان' })[g]],
     [/^(\d+) \/ (\d+) tasks$/, 'أنجزت $1 من $2'],
     [/^Gwen added (\d+) tasks?$/, (_, n) => n === '1' ? 'أضافت غوين مهمة' : `أضافت غوين ${n} مهام`],
