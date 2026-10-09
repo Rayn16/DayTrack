@@ -489,6 +489,7 @@
         </div>
         <div style="font-size:11px;color:var(--sub);margin-top:5px;">Optional. She texts you at your wake-up time, and says goodnight half an hour before bed. These two go off even in quiet hours.</div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--txt);"><input type="checkbox" id="gwen-wx" onchange="gwenWxToggle(this)">She knows the real weather where I am (uses this phone's location, rounded to about 10 km)</label>
+        <label id="gwen-hey-row" style="display:none;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--txt);"><input type="checkbox" id="gwen-hey" onchange="DayTrackNative.heyGwen(this.checked)">Say "Hey Gwen" to call her, even when the phone is locked (listens on the phone only, for her name)</label>
         <button onclick="testGwen()" style="margin-top:10px;width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Check connection</button>
         <div id="gwen-test" style="font-size:12px;color:var(--sub);margin-top:8px;text-align:center;"></div>
       </div>
@@ -1165,13 +1166,13 @@ function boot(){
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   buildEmoGrid();renderTaskList();renderMood();renderTimerTab();renderCal();renderSyncUI();renderQuiet();
   applyPendingDone();
-  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;document.getElementById('gwen-wake').value=gwenCfg.wake||'';document.getElementById('gwen-bed').value=gwenCfg.bed||'';document.getElementById('gwen-wx').checked=!!gwenCfg.loc;renderGwen();if(gwenCfg.study)gwenStudyRun();if(gwenCfg.loc)gwenWeather();
+  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;document.getElementById('gwen-wake').value=gwenCfg.wake||'';document.getElementById('gwen-bed').value=gwenCfg.bed||'';document.getElementById('gwen-wx').checked=!!gwenCfg.loc;if(window.DayTrackNative&&DayTrackNative.heyGwen){document.getElementById('gwen-hey-row').style.display='flex';document.getElementById('gwen-hey').checked=DayTrackNative.heyGwenOn();}renderGwen();if(gwenCfg.study)gwenStudyRun();if(gwenCfg.loc)gwenWeather();
   renderLockUI();renderPrayerToggles();if(calMode==='week')setCalMode('week');
   if(lockMode==='app'&&canLock()){document.documentElement.classList.add('locked');unlockApp();}
   if(document.documentElement.classList.contains('panel'))document.querySelector('#tasks-card .cl').textContent='Today · Esc to close';
   nativeWidget();setTimeout(takeShare,400);setTimeout(checkAppUpdate,3000);refreshPrayerLoc();
   setInterval(renderPrayerCard,60e3);
-  pullGwenInbox();if(new URLSearchParams(location.search).get('tab')==='gwen')switchTab('gwen');if(new URLSearchParams(location.search).get('tab')==='boss')setTimeout(()=>heroBossOpen(),300);
+  pullGwenInbox();if(new URLSearchParams(location.search).get('tab')==='gwen')switchTab('gwen');if(new URLSearchParams(location.search).get('call'))setTimeout(gwenWake,300);if(new URLSearchParams(location.search).get('tab')==='boss')setTimeout(()=>heroBossOpen(),300);
   if(syncCode)pullSync();
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;applyPendingDone();renderMood();if(syncCode)pullSync();gwen3d();pullGwenInbox();});
   if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='dt-actions')applyPendingDone();if(e.data==='gwen-open'){switchTab('gwen');pullGwenInbox();}});
@@ -2153,6 +2154,18 @@ function gwenNoteStart(){
   try{rec.start();}catch(e){rec.onend();}
 }
 
+// "Hey Gwen" from the phone, even locked: straight into a call, then back to the lock screen when it ends
+window.__dtHeyGwen=on=>{document.getElementById('gwen-hey').checked=on;if(!on)showToast('Hey Gwen needs the microphone');};
+function gwenWake(){
+  // The fingerprint lock still asks first; no finger, no Gwen
+  if(lockMode!=='off'&&canLock()&&!unlocked){
+    window.__dtUnlock=ok=>{if(!ok){DayTrackNative.wakeDone();return;}unlocked=true;document.documentElement.classList.remove('locked');gwenWake();};
+    DayTrackNative.unlock();return;
+  }
+  switchTab('gwen');if(g3.call)return;
+  gwenCall().then(()=>{if(g3.call)g3.call.wake=1;else DayTrackNative.wakeDone();});
+}
+
 // Call mode: full-screen Gwen, talking back and forth hands-free until you hang up
 async function gwenCall(){
   const SR=gwenSR();
@@ -2179,7 +2192,7 @@ function gwenCallListen(c){
     if(g3.call!==c)return;
     if(!heard.trim()){
       // About a minute and a half of silence ends the call
-      if(++c.quiet>=12){gwenHangUp();showToast('Call ended, I didn\'t hear you for a while');}
+      if(++c.quiet>=(c.wake?3:12)){gwenHangUp();showToast('Call ended, I didn\'t hear you for a while');}
       else setTimeout(()=>gwenCallListen(c),300);
       return;
     }
@@ -2204,6 +2217,7 @@ function gwenHangUp(){
   document.body.classList.remove('gwen-calling');document.getElementById('gwen-call-heart').style.display='none';
   if(!g3.vrm)gwenStage(false);
   renderGwen();
+  if(c.wake)DayTrackNative.wakeDone();
 }
 function gwenCallStatus(t){document.getElementById('gwen-call-status').textContent=t;}
 

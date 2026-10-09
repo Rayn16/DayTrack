@@ -42,6 +42,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.util.Base64;
+import android.view.WindowManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -79,7 +80,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class MainActivity extends Activity {
     private static final String START = "https://appassets.androidplatform.net/assets/web/index.html";
     private static final String APK = "https://github.com/Rayn16/DayTrack/releases/download/app/DayTrack.apk";
-    private static final int REQ_MIC = 1, REQ_NOTIF = 2, REQ_LOC = 3, REQ_FILE = 4, REQ_PERM = 10;
+    private static final int REQ_MIC = 1, REQ_NOTIF = 2, REQ_LOC = 3, REQ_FILE = 4, REQ_WAKE = 5, REQ_PERM = 10;
     private static final String[] PERMS = {"location", "locationAlways", "calendar", "steps"}; // askPerm's request code is REQ_PERM + index
 
     private WebView web;
@@ -94,6 +95,7 @@ public class MainActivity extends Activity {
     private String settingsFor; // askPerm sent her to Settings for this; answered when she's back
     private String tile; // a Quick Settings tile tapped before the page was ready
     private boolean loaded;
+    private int wakeStep = -1; // walking through the settings "Hey Gwen" needs; -1 = not now
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -144,7 +146,8 @@ public class MainActivity extends Activity {
             }
         });
         setContentView(web);
-        web.loadUrl(getIntent().getBooleanExtra("gwen", false) ? START + "?tab=gwen" : getIntent().getBooleanExtra("boss", false) ? START + "?tab=boss" : START);
+        boolean wake = woke(getIntent());
+        web.loadUrl(wake ? START + "?tab=gwen&call=1" : getIntent().getBooleanExtra("gwen", false) ? START + "?tab=gwen" : getIntent().getBooleanExtra("boss", false) ? START + "?tab=boss" : START);
         if (getIntent().getBooleanExtra("boss", false)) BossAlarm.stop(this);
         // Not again after the activity is rebuilt or reopened from recents
         if (saved == null && (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) handle(getIntent());
@@ -156,7 +159,48 @@ public class MainActivity extends Activity {
         super.onNewIntent(i);
         if (i.getBooleanExtra("gwen", false)) web.evaluateJavascript("switchTab('gwen');pullGwenInbox();", null);
         if (i.getBooleanExtra("boss", false)) { BossAlarm.stop(this); web.evaluateJavascript("window.heroBossOpen&&heroBossOpen()", null); }
+        if (woke(i)) web.evaluateJavascript("window.gwenWake&&gwenWake()", null);
         handle(i);
+    }
+
+    // "Hey Gwen" opened us: show over the lock screen and light it up. Only right after the phone heard her,
+    // so no other app can use this to get past the lock screen.
+    private boolean woke(Intent i) {
+        if (!i.getBooleanExtra("wake", false) || !WakeService.justWoke()) return false;
+        overLock(true);
+        return true;
+    }
+
+    @SuppressWarnings("deprecation")
+    private void overLock(boolean on) {
+        if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(on); setTurnScreenOn(on); }
+        else if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+    }
+
+    // While DayTrack is on screen the mic is the app's; once it's gone "Hey Gwen" listens again.
+    // Opening the app also starts the listener after a phone restart (Android won't start it from the background).
+    @Override
+    protected void onStart() { super.onStart(); WakeService.appOpen = true; WakeService.start(this); }
+
+    @Override
+    protected void onStop() { WakeService.appOpen = false; overLock(false); super.onStop(); }
+
+    @Override
+    protected void onRestart() { super.onRestart(); if (wakeStep >= 0) heyGwenSetup(); }
+
+    // What "Hey Gwen" needs besides the mic, one Settings page at a time (each only if it's missing):
+    // full-screen alerts to open her on the lock screen, then "Display over other apps" to open her while the phone's in use
+    private void heyGwenSetup() {
+        while (wakeStep >= 0) {
+            int step = wakeStep++;
+            String page = null;
+            if (step == 0 && Build.VERSION.SDK_INT >= 34 && !getSystemService(NotificationManager.class).canUseFullScreenIntent()) page = Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT;
+            else if (step == 1 && Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) page = Settings.ACTION_MANAGE_OVERLAY_PERMISSION;
+            else if (step > 1) wakeStep = -1;
+            if (page == null) continue;
+            try { startActivity(new Intent(page, Uri.parse("package:" + getPackageName()))); return; } catch (Exception ignored) { }
+        }
     }
 
     // The "Add task" tile: the page opens its add box once it's loaded
@@ -291,6 +335,7 @@ public class MainActivity extends Activity {
         web.onResume();
         web.evaluateJavascript("window.__dtResume&&__dtResume()", null);
         getSystemService(NotificationManager.class).cancel(Poller.GWEN_ID);
+        getSystemService(NotificationManager.class).cancel(WakeService.UP_ID);
         if (settingsFor != null) { perm2(settingsFor); settingsFor = null; }
     }
 
@@ -317,6 +362,7 @@ public class MainActivity extends Activity {
         boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
         if (req == REQ_MIC) { if (ok) startListening(); else { emit("error", "not-allowed"); emit("end", null); } }
         else if (req == REQ_NOTIF) js("window.__dtPerm&&__dtPerm(" + ok + ")");
+        else if (req == REQ_WAKE) heyGwen(ok);
         else if (req == REQ_LOC && geoCallback != null) { geoCallback.invoke(geoOrigin, ok, false); geoCallback = null; }
         else if (req >= REQ_PERM && req < REQ_PERM + PERMS.length) {
             String which = PERMS[req - REQ_PERM];
@@ -325,6 +371,12 @@ public class MainActivity extends Activity {
                     && granted(Manifest.permission.ACCESS_FINE_LOCATION) && !hasPerm(which)) askPerm(which);
             else perm2(which);
         }
+    }
+
+    private void heyGwen(boolean on) {
+        WakeService.set(this, on);
+        js("window.__dtHeyGwen&&__dtHeyGwen(" + on + ")");
+        if (on) { wakeStep = 0; heyGwenSetup(); }
     }
 
     private boolean hasPerm(String which) {
@@ -515,6 +567,20 @@ public class MainActivity extends Activity {
                 return a;
             }
         }
+
+        // "Hey Gwen": on asks for the mic (and notifications, for the listening note) first
+        @JavascriptInterface public void heyGwen(boolean on) {
+            runOnUiThread(() -> {
+                if (!on || granted(Manifest.permission.RECORD_AUDIO)) MainActivity.this.heyGwen(on);
+                else requestPermissions(Build.VERSION.SDK_INT >= 33 ? new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}
+                        : new String[]{Manifest.permission.RECORD_AUDIO}, REQ_WAKE);
+            });
+        }
+
+        @JavascriptInterface public boolean heyGwenOn() { return WakeService.on(MainActivity.this); }
+
+        // A "Hey Gwen" call ended: back behind the lock screen if the phone is locked
+        @JavascriptInterface public void wakeDone() { runOnUiThread(() -> overLock(false)); }
 
         @JavascriptInterface public boolean hasSpeech() { return SpeechRecognizer.isRecognitionAvailable(MainActivity.this); }
 
