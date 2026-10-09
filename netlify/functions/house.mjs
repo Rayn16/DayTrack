@@ -1,5 +1,5 @@
 import { lambda, blobStore } from '../lib/fn.mjs';
-import { keyOk, gwenText, shrink, milestone, BORN, localNow, todaysQuest, questDone, ramadan, phonePrayers } from '../lib/house.mjs';
+import { keyOk, gwenText, shrink, milestone, BORN, localNow, todaysQuest, questDone, ramadan, phonePrayers, live, sharedState, sharedEvent } from '../lib/house.mjs';
 import { gwenWrite } from '../lib/gwen.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,7 +7,7 @@ import path from 'node:path';
 // Gwen's house (Unity on his PC) and the phone's Postcards gallery. Contract: desktop/API.md
 const TEXTS_A_DAY = 4;
 const PEEK_WAIT = 45e3;
-let houseSeen = 0, peeks = [], peekDone = new Map(); // idea 4: the phone asks, the house sees it on its next poll (every 20 s) and answers
+let peeks = [], peekDone = new Map(); // idea 4: the phone asks, the house sees it on its next poll (every 20 s) and answers
 let writing = null; // 10-09 idea 3: the letter being written, so the phone and the PC app don't both write one
 
 // Idea 1: one outfit in all three, in Documents\Gwen\gwen-outfit.json {outfit, by, at}
@@ -33,17 +33,16 @@ const handler = async (event) => {
     }
     if (q.peek) return peek();
     if (q.year) return json(200, { year: await house.get('year', { type: 'json' }) });
-    if (!q.from) houseSeen = Date.now();
+    if (!q.from) live.houseSeen = Date.now();
     const parcels = ((await house.get('parcels', { type: 'json' })) || []).filter(p => p.status !== 'opened');
     const ms = milestone(today), pr = await phonePrayers(), ram = ramadan(today);
     peeks = peeks.filter(p => Date.now() - p.at < PEEK_WAIT);
     return json(200, { parcels, born: BORN(), daysTogether: ms.days, milestone: ms.next,
       quest: await todaysQuest(today), peeks, week: await house.get('week', { type: 'json' }),
-      prayers: pr && { date: pr.date, fajr: pr.Fajr, dhuhr: pr.Dhuhr, asr: pr.Asr, maghrib: pr.Maghrib, isha: pr.Isha },
       ramadan: { active: ram.today, day: ram.day || null, in: ram.in || 0, starts: ram.starts || null, ...(ram.today && pr ? { iftar: pr.Maghrib, suhoor: pr.Fajr } : {}) },
-      now: await house.get('now', { type: 'json' }), houseOpen: Date.now() - houseSeen < 60e3, outfit: readOutfit(),
-      // 10-09 ideas 1 and 3: his DayTrack mount and forged weapon, and her letter for last month
-      hero: await house.get('hero', { type: 'json' }), letter: await house.get('letter', { type: 'json' }) });
+      now: await house.get('now', { type: 'json' }), houseOpen: Date.now() - live.houseSeen < 60e3, outfit: readOutfit(),
+      // 10-09 idea 3: her letter for last month; ideas 31-51: story, goals, his level-ups, boss, mood, hero (mount, weapon, stats, pet)…
+      letter: await house.get('letter', { type: 'json' }), ...await sharedState(today) });
   }
   if (event.httpMethod !== 'POST') return json(405, { error: 'GET or POST' });
 
@@ -94,7 +93,7 @@ const handler = async (event) => {
       // Idea 1: what she's doing in the house right now, for phone and desktop Gwen to mention
       const now = { open: body.open !== false, activity: str(body.activity, 80), kind: str(body.kind, 40), room: str(body.room, 40), outfit: str(body.outfit, 40),
         since: Number(body.since) || null, with_rayan: !!body.with_rayan, line: str(body.line, 200), at: Date.now() };
-      houseSeen = Date.now();
+      live.houseSeen = Date.now();
       await house.setJSON('now', now);
       return json(200, { ok: true });
     }
@@ -141,7 +140,8 @@ const handler = async (event) => {
       return json(200, { ok: true });
     }
   }
-  return json(400, { error: 'Unknown event' });
+  const r = await sharedEvent(today, body.event, body, body.by === 'phone' ? 'phone' : 'house');
+  return r ? json(r.ok === false ? 400 : 200, r) : json(400, { error: 'Unknown event' });
 };
 
 async function writeLetter(house, month, lines) {
@@ -158,7 +158,7 @@ async function writeLetter(house, month, lines) {
 
 // The phone waits while the house takes the photo; the picture comes back as an image (X-Activity says what she was doing)
 async function peek() {
-  if (Date.now() - houseSeen > 60e3) return json(409, { error: 'house-closed' });
+  if (Date.now() - live.houseSeen > 60e3) return json(409, { error: 'house-closed' });
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   peeks.push({ id, at: Date.now() });
   for (let t = Date.now(); Date.now() - t < PEEK_WAIT; await new Promise(ok => setTimeout(ok, 500))) {

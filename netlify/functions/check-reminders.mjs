@@ -2,7 +2,7 @@ import { lambda, blobStore, isNative, queueNative } from '../lib/fn.mjs';
 import webpush from 'web-push';
 import Anthropic from '@anthropic-ai/sdk';
 import { gwenPersona, gwenSaved, specialDays, weatherToday } from '../lib/gwen.mjs';
-import { localNow, toMin, inQuiet } from '../lib/house.mjs';
+import { localNow, toMin, inQuiet, holdForPc } from '../lib/house.mjs';
 
 const handler = async () => {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
@@ -262,6 +262,7 @@ async function gwenCheckin(slot, data, tasks, tod, dow, plan) {
 }
 
 async function notify(webpush, subscription, body, notifStyle = 'default', taskId, title = '⏰ DayTrack', extra = {}) {
+  if (holdForPc(body, title)) return; // idea 36: he's at the PC (or gaming), so desktop Gwen shows it
   try {
     console.log('Sending push:', body, 'style:', notifStyle);
     const msg = { title, body, notifStyle, taskId, gwen: title === '💜 Gwen' || undefined, ...extra };

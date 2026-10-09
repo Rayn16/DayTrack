@@ -9,7 +9,7 @@ const {pathToFileURL} = require('url');
 const PORT = 5053;
 const BRIDGE = 'http://127.0.0.1:5052';
 const OLD_SERVER = 'https://yasuomain.netlify.app'; // only to bring sync data over the first time
-const NAMES = ['sync', 'save-reminder', 'reminder-action', 'check-reminders', 'gwen', 'test-push', 'outbox', 'house', 'pc', 'backup', 'phone', 'share'];
+const NAMES = ['sync', 'save-reminder', 'reminder-action', 'check-reminders', 'gwen', 'test-push', 'outbox', 'house', 'pc', 'backup', 'phone', 'share', 'settings', 'status'];
 const CORS = {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*', 'Access-Control-Expose-Headers': '*'};
 
 // Netlify Blobs' get/setJSON/list, one JSON file per key

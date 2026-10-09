@@ -148,7 +148,7 @@ Every new field is optional to read. "House" = `GET/POST /api/house`, "PC" = `GE
 ### What DayTrack adds to `GET /api/house` (and `GET /api/pc`, same fields)
 | field | idea | what it is |
 |---|---|---|
-| `story` `{id, chapter, title, text, clues: [{id, where: "house"\|"pc"\|"phone", text, found}], ends}` | 31 | This month's story chapter (4 weeks, one chapter a week). The house hides `where: "house"` clues somewhere he can find them; desktop Gwen talks about the story and gives `"pc"` clues when he asks her about it. |
+| `story` `{id, chapter, of, title, text, clues: [{id, where: "house"\|"pc"\|"phone", text, hint, found}], ends, solved, finished}` | 31 | The story chapter (4 chapters, one a week; the next opens the week after one is `solved`). `text` of a clue is what he finds; `hint` says where to look. The house hides `where: "house"` clues somewhere he can find them; desktop Gwen talks about the story and gives `"pc"` clues when he asks her about it. |
 | `herGoals` `{week, goals: [{id, text, done, total}]}` and `myGoals` `{done, total}` | 34 | Her goals for this week (what the house last sent) and how his DayTrack week is going. `rewarded: true` once both are done. |
 | `levelUp` `{level, at}` | 41 | His last level-up. The house throws a party if `at` is newer than the last one it saw. |
 | `boss` `{name, state: "on"\|"won"\|"escaped", until}` or `null` | 42 | Today's DayTrack boss while it's live, and how it ended. |
@@ -160,19 +160,20 @@ Every new field is optional to read. "House" = `GET/POST /api/house`, "PC" = `GE
 | `sleep` `{bed, wake}` ("HH:MM" or `null`) | 49 | His bedtime and wake-up alarm from DayTrack. |
 | `chores` `[{kind, at}]` | 50 | Cleaning tasks he ticked in the last hour: `kind` is dishes, laundry, vacuum, trash, bed or tidy. Do each `at` once. |
 | `prayers` | 47 | Already on house; now on PC too. Quiet for ~5 minutes from each time. |
-| `away` `{where: "pc"\|"phone"\|"gaming", since}` | 36 | Where he is: at the PC (the last `report` had an `app` and no game), gaming, or away from the PC (phone). |
+| `away` `{where: "pc"\|"phone"\|"gaming", since}` | 36 | Where he is: at the PC (the last `report` had an `app`, no game, and `idle` under 300 s), gaming, or away from the PC (phone). Desktop Gwen's report can add `idle` (seconds since his last keyboard or mouse input). |
+| `needs`, `schedule`, `firsts`, `coins` | 39, 40, 33, 32 | What the house last sent, echoed back (the phone reads them from here). |
 
 ### What the house and desktop send
 | body | idea | what it does |
 |---|---|---|
 | House `{"key", "event": "clue", "id"}` / PC `{"key", "action": "clue", "id"}` | 31 | He found that clue. When all clues of a chapter are found, DayTrack gives the chapter reward (XP + coins) and the next chapter opens the next week. |
 | House `{"key", "event": "coins", "id", "n", "why"}` | 32 | He won something in the house (`n` 1-200 coins, `id` unique per win). DayTrack adds them to his coins once per `id`. Suggested: chess 50, checkers/Uno/Connect Four/Reversi 30, Pong 20. |
-| House `{"key", "event": "first", "id", "text"}` | 33 | A house first ("first_boat", "Befriended Ember"). Becomes a DayTrack achievement with a title, once per `id`. |
+| House `{"key", "event": "first", "id", "text", "title"?}` | 33 | A house first (`id` "first_boat", `text` "First boat trip", `title` "Captain"). Becomes a DayTrack achievement (the title is `title`, or `text`), once per `id`. |
 | House `{"key", "event": "goals", "week", "goals": [{id, text, done, total}]}` | 34 | Her goals for the week (Sunday start), sent again when progress changes. |
 | House `{"key", "event": "needs", "energy", "fun", "company"}` (0-100) | 39 | Her needs, shown on the phone. `GET /api/house` gives `today` `{done, total, chatMinutes}` to fill them from. |
 | House `{"key", "event": "schedule", "items": [{id, day: 0-6, time: "HH:MM", what, minutes}]}` | 40 | Her weekly routine, shown in DayTrack's week view. `GET /api/house` gives `joins` `[{id, date}]`: events he said he'll join. |
 | House / PC `{"key", "event"\|"action": "focus", "minutes", "what"}` | 45 | Starts focus everywhere (`minutes: 0` ends it). |
-| PC `{"key", "action": "say"}` → `GET /api/pc?key=K&inbox=1` | 36 | `{"messages": [{text, image?, at}]}`: her texts and reminders that DayTrack held for the desktop because he's at the PC (taken once). Show them on the desktop instead of the phone. While he's gaming they wait until the game ends. |
+| `GET /api/pc?key=K&inbox=1` (poll every 20-30 s) | 36 | `{"messages": [{text, image?, at}]}`: her texts and reminders that DayTrack held for the desktop because he's at the PC (taken once). Show them on the desktop instead of the phone. While he's gaming they wait until the game ends. Messages are only held while desktop Gwen has polled this in the last 2 minutes, so without it everything still goes to the phone. |
 
 ### One settings page (idea 37)
 Desktop Gwen and the house each keep `Documents\Gwen\shared-settings\<desktop|house>.json`:

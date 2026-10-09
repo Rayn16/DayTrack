@@ -1,5 +1,5 @@
 import { lambda } from '../lib/fn.mjs';
-import { keyOk, localNow, questDone, phonePrayers, ramadan, gwenText, shrink, dayAdd } from '../lib/house.mjs';
+import { keyOk, localNow, questDone, phonePrayers, ramadan, gwenText, shrink, dayAdd, live, whereNow, sharedState, sharedEvent } from '../lib/house.mjs';
 import { blobStore } from '../lib/fn.mjs';
 import { spawn, execFile } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -8,7 +8,6 @@ import os from 'node:os';
 import path from 'node:path';
 
 // Gwen's PC from the phone: is it on, is Gwen running, is a game open; start Gwen, lock the PC. Contract: desktop/API.md
-let report = null; // what desktop Gwen last told us
 
 // ponytail: a short list of games for when desktop Gwen isn't reporting; her report is the real source
 const GAMES = [[/^theisle/i, 'The Isle'], [/^fivem/i, 'FiveM'], [/^gta5/i, 'GTA V'], [/^marvel-win64/i, 'Marvel Rivals'], [/^league of legends/i, 'League of Legends'],
@@ -76,7 +75,8 @@ async function tomorrow() {
   return { date, tomorrow: list.slice(0, 20) };
 }
 
-async function status() {
+export async function status() {
+  const report = live.report;
   let gwen = false;
   try { gwen = (await fetch('http://127.0.0.1:5052/daytrack/ping', { signal: AbortSignal.timeout(1500) })).ok; } catch (_) {}
   const fresh = report && Date.now() - report.at < 3 * 60e3;
@@ -93,6 +93,14 @@ async function status() {
     ramadan: { active: ram.today, day: ram.day || null, ...(ram.today && pr ? { iftar: pr.Maghrib, suhoor: pr.Fajr } : {}) } };
 }
 
+// Start-Gwen.bat in Documents\Gwen (her relay, bridge and AIRI); also the status page's start button
+export function startGwen() {
+  const dir = process.env.DT_GWEN_DIR || '', bat = ['Start-Gwen-Remote.bat', 'Start-Gwen.bat'].find(f => dir && fs.existsSync(path.join(dir, f)));
+  if (!bat) return { ok: false, error: 'Start-Gwen.bat not found in Documents\\Gwen' };
+  spawn('cmd.exe', ['/d', '/c', bat], { cwd: dir, detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+  return { ok: true, ran: bat };
+}
+
 const handler = async (event) => {
   const q = event.queryStringParameters || {};
   let body = {};
@@ -107,24 +115,29 @@ const handler = async (event) => {
   if (event.httpMethod === 'GET') {
     if (q.apps) return json(200, { days: (await blobStore('daytrack-house').get('apps', { type: 'json' })) || {} });
     if (q.tomorrow) return json(200, await tomorrow());
-    return json(200, q.games ? { nights: await gameNights() } : await status());
+    if (q.inbox) {
+      // 10-09 idea 36: texts and reminders held for the desktop (taken once; kept while he games)
+      live.inboxAt = Date.now();
+      const messages = whereNow().where === 'gaming' ? [] : live.inbox;
+      if (messages.length) live.inbox = [];
+      return json(200, { messages });
+    }
+    return json(200, q.games ? { nights: await gameNights() } : { ...await status(), ...await sharedState(today()) });
   }
-  const hooks = globalThis.dtHooks || {}, dir = process.env.DT_GWEN_DIR || '';
+  const hooks = globalThis.dtHooks || {};
 
   switch (body.action) {
     case 'report':
-      report = { at: Date.now(), ...(typeof body.gwen === 'boolean' ? { gwen: body.gwen } : {}), ...(typeof body.airi === 'boolean' ? { airi: body.airi } : {}),
-        ...('game' in body ? { game: body.game ? String(body.game).slice(0, 60) : null } : {}) };
-      await logGame(report.game).catch(e => console.error('Game log:', e.message));
-      if (!report.game) await logApp(body.app).catch(e => console.error('App log:', e.message));
+      live.report = { at: Date.now(), ...(typeof body.gwen === 'boolean' ? { gwen: body.gwen } : {}), ...(typeof body.airi === 'boolean' ? { airi: body.airi } : {}),
+        ...('game' in body ? { game: body.game ? String(body.game).slice(0, 60) : null } : {}), app: body.app ? String(body.app).slice(0, 60) : null,
+        ...(Number.isFinite(body.idle) ? { idle: body.idle } : {}) };
+      await logGame(live.report.game).catch(e => console.error('Game log:', e.message));
+      if (!live.report.game) await logApp(body.app).catch(e => console.error('App log:', e.message));
       return json(200, { ok: true });
     case 'quest': return json(200, await questDone(today(), body.id, 'desktop'));
-    case 'start': {
-      const bat = ['Start-Gwen-Remote.bat', 'Start-Gwen.bat'].find(f => dir && fs.existsSync(path.join(dir, f)));
-      if (!bat) return json(404, { error: 'Start-Gwen.bat not found in Documents\\Gwen' });
-      spawn('cmd.exe', ['/d', '/c', bat], { cwd: dir, detached: true, windowsHide: true, stdio: 'ignore' }).unref();
-      return json(200, { ok: true, ran: bat });
-    }
+    case 'clue':
+    case 'focus': { const r = await sharedEvent(today(), body.action, body, 'pc'); return json(r.ok === false ? 400 : 200, r); }
+    case 'start': { const r = startGwen(); return json(r.ok ? 200 : 404, r); }
     case 'send': {
       // 10-09 idea 24: "Gwen, send this to my phone": text, a picture or a file into her DayTrack chat
       const text = String(body.text || '').trim().slice(0, 2000), m = String(body.file || '').match(/^data:([\w.+-]+\/[\w.+-]+)?(?:;[^,]*)?;base64,(.+)$/);
