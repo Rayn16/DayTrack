@@ -1735,14 +1735,15 @@ async function pcAlive(){
   for(let i=0;;i++){try{return(await fetchT(pcUrl()+'/daytrack/ping',{},3000)).ok;}catch(e){if(e.name==='AbortError'||i>=3)return false;await new Promise(z=>setTimeout(z,2500));}}
 }
 // PC first (her real brain and memory), cloud when the PC doesn't answer
-// cloud: skip her PC brain and ask Claude Haiku straight away ("Hey Gwen" calls)
+// cloud: skip her PC brain and ask Claude Haiku straight away ("Hey Gwen" calls, and always on the phone once it has
+// the key, so she works without Tailscale)
 async function askGwen(body,cloud){
   const opts={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
   if(!cloud&&await pcAlive()){
     try{const r=await fetchT(pcUrl()+'/daytrack/chat',opts,90000);if(r.ok){const j=await r.json();if(j.text)return{text:j.text,brain:'pc',did:j.did};}}catch(e){}
   }
   // The phone asks Claude itself (works with the PC off); the PC's cloud brain is the fallback
-  if(gwenKit&&!body.image)try{return await askHaiku(body);}catch(e){}
+  if(gwenKit)try{return await askHaiku(body);}catch(e){}
   // pcAlive() above waits out a Tailscale reconnect; skipping it, this does the same
   let r;
   for(let i=0;;i++){try{r=await fetchT('/.netlify/functions/gwen',opts,20000);break;}catch(e){if(!cloud||e.name==='AbortError'||i>=3)throw e;await new Promise(z=>setTimeout(z,2500));}}
@@ -1763,7 +1764,7 @@ async function sendGwen(opts={}){
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
   if(gwenCfg.loc)await gwenWeather();
-  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined},opts.cloud);}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':window.DayTrackNative?'Could not reach your PC. Is Tailscale on, and the PC awake with DayTrack running?':'Could not reach Gwen'};}
+  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined},opts.cloud||!!(window.DayTrackNative&&gwenKit));}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':window.DayTrackNative?'Could not reach your PC. Is Tailscale on, and the PC awake with DayTrack running?':'Could not reach Gwen'};}
   gwenBusy=false;
   let out=null;
   if(res.text){
@@ -1820,6 +1821,9 @@ async function pullGwenKit(){
 async function askHaiku(body){
   const messages=body.messages.filter(m=>typeof m.content==='string'&&m.content.trim()).map(m=>({role:m.role,content:m.content.slice(0,4000)}));
   while(messages.length&&messages[0].role!=='user')messages.shift();
+  // A photo goes with his last message, as on the PC's cloud brain
+  const photo=typeof body.image==='string'&&body.image.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/);
+  if(photo&&messages.length){const last=messages[messages.length-1];last.content=[{type:'image',source:{type:'base64',media_type:photo[1],data:photo[2]}},{type:'text',text:last.content}];}
   const r=await fetchT('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'content-type':'application/json','x-api-key':gwenKit.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-haiku-4-5',max_tokens:1024,system:[gwenKit.system,String(body.context||'').slice(0,8000)].filter(Boolean).join('\n\n'),messages})},20000);
