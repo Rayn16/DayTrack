@@ -1730,7 +1730,9 @@ function fetchT(url,opts,ms){const c=new AbortController(),t=setTimeout(()=>c.ab
 const pcUrl=()=>/Electron/.test(navigator.userAgent)?'http://127.0.0.1:5053/pc':gwenCfg.pc.trim().replace(/\/+$/,'');
 async function pcAlive(){
   if(!gwenCfg.pc.trim())return false;
-  try{return(await fetchT(pcUrl()+'/daytrack/ping',{},3000)).ok;}catch(e){return false;}
+  // A phone just woken from sleep (by "Hey Gwen" too) can need a few seconds before Tailscale reconnects:
+  // a network error (not a slow answer) is tried again for up to ~8 s
+  for(let i=0;;i++){try{return(await fetchT(pcUrl()+'/daytrack/ping',{},3000)).ok;}catch(e){if(e.name==='AbortError'||i>=3)return false;await new Promise(z=>setTimeout(z,2500));}}
 }
 // PC first (her real brain and memory), cloud when the PC doesn't answer
 async function askGwen(body){
@@ -1755,7 +1757,7 @@ async function sendGwen(opts={}){
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
   if(gwenCfg.loc)await gwenWeather();
-  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':'Could not reach Gwen'};}
+  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined});}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':window.DayTrackNative?'Could not reach your PC. Is Tailscale on, and the PC awake with DayTrack running?':'Could not reach Gwen'};}
   gwenBusy=false;
   let out=null;
   if(res.text){
