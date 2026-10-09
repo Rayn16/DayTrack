@@ -1,7 +1,8 @@
 import { lambda } from '../lib/fn.mjs';
-import { keyOk, localNow, questDone, phonePrayers, ramadan } from '../lib/house.mjs';
+import { keyOk, localNow, questDone, phonePrayers, ramadan, gwenText, shrink, dayAdd } from '../lib/house.mjs';
 import { blobStore } from '../lib/fn.mjs';
 import { spawn, execFile } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,6 +50,32 @@ export async function gameNights() {
   return Object.fromEntries(Object.entries(out).filter(([, o]) => o.weeks >= 2));
 }
 
+// 10-09 idea 21: minutes per app per day from desktop Gwen's per-minute report (exe names only), kept 14 days
+let tallied = 0;
+async function logApp(app) {
+  const min = Math.floor(Date.now() / 60e3);
+  if (!app || min === tallied) return;
+  tallied = min;
+  const store = blobStore('daytrack-house'), log = (await store.get('apps', { type: 'json' })) || {}, d = today(), exe = String(app).replace(/[^\w .+-]/g, '').slice(0, 60);
+  if (!exe) return;
+  log[d] = { ...(log[d] || {}), [exe]: ((log[d] || {})[exe] || 0) + 1 };
+  const since = dayAdd(d, -13);
+  await store.setJSON('apps', Object.fromEntries(Object.entries(log).filter(([k]) => k >= since)));
+}
+
+// 10-09 idea 22: the next day's tasks for desktop Gwen's bedtime nudge. Before 5 AM the day that already started counts as tomorrow.
+const timeOf = t => { const r = t.reminder, at = typeof r === 'string' ? r : r && r.type === 'time' ? r.time : null; return /^\d{1,2}:\d{2}$/.test(at || '') ? at.padStart(5, '0') : null; };
+async function tomorrow() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone, now = localNow(tz), date = now.min < 5 * 60 ? now.date : dayAdd(now.date, 1);
+  const dow = new Date(date + 'T12:00:00Z').getUTCDay(), store = blobStore('daytrack'), { blobs } = await store.list();
+  let tasks = [];
+  for (const { key } of blobs) { const d = await store.get(key, { type: 'json' }); if (d && Array.isArray(d.tasks) && d.tasks.length > tasks.length) tasks = d.tasks; }
+  const list = tasks.filter(t => t.recurring ? !t.days || !t.days.length || t.days.includes(dow) : !(t.done || []).length && (!t.date || t.date <= date))
+    .filter(t => !(t.done || []).includes(date)).map(t => ({ name: String(t.name || '').slice(0, 80), time: timeOf(t) }));
+  list.sort((a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || (a.time || '').localeCompare(b.time || ''));
+  return { date, tomorrow: list.slice(0, 20) };
+}
+
 async function status() {
   let gwen = false;
   try { gwen = (await fetch('http://127.0.0.1:5052/daytrack/ping', { signal: AbortSignal.timeout(1500) })).ok; } catch (_) {}
@@ -70,8 +97,18 @@ const handler = async (event) => {
   const q = event.queryStringParameters || {};
   let body = {};
   if (event.httpMethod === 'POST') { try { body = JSON.parse(event.body || '{}'); } catch (_) { return json(400, { error: 'Bad JSON' }); } }
+  // 10-09 idea 24: a file sent from the PC. Its random id is the key, so the phone's downloader needs no Gwen key in the link.
+  if (event.httpMethod === 'GET' && q.file) {
+    const f = /^[a-f0-9]{32}$/.test(q.file) && await blobStore('daytrack-house').get('file-' + q.file, { type: 'json' });
+    if (!f) return json(404, { error: 'No such file (files are kept 7 days)' });
+    return { statusCode: 200, headers: { 'Content-Type': f.type, 'Content-Disposition': `attachment; filename="${f.name.replace(/"/g, '')}"`, 'Cache-Control': 'no-store' }, body: Buffer.from(f.b64, 'base64') };
+  }
   if (!keyOk(body.key || q.key)) return json(401, { error: 'Wrong key' });
-  if (event.httpMethod === 'GET') return json(200, q.games ? { nights: await gameNights() } : await status());
+  if (event.httpMethod === 'GET') {
+    if (q.apps) return json(200, { days: (await blobStore('daytrack-house').get('apps', { type: 'json' })) || {} });
+    if (q.tomorrow) return json(200, await tomorrow());
+    return json(200, q.games ? { nights: await gameNights() } : await status());
+  }
   const hooks = globalThis.dtHooks || {}, dir = process.env.DT_GWEN_DIR || '';
 
   switch (body.action) {
@@ -79,6 +116,7 @@ const handler = async (event) => {
       report = { at: Date.now(), ...(typeof body.gwen === 'boolean' ? { gwen: body.gwen } : {}), ...(typeof body.airi === 'boolean' ? { airi: body.airi } : {}),
         ...('game' in body ? { game: body.game ? String(body.game).slice(0, 60) : null } : {}) };
       await logGame(report.game).catch(e => console.error('Game log:', e.message));
+      if (!report.game) await logApp(body.app).catch(e => console.error('App log:', e.message));
       return json(200, { ok: true });
     case 'quest': return json(200, await questDone(today(), body.id, 'desktop'));
     case 'start': {
@@ -86,6 +124,25 @@ const handler = async (event) => {
       if (!bat) return json(404, { error: 'Start-Gwen.bat not found in Documents\\Gwen' });
       spawn('cmd.exe', ['/d', '/c', bat], { cwd: dir, detached: true, windowsHide: true, stdio: 'ignore' }).unref();
       return json(200, { ok: true, ran: bat });
+    }
+    case 'send': {
+      // 10-09 idea 24: "Gwen, send this to my phone": text, a picture or a file into her DayTrack chat
+      const text = String(body.text || '').trim().slice(0, 2000), m = String(body.file || '').match(/^data:([\w.+-]+\/[\w.+-]+)?(?:;[^,]*)?;base64,(.+)$/);
+      if (!text && !body.image && !m) return json(400, { error: 'text, image or file needed' });
+      if (m && m[2].length > 27e6) return json(413, { error: 'Files up to 20 MB' });
+      const image = body.image && shrink(body.image, 1080), store = blobStore('daytrack-house'), id = crypto.randomBytes(16).toString('hex');
+      if (body.image && !image) return json(400, { error: 'image must be a data:image/... URL' });
+      let file;
+      if (m) {
+        const name = String(body.name || 'file').replace(/[\\/:*?"<>|\r\n]/g, '_').slice(0, 120) || 'file';
+        await store.setJSON('file-' + id, { name, type: m[1] || 'application/octet-stream', b64: m[2], at: Date.now() });
+        const files = ((await store.get('files', { type: 'json' })) || []).concat({ id, at: Date.now() }), old = files.filter(f => Date.now() - f.at > 7 * 864e5);
+        for (const f of old) await store.delete('file-' + f.id).catch(() => {});
+        await store.setJSON('files', files.filter(f => !old.includes(f)));
+        file = { id, name, size: Math.round(m[2].length * 0.75) };
+      }
+      const sent = await gwenText(text || (file ? `📎 ${file.name}` : '📷 From your PC'), image, file ? { file } : undefined);
+      return json(200, { ok: sent > 0, id });
     }
     case 'lock':
       if (process.platform !== 'win32') return json(501, { error: 'Windows only' });

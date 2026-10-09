@@ -8,7 +8,7 @@ export async function dump() {
   for (const name of STORES) {
     const s = blobStore(name), { blobs } = await s.list();
     out[name] = {};
-    for (const { key } of blobs) out[name][key] = await s.get(key, { type: 'json' });
+    for (const { key } of blobs) if (!key.startsWith('file-')) out[name][key] = await s.get(key, { type: 'json' }); // files sent from the PC stay out (up to 20 MB each, gone after 7 days)
   }
   return out;
 }

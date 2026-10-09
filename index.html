@@ -1499,7 +1499,7 @@ function confetti(){
   box.innerHTML=Array.from({length:60},(_,i)=>`<i style="left:${Math.random()*100}%;background:${cols[i%6]};--x:${Math.round((Math.random()-.5)*160)}px;--r:${Math.round(360+Math.random()*720)}deg;animation-duration:${(1.6+Math.random()*1.4).toFixed(2)}s;animation-delay:${(Math.random()*.4).toFixed(2)}s;"></i>`).join('');
   document.body.appendChild(box);setTimeout(()=>box.remove(),3600);
 }
-function deleteTask(id){const t=tasks.find(x=>x.id===id);if(t)heroBank(t);tasks=tasks.filter(t=>t.id!==id);save();renderTaskList();showToast('Removed');}
+function deleteTask(id){const t=tasks.find(x=>x.id===id);if(t){heroBank(t);if(window.lifeTrash)lifeTrash(t);}tasks=tasks.filter(t=>t.id!==id);save();renderTaskList();showToast('Removed');}
 
 // ── Timer ─────────────────────────────────────────────────────────────────────
 function addTimerItem(){const id=uid();sesItems.push({id,name:'',accum:0,startedAt:null,running:false,locked:false});renderTimerTab();setTimeout(()=>{const el=document.getElementById('tn-'+id);if(el)el.focus();},80);}
@@ -1782,7 +1782,7 @@ function renderGwen(){
     const secs=me?m.voice:Math.max(1,Math.round(m.content.length/14));
     const body=(m.thumb?`<img src="${m.thumb}" alt="photo" ${me?'':`onclick="event.stopPropagation();gwenSaveImg(${i})" `}style="display:block;max-width:180px;border-radius:11px;${m.content==='📷 (photo)'?'':'margin-bottom:6px;'}">`:'')
       +(m.voice?`<div style="display:flex;align-items:center;gap:8px;"><span>${me?'🎙':'▶'}</span><span style="letter-spacing:1px;opacity:.75;">▂▅▇▅▃▆▂▅▃▇▂▅</span><span style="font-size:12px;">${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}</span></div><div style="font-size:12px;opacity:.75;margin-top:4px;">${esc(m.content)}</div>`
-        :m.thumb&&m.content==='📷 (photo)'?'':esc(m.content));
+        :m.thumb&&m.content==='📷 (photo)'?'':esc(m.content))+(m.file&&window.lifeFileBtn?lifeFileBtn(m.file):'');
     const did=(m.did||[]).map(d=>`<div style="font-size:12px;color:var(--sub);margin-top:4px;">💻 ${esc(d)}</div>`).join('');
     const adds=(m.added||[]).map(a=>`<div style="font-size:12px;color:var(--grntxt);background:var(--grnl);border-radius:9px;padding:4px 9px;margin-top:5px;">📝 Added: ${esc(a)}</div>`).join('');
     const music=m.music?`<a href="https://www.youtube.com/results?search_query=${encodeURIComponent(m.music)}" target="_blank" rel="noopener" style="font-size:13px;font-weight:600;color:var(--pri);background:var(--pril);border-radius:9px;padding:5px 10px;margin-top:5px;text-decoration:none;">🎵 Play ${esc(m.music)}</a>`:'';
@@ -1803,7 +1803,7 @@ async function pullGwenInbox(){
     const sub=await(await navigator.serviceWorker.ready).pushManager.getSubscription();if(!sub)return;
     const r=await fetchT('/.netlify/functions/gwen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:gwenCfg.key,inbox:sub.toJSON().keys.auth})},10000);
     const{messages}=await r.json();if(!messages||!messages.length)return;
-    messages.forEach(m=>gwenChat.push({role:'assistant',content:m.text,brain:'cloud',first:true,...(m.image?{thumb:m.image}:{})}));
+    messages.forEach(m=>gwenChat.push({role:'assistant',content:m.text,brain:'cloud',first:true,...(m.image?{thumb:m.image}:{}),...(m.file?{file:m.file}:{})}));
     gwenSaveChat();
     renderGwen();
   }catch(e){}

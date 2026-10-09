@@ -208,11 +208,19 @@ final class Phone {
         } catch (Exception ignored) { } // bad json, or location turned off
     }
 
+    private static String joinIds(JSONArray a) {
+        if (a == null) return null;
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < a.length(); i++) b.append(i > 0 ? "," : "").append(a.optString(i));
+        return b.toString();
+    }
+
     // Mutable: the system adds KEY_PROXIMITY_ENTERING. The place id in the data keeps each one apart.
     private static PendingIntent place(Context c, JSONObject x) {
         String id = x.optString("id");
         Intent i = new Intent(c, PlaceReceiver.class).setData(Uri.parse("daytrack-place:" + Uri.encode(id)))
-                .putExtra("id", id).putExtra("title", x.optString("title", "📍 DayTrack")).putExtra("body", x.optString("body"));
+                .putExtra("id", id).putExtra("title", x.optString("title", "📍 DayTrack")).putExtra("body", x.optString("body"))
+                .putExtra("tick", joinIds(x.optJSONArray("tick"))).putExtra("name", x.optString("name"));
         return PendingIntent.getBroadcast(c, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0));
     }
 }

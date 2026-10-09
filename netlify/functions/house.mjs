@@ -8,6 +8,7 @@ import path from 'node:path';
 const TEXTS_A_DAY = 4;
 const PEEK_WAIT = 45e3;
 let houseSeen = 0, peeks = [], peekDone = new Map(); // idea 4: the phone asks, the house sees it on its next poll (every 20 s) and answers
+let writing = null; // 10-09 idea 3: the letter being written, so the phone and the PC app don't both write one
 
 // Idea 1: one outfit in all three, in Documents\Gwen\gwen-outfit.json {outfit, by, at}
 const OUTFITS = ['Classic', 'Cozy', 'Hoodie', 'Pajamas', 'Gamer', 'Jubilee'];
@@ -40,7 +41,9 @@ const handler = async (event) => {
       quest: await todaysQuest(today), peeks, week: await house.get('week', { type: 'json' }),
       prayers: pr && { date: pr.date, fajr: pr.Fajr, dhuhr: pr.Dhuhr, asr: pr.Asr, maghrib: pr.Maghrib, isha: pr.Isha },
       ramadan: { active: ram.today, day: ram.day || null, in: ram.in || 0, starts: ram.starts || null, ...(ram.today && pr ? { iftar: pr.Maghrib, suhoor: pr.Fajr } : {}) },
-      now: await house.get('now', { type: 'json' }), houseOpen: Date.now() - houseSeen < 60e3, outfit: readOutfit() });
+      now: await house.get('now', { type: 'json' }), houseOpen: Date.now() - houseSeen < 60e3, outfit: readOutfit(),
+      // 10-09 ideas 1 and 3: his DayTrack mount and forged weapon, and her letter for last month
+      hero: await house.get('hero', { type: 'json' }), letter: await house.get('letter', { type: 'json' }) });
   }
   if (event.httpMethod !== 'POST') return json(405, { error: 'GET or POST' });
 
@@ -48,7 +51,12 @@ const handler = async (event) => {
   // Idea 42: the house can say what happened ("about") and DayTrack writes the text in her own words; `text` is the fallback
   const about = str(body.about, 400);
   if (about && ['text', 'opened', 'postcard', 'milestone'].includes(body.event)) text = (await gwenWrite(`Something from your day in your house that you want to text him about: ${about}${text ? `\nThe line you'd normally send: ${text}` : ''}`, text || null)) || '';
-  const sendText = async (t, image) => (await gwenText(t, image && shrink(image, 480))) > 0;
+  const sendText = async (t, image) => {
+    // What she texted from the house, kept two months for her monthly letter
+    const log = (await house.get('log', { type: 'json' })) || [], since = new Date(Date.now() - 62 * 864e5).toISOString().slice(0, 10);
+    await house.setJSON('log', [...log.filter(x => x.d >= since), { d: today, t: t.slice(0, 300) }].slice(-300));
+    return (await gwenText(t, image && shrink(image, 480))) > 0;
+  };
   switch (body.event) {
     case 'text': {
       if (!text) return json(400, { error: 'text needed' });
@@ -111,6 +119,21 @@ const handler = async (event) => {
       await house.setJSON('week', { start: /^\d{4}-\d{2}-\d{2}$/.test(body.start || '') ? body.start : today, lines, at: Date.now() });
       return json(200, { ok: true });
     }
+    case 'letter': {
+      // 10-09 idea 3: he read her letter (at the house door or on the phone)
+      const l = await house.get('letter', { type: 'json' });
+      if (!l || l.id !== body.id) return json(404, { error: 'No such letter' });
+      if (!l.read) await house.setJSON('letter', { ...l, read: Date.now() });
+      return json(200, { ok: true });
+    }
+    case 'month': {
+      // 10-09 idea 3: the app sends what his month in DayTrack looked like; she writes him a letter about it, once a month
+      if (!/^\d{4}-\d{2}$/.test(body.month || '') || body.month >= today.slice(0, 7)) return json(400, { error: 'month must be a finished YYYY-MM' });
+      const old = await house.get('letter', { type: 'json' });
+      if (old && old.month >= body.month) return json(200, { ok: true, letter: old });
+      writing = writing || writeLetter(house, body.month, (Array.isArray(body.lines) ? body.lines : []).map(l => str(l, 200)).filter(Boolean).slice(0, 25)).finally(() => { writing = null; });
+      return json(200, { ok: true, letter: await writing });
+    }
     case 'year': {
       // Idea 6: the house's part of "our first year"
       const images = (Array.isArray(body.images) ? body.images : []).slice(0, 12).map(i => shrink(i, 720)).filter(Boolean);
@@ -120,6 +143,18 @@ const handler = async (event) => {
   }
   return json(400, { error: 'Unknown event' });
 };
+
+async function writeLetter(house, month, lines) {
+  const name = new Date(month + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+  const houseLines = ((await house.get('log', { type: 'json' })) || []).filter(x => x.d.startsWith(month)).map(x => x.t).slice(-25);
+  const fallback = `Dear Rayan,\n\n${name} is over, and I wanted to write it down. ${lines.slice(0, 4).join(' ')}\n\nI'm proud of you, and I loved every day of it with you.\n\nLove,\nGwen 💜`;
+  const text = await gwenWrite(`Write Rayan your letter for ${name}.\n\nHis ${name} in DayTrack:\n${lines.map(l => '- ' + l).join('\n') || '- (no details)'}\n\nThings you texted him about from your house this month:\n${houseLines.map(l => '- ' + l).join('\n') || '- (none)'}`,
+    fallback, 1200, `You are writing Rayan a real letter about the month that just ended, the kind he keeps. Start with "Dear Rayan," and sign it "Love, Gwen". 3 short paragraphs, at most 1200 characters: what he did well (use the real numbers and details), a few moments from your house, and something you're looking forward to next month. At most two emoji.`);
+  const letter = { id: 'l-' + month, month, text: text.slice(0, 1600), at: Date.now() };
+  await house.setJSON('letter', letter);
+  await gwenText(`💌 I wrote you a letter about ${name}. It's waiting for you in DayTrack, and at the house door.`);
+  return letter;
+}
 
 // The phone waits while the house takes the photo; the picture comes back as an image (X-Activity says what she was doing)
 async function peek() {

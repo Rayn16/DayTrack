@@ -724,6 +724,38 @@ public class MainActivity extends Activity {
         // [{"id","lat","lon","radius","title","body"}] replaces every place reminder ("[]" clears them)
         @JavascriptInterface public void places(String json) { Phone.places(MainActivity.this, json == null ? "[]" : json); }
 
+        // 10-09: now and next on the lock screen ([{"id","name","time"}], "[]" clears it)
+        @JavascriptInterface public void nowNext(String json) { NowNext.set(MainActivity.this, json); }
+
+        // 10-09: a file sent from the PC, from DayTrack.exe (path like /.netlify/functions/pc?file=…) into Downloads
+        @JavascriptInterface public void download(String path, String name) {
+            String server = Poller.prefs(MainActivity.this).getString("server", "");
+            if (server.isEmpty() || Build.VERSION.SDK_INT < 29) return;
+            new Thread(() -> {
+                try {
+                    HttpURLConnection h = (HttpURLConnection) new URL(server + path).openConnection();
+                    h.setConnectTimeout(15000);
+                    h.setReadTimeout(120000);
+                    try {
+                        if (h.getResponseCode() >= 400) throw new Exception("HTTP " + h.getResponseCode());
+                        String mime = h.getContentType() == null ? "application/octet-stream" : h.getContentType();
+                        ContentValues v = new ContentValues();
+                        v.put(MediaStore.Downloads.DISPLAY_NAME, name);
+                        v.put(MediaStore.Downloads.MIME_TYPE, mime);
+                        Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                        if (uri == null) throw new Exception("no uri");
+                        try (InputStream in = h.getInputStream(); OutputStream o = getContentResolver().openOutputStream(uri)) {
+                            byte[] buf = new byte[65536];
+                            for (int n; (n = in.read(buf)) > 0; ) o.write(buf, 0, n);
+                        }
+                        js("window.showToast&&showToast(" + JSONObject.quote("✅ " + name + " is in your Downloads") + ")");
+                    } finally { h.disconnect(); }
+                } catch (Exception e) {
+                    js("window.showToast&&showToast(" + JSONObject.quote("❌ Couldn't download " + name + " (is the PC on?)") + ")");
+                }
+            }).start();
+        }
+
         // [{"title","start","end","allDay"}] from the phone's calendars
         @JavascriptInterface public String calendar(long fromMs, long toMs) { return Phone.calendar(MainActivity.this, fromMs, toMs); }
 

@@ -48,14 +48,15 @@ export async function weatherToday({ lat, lon }) {
 
 // One short text in her own words (cloud Gwen with her persona), or `fallback` when there's no key or it fails.
 // Used for texts other parts of her life ask DayTrack to send: the house (idea 42) and the phone-time check-in.
-export async function gwenWrite(facts, fallback, maxChars = 200) {
+// style replaces the "one short text" instruction (her monthly letter is longer).
+export async function gwenWrite(facts, fallback, maxChars = 200, style) {
   if (!process.env.ANTHROPIC_API_KEY) return fallback;
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const client = new Anthropic({ timeout: 12000, maxRetries: 0 });
     const r = await client.messages.create({
-      model: 'claude-haiku-4-5', max_tokens: 200,
-      system: `${await gwenPersona()}\n\nYou are texting Rayan first: your message shows up as a notification from his DayTrack app. Write one text in your own words, at most 2 short sentences and ${maxChars} characters, no quotation marks, at most one emoji. Warm and playful, never guilt-tripping.`,
+      model: 'claude-haiku-4-5', max_tokens: Math.max(200, Math.ceil(maxChars / 2)),
+      system: `${await gwenPersona()}\n\n${style || `You are texting Rayan first: your message shows up as a notification from his DayTrack app. Write one text in your own words, at most 2 short sentences and ${maxChars} characters, no quotation marks, at most one emoji.`} Warm and playful, never guilt-tripping.`,
       messages: [{ role: 'user', content: facts }],
     });
     const out = r.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().replace(/^["“]+|["”]+$/g, '');

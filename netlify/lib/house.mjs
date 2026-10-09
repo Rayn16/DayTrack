@@ -42,14 +42,15 @@ export function shrink(dataUrl, width) {
 
 // Gwen texts the phone (her chat inbox + a notification), like her own check-ins do.
 // quiet: during his quiet hours it lands in the chat without buzzing.
-export async function gwenText(text, image) {
+// extra: more fields for the chat message (a `file` sent from the PC)
+export async function gwenText(text, image, extra) {
   const store = blobStore('daytrack'), { blobs } = await store.list();
   let sent = 0;
   for (const { key } of blobs) {
     const data = await store.get(key, { type: 'json' });
     if (!data || !data.gwen) continue;
     const g = data.gwenState = data.gwenState || {}, now = Date.now();
-    g.inbox = [...(g.inbox || []), { text, at: now, ...(image ? { image } : {}) }].slice(-10);
+    g.inbox = [...(g.inbox || []), { text, at: now, ...(image ? { image } : {}), ...extra }].slice(-10);
     g.recent = [...(g.recent || []), text].slice(-5);
     await store.setJSON(key, data);
     if (isNative(data.subscription) && !inQuiet(localNow(data.tz).min, data.quiet)) await queueNative(data.subscription, { title: '💜 Gwen', body: text, gwen: true, ...(image ? { image } : {}) });
