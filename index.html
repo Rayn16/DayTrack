@@ -489,6 +489,9 @@
         </div>
         <div style="font-size:11px;color:var(--sub);margin-top:5px;">Optional. She texts you at your wake-up time, and says goodnight half an hour before bed. These two go off even in quiet hours.</div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--txt);"><input type="checkbox" id="gwen-wx" onchange="gwenWxToggle(this)">She knows the real weather where I am (uses this phone's location, rounded to about 10 km)</label>
+        <div id="gwen-claude-row" style="display:none;"><div class="sl">Claude key (optional)</div>
+        <input class="inp" id="gwen-claude" type="password" autocomplete="off" placeholder="sk-ant-… so she answers without your PC" onchange="saveGwenClaude(this)">
+        <div style="font-size:11px;color:var(--sub);margin-top:5px;">She asks Claude Haiku straight from this phone, so Tailscale can stay off. Make a key at console.anthropic.com → API keys. It stays on this phone only.</div></div>
         <label id="gwen-hey-row" style="display:none;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--txt);"><input type="checkbox" id="gwen-hey" onchange="DayTrackNative.heyGwen(this.checked)">Say "Hey Gwen" to call her, even when the phone is locked (listens on the phone only, for her name)</label>
         <button onclick="testGwen()" style="margin-top:10px;width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Check connection</button>
         <div id="gwen-test" style="font-size:12px;color:var(--sub);margin-top:8px;text-align:center;"></div>
@@ -1166,7 +1169,7 @@ function boot(){
   document.getElementById('dt-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   buildEmoGrid();renderTaskList();renderMood();renderTimerTab();renderCal();renderSyncUI();renderQuiet();
   applyPendingDone();
-  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;document.getElementById('gwen-wake').value=gwenCfg.wake||'';document.getElementById('gwen-bed').value=gwenCfg.bed||'';document.getElementById('gwen-wx').checked=!!gwenCfg.loc;if(window.DayTrackNative&&DayTrackNative.heyGwen){document.getElementById('gwen-hey-row').style.display='flex';document.getElementById('gwen-hey').checked=DayTrackNative.heyGwenOn();}renderGwen();if(gwenCfg.study)gwenStudyRun();if(gwenCfg.loc)gwenWeather();
+  document.getElementById('gwen-key').value=gwenCfg.key;document.getElementById('gwen-pc').value=gwenCfg.pc;document.getElementById('gwen-first').checked=gwenCfg.first!==false;document.getElementById('gwen-wake').value=gwenCfg.wake||'';document.getElementById('gwen-bed').value=gwenCfg.bed||'';document.getElementById('gwen-wx').checked=!!gwenCfg.loc;if(window.DayTrackNative){document.getElementById('gwen-claude-row').style.display='block';if(gwenKit)document.getElementById('gwen-claude').placeholder='Saved ✓ (paste a new one to replace it)';}if(window.DayTrackNative&&DayTrackNative.heyGwen){document.getElementById('gwen-hey-row').style.display='flex';document.getElementById('gwen-hey').checked=DayTrackNative.heyGwenOn();}renderGwen();if(gwenCfg.study)gwenStudyRun();if(gwenCfg.loc)gwenWeather();
   renderLockUI();renderPrayerToggles();if(calMode==='week')setCalMode('week');
   if(lockMode==='app'&&canLock()){document.documentElement.classList.add('locked');unlockApp();}
   if(document.documentElement.classList.contains('panel'))document.querySelector('#tasks-card .cl').textContent='Today · Esc to close';
@@ -1764,7 +1767,7 @@ async function sendGwen(opts={}){
   const history=gwenChat.filter(m=>!m.error).slice(-16).map(({role,content})=>({role,content}));
   let res;
   if(gwenCfg.loc)await gwenWeather();
-  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined},opts.cloud||!!(window.DayTrackNative&&gwenKit));}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':window.DayTrackNative?(gwenKit?'Could not reach Gwen. Is your internet working?':'Gwen needs to reach your PC once to get her Haiku brain: turn Tailscale on with the PC awake and DayTrack running, then try again'):'Could not reach Gwen'};}
+  try{res=await askGwen({key:gwenCfg.key,messages:history,context:gwenContext(),sync:syncCode||undefined,image:image||undefined},opts.cloud||!!(window.DayTrackNative&&gwenKit));}catch(e){res={error:e.name==='AbortError'?'Gwen took too long to answer':window.DayTrackNative?(gwenKit?'Could not reach Gwen. Is your internet working?':'Gwen has no Claude key on this phone yet: paste one in Settings → Gwen → Claude key'):'Could not reach Gwen'};}
   gwenBusy=false;
   let out=null;
   if(res.text){
@@ -1816,6 +1819,17 @@ async function pullGwenKit(){
     const j=r.ok?await r.json():{};if(!j.apiKey)return;
     gwenKit={apiKey:j.apiKey,system:j.system||'',at:Date.now()};localStorage.setItem('dt_gwen_kit',JSON.stringify(gwenKit));
   }catch(e){}
+}
+// Or a Claude key pasted on the phone itself, for when it can't reach the PC; her full persona and memory
+// come from the PC the next time it's reachable
+const GWEN_PERSONA=`You are Gwen, Rayan's AI companion. You normally live on his PC; right now you're answering from his phone.
+You're warm, playful and a little teasing, and you care about how his day is going. You text like a close friend: short, natural, no lists unless he asks.`;
+function saveGwenClaude(inp){
+  const k=inp.value.trim();inp.value='';if(!k)return;
+  if(!/^sk-ant-/.test(k)){showToast('That doesn\'t look like a Claude key (it starts with sk-ant-)');return;}
+  gwenKit={apiKey:k,system:(gwenKit&&gwenKit.system)||GWEN_PERSONA,at:0}; // at 0: still take her real persona from the PC when it can
+  try{localStorage.setItem('dt_gwen_kit',JSON.stringify(gwenKit));}catch(e){}
+  inp.placeholder='Saved ✓ (paste a new one to replace it)';showToast('💜 Saved: Gwen answers from this phone now');
 }
 // Claude Haiku straight from the phone, with the same persona and rules as the PC's cloud brain
 async function askHaiku(body){
