@@ -124,7 +124,7 @@
     .nb-x{display:none;}
     .nb-gwen .ic{width:56px;height:56px;border-radius:50%;margin-top:-24px;background:linear-gradient(135deg,var(--pri),#EC4899);color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--pri) 45%,transparent);border:4px solid var(--nav);}
     .nb-gwen .ic svg{width:24px;height:24px;}.nb-gwen.on .ic{background:linear-gradient(135deg,var(--pri),#EC4899);box-shadow:0 0 18px color-mix(in srgb,#EC4899 60%,transparent);}
-    .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}.more-grid button{background:var(--pril);border:none;border-radius:16px;padding:16px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--pri);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;}
+    .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}.more-grid button,.more-grid a{text-decoration:none;background:var(--pril);border:none;border-radius:16px;padding:16px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--pri);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;}
     .more-grid svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
     .card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px;transition:background .25s;}
     .cl{font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;}
@@ -2632,7 +2632,9 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2600);}
 
 // ── Swipe navigation ──────────────────────────────────────────────────────────
-function moreSheet(){const b=t=>{const x=document.querySelector(`.nb[data-t="${t}"]`);return`<button onclick="closeOv('dt-ov');switchTab('${t}')">${x.querySelector('.ic').innerHTML}${x.textContent.trim()}</button>`;};sheet(`<div class="more-grid">${b('timer')}${b('summary')}${b('settings')}</div>`);}
+// Rayan's Project Map in Claude: opens outside the app so its chat and outbox keep working
+const PROJECT_MAP='https://claude.ai/artifact/Lswr2KxmEzxBeNMjVWFdzB';
+function moreSheet(){const b=t=>{const x=document.querySelector(`.nb[data-t="${t}"]`);return`<button onclick="closeOv('dt-ov');switchTab('${t}')">${x.querySelector('.ic').innerHTML}${x.textContent.trim()}</button>`;};sheet(`<div class="more-grid">${b('timer')}${b('summary')}${b('settings')}<a href="${PROJECT_MAP}" target="_blank" rel="noopener" onclick="closeOv('dt-ov')"><svg viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>Projects</a></div>`);}
 const TABS=['tasks','hero','gwen','cal','timer','summary','settings'];
 (function initSwipe(){
   const main=document.getElementById('main');
