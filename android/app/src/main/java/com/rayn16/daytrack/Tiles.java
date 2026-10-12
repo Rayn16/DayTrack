@@ -6,7 +6,7 @@ import android.os.Build;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 
-// Quick Settings tiles: "Add task" and "Talk to Gwen" open DayTrack straight there
+// Quick Settings tiles: "Add task", "Talk to Gwen" and "Project note" open DayTrack straight there
 public class Tiles {
     public static class Add extends TileService {
         @Override public void onStartListening() { ready(this); }
@@ -16,6 +16,12 @@ public class Tiles {
     public static class Gwen extends TileService {
         @Override public void onStartListening() { ready(this); }
         @Override public void onClick() { open(this, new Intent(this, MainActivity.class).putExtra("gwen", true), 6); }
+    }
+
+    // The page's small "Project note" box (#projectnote): a note for one of his projects' outbox in the Project Map
+    public static class Note extends TileService {
+        @Override public void onStartListening() { ready(this); }
+        @Override public void onClick() { open(this, new Intent(this, MainActivity.class).putExtra("hash", "projectnote"), 4); }
     }
 
     private static void ready(TileService s) {

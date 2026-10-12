@@ -12,6 +12,8 @@ import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -19,6 +21,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.drawable.Icon;
 import android.hardware.biometrics.BiometricManager;
 import android.hardware.biometrics.BiometricPrompt;
 import android.location.Location;
@@ -93,7 +96,7 @@ public class MainActivity extends Activity {
     private volatile int installSession = -1;
     private final AtomicReference<String> share = new AtomicReference<>(""); // waiting for takeShare()
     private String settingsFor; // askPerm sent her to Settings for this; answered when she's back
-    private String tile; // a Quick Settings tile tapped before the page was ready
+    private String tile; // a Quick Settings tile (or a #projects link) tapped before the page was ready
     private boolean loaded;
     private int wakeStep = -1; // walking through the settings "Hey Gwen" needs; -1 = not now
 
@@ -151,6 +154,14 @@ public class MainActivity extends Activity {
         if (getIntent().getBooleanExtra("boss", false)) BossAlarm.stop(this);
         // Not again after the activity is rebuilt or reopened from recents
         if (saved == null && (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) handle(getIntent());
+        // Long-press the app icon: "Projects" and "Project note". Made here, not in XML, so in the test app they open the test app.
+        if (Build.VERSION.SDK_INT >= 25) try {
+            ArrayList<ShortcutInfo> cuts = new ArrayList<>();
+            for (String[] c : new String[][]{{"projects", "Projects"}, {"projectnote", "Project note"}})
+                cuts.add(new ShortcutInfo.Builder(this, c[0]).setShortLabel(c[1]).setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+                        .setIntent(new Intent(Intent.ACTION_VIEW, null, this, MainActivity.class).putExtra("hash", c[0])).build());
+            getSystemService(ShortcutManager.class).setDynamicShortcuts(cuts);
+        } catch (Exception ignored) { }
     }
 
     // A tap on Gwen's notification opens her chat
@@ -203,18 +214,21 @@ public class MainActivity extends Activity {
         }
     }
 
-    // The "Add task" tile: the page opens its add box once it's loaded
+    // The "Add task" tile: the page opens its add box once it's loaded. "#projects" / "#projectnote" (launcher shortcuts,
+    // the "Project note" tile, the widget's Projects line) go to the page's address, so it sees a hashchange even when it's already there.
     private void openTile(String t) {
         if (t != null) tile = t;
         if (!loaded || tile == null) return;
-        web.evaluateJavascript("window.dtTile&&dtTile(" + JSONObject.quote(tile) + ")", null);
+        web.evaluateJavascript(tile.startsWith("#") ? "history.replaceState(null,'',location.pathname+location.search);location.hash=" + JSONObject.quote(tile)
+                : "window.dtTile&&dtTile(" + JSONObject.quote(tile) + ")", null);
         tile = null;
     }
 
     // Something shared into DayTrack, or word back from installing an update
     private void handle(Intent i) {
-        String t = i.getStringExtra("tile");
+        String t = i.getStringExtra("tile"), h = i.getStringExtra("hash");
         if (t != null) openTile(t);
+        if (h != null && h.matches("projects|projectnote")) openTile("#" + h);
         if (Intent.ACTION_SEND.equals(i.getAction())) {
             CharSequence text = i.getCharSequenceExtra(Intent.EXTRA_TEXT), subject = i.getCharSequenceExtra(Intent.EXTRA_SUBJECT);
             Uri img = i.getType() != null && i.getType().startsWith("image/") ? (Uri) i.getParcelableExtra(Intent.EXTRA_STREAM) : null;

@@ -22,6 +22,10 @@
         <TextView android:id="@+id/boss_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp"
             android:maxLines="1" android:ellipsize="end" android:textSize="12sp" android:textColor="#FF555555" />
     </LinearLayout>
+    <!-- The Projects list in one line (what needs him, what Claude finished); a tap opens DayTrack's Projects screen -->
+    <TextView android:id="@+id/projects" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:paddingLeft="12dp" android:paddingRight="12dp" android:paddingTop="6dp"
+        android:maxLines="1" android:ellipsize="end" android:textSize="13sp" android:textStyle="bold" android:textColor="#FF0D6A70" android:visibility="gone" />
     <TextView android:id="@+id/row0" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:paddingLeft="12dp" android:paddingRight="12dp" android:paddingTop="5dp" android:paddingBottom="5dp"
         android:maxLines="1" android:ellipsize="end" android:textSize="14sp" android:textColor="#FF222222" android:visibility="gone" />

@@ -4,4 +4,5 @@
     <string name="widget_desc">Your tasks for today, with Gwen. Tap one to tick it off.</string>
     <string name="tile_add">Add task</string>
     <string name="tile_gwen">Talk to Gwen</string>
+    <string name="tile_note">Project note</string>
 </resources>
