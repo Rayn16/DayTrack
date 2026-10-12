@@ -1,6 +1,7 @@
 // The DayTrack server, running inside DayTrack.exe on the PC: the same functions that ran on Netlify
 // (sync, reminders, Gwen's texts, cloud Gwen), with their data in files. The phone reaches it through
 // Tailscale (https://<pc>.ts.net/dt/...), and it passes the phone's calls for Gwen on to her bridge.
+// Sync alone also comes in through Tailscale Funnel (https://<pc>.ts.net:8443/sync), for when the phone has Tailscale off.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -82,7 +83,14 @@ async function start({dataDir, keysFile, fnDir, hooks}) {
       const fn = url.pathname.match(/^\/(?:\.netlify\/functions|api)\/([a-z-]+)$/);
       // A shared list's own page, for people without DayTrack (Tailscale Funnel passes only /s/ through, on port 8443)
       const shared = url.pathname.match(/^(?:\/s)?\/s\/([a-f0-9]{32})(\/data)?\/?$/);
-      if (shared) r = await fns.share(new Request(`http://localhost/?code=${shared[1]}${shared[2] ? '' : '&page=1'}`, {method: req.method === 'POST' && shared[2] ? 'POST' : 'GET', headers: {'Content-Type': 'application/json'}, body: req.method === 'POST' && shared[2] ? JSON.stringify({items: (() => { try { return JSON.parse(body).items; } catch (_) { return []; } })()}) : undefined})); // items only: no renaming or unsharing from outside
+      // Sync for the phone without Tailscale on it (Funnel passes /sync through on port 8443). Only codes already
+      // synced here, so nobody outside can start new ones or pull old ones from the old server.
+      const pub = url.pathname.match(/^(?:\/sync)?\/sync\/?$/);
+      if (pub) {
+        const code = url.searchParams.get('code') || (() => { try { return JSON.parse(body).code; } catch (_) { return ''; } })();
+        r = /^[a-f0-9]{32}$/.test(code || '') && await globalThis.dtStore('daytrack-sync').get(code)
+          ? await sync(new Request('http://localhost/' + url.search, {method: req.method, headers: {'Content-Type': 'application/json'}, body})) : new Response('Not found', {status: 404});
+      } else if (shared) r = await fns.share(new Request(`http://localhost/?code=${shared[1]}${shared[2] ? '' : '&page=1'}`, {method: req.method === 'POST' && shared[2] ? 'POST' : 'GET', headers: {'Content-Type': 'application/json'}, body: req.method === 'POST' && shared[2] ? JSON.stringify({items: (() => { try { return JSON.parse(body).items; } catch (_) { return []; } })()}) : undefined})); // items only: no renaming or unsharing from outside
       else if (fn && fns[fn[1]]) r = await fns[fn[1]](new Request('http://localhost' + url.pathname + url.search, {method: req.method, headers: {'Content-Type': req.headers['content-type'] || 'application/json'}, body}));
       else if (url.pathname.startsWith('/pc/')) {
         // Gwen's bridge, for the phone app (its web page can't call her directly)

@@ -210,6 +210,12 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
   // An older app with no base: nothing is dropped
   r = await push(undefined, {tasks: [{id: 'z', name: 'Old phone', done: []}], player: {}, updatedAt: 50});
   assert.deepEqual(r.data.tasks.map(t => t.id).sort(), ['a', 'c', 'z']);
+  // The Funnel door (/sync, phone with Tailscale off): known codes only, never new ones
+  assert.deepEqual((await call('/sync?code=' + code)).tasks.map(t => t.id).sort(), ['a', 'c', 'z']);
+  assert.equal((await call('/sync/sync', {code, base: r.data.updatedAt, data: {...r.data, updatedAt: 999}})).data.updatedAt, 999);
+  assert.equal((await fetch(url + '/sync?code=' + 'd'.repeat(32))).status, 404);
+  assert.equal((await fetch(url + '/sync', {method: 'POST', body: JSON.stringify({code: 'd'.repeat(32), data: {updatedAt: 1}})})).status, 404);
+  assert.equal((await fetch(url + '/sync?code=x')).status, 404);
   assert.equal(r.data.player.avImg, 'data:img');
   // Same base as what's stored: a plain save, deletions included
   r = await push(r.data.updatedAt, {tasks: [{id: 'a', name: 'Water 2L', done: []}], player: {}, updatedAt: 400});

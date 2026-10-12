@@ -33,6 +33,11 @@
       const p=pc();
       if(p!==lastPc){lastPc=p;N.setServer(p?p+'/dt':'');}
       if(typeof u==='string'){
+        // Sync tries the PC's Funnel door first (https://<pc>.ts.net:8443/sync), which works with Tailscale off on the phone
+        if(u.startsWith('/.netlify/functions/sync')&&p.startsWith('https://')){
+          const tail=p+'/dt'+u;
+          return f(p.replace(/:\d+$/,'')+':8443/sync'+u.slice(24),o).then(r=>r.status===404?f(tail,o):r,()=>f(tail,o));
+        }
         if(u.startsWith('/.netlify/')){
           if(u.endsWith('/save-reminder'))try{N.wakeAt(JSON.stringify(wakeTimes(JSON.parse(o.body))));}catch(e){}
           u=p+'/dt'+u;
