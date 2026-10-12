@@ -28,6 +28,24 @@ jobs:
       # Version 1.0.<build>: the app compares its build with the release's to know an update is out
       - run: npm pkg set version=1.0.${{ github.run_number }}
       - run: npm run dist
+      # The self-update end to end: install this build, start it, and ask it to update the way the phone does. It
+      # downloads the published installer, starts it and quits; DayTrack has to come back by itself.
+      - name: Update restarts DayTrack
+        shell: pwsh
+        run: |
+          (Start-Process dist\DayTrack-Setup.exe -ArgumentList '/S' -PassThru).WaitForExit()
+          New-Item -ItemType Directory -Force "$env:USERPROFILE\Documents\Gwen" | Out-Null
+          '{"key":"ci"}' | Set-Content "$env:USERPROFILE\Documents\Gwen\daytrack.json"
+          Start-Process "$env:LOCALAPPDATA\Programs\daytrack-desktop\DayTrack.exe"
+          Start-Sleep 15
+          $old = @((Get-Process DayTrack).Id)
+          Invoke-RestMethod -Method Post -Uri http://127.0.0.1:5053/api/pc -ContentType 'application/json' -Body '{"key":"ci","action":"update"}'
+          for ($i = 0; $i -lt 120; $i++) {
+            Start-Sleep 1
+            $now = @(Get-Process DayTrack -ErrorAction SilentlyContinue)
+            if ($now.Count -and -not ($now | Where-Object { $old -contains $_.Id })) { "DayTrack started again after $i s"; Stop-Process -Name DayTrack -Force; exit 0 }
+          }
+          throw "DayTrack did not start again after the update (before: $old, now: $($now.Id))"
 
       - name: Publish
         if: github.event_name != 'pull_request'

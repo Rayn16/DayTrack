@@ -9,6 +9,7 @@ const server = require('./server');
 const WEB = path.join(__dirname, 'web');
 const RELEASE = 'https://github.com/Rayn16/DayTrack/releases';
 let win, panel, tray, fns, quitting = false, newBuild = 0;
+const HIDDEN_FLAG = path.join(app.getPath('userData'), 'start-hidden');
 // The build number is the last part of the version (1.0.<GitHub build>), set when the release is built
 const build = () => Number(app.getVersion().split('.')[2]) || 0;
 
@@ -71,21 +72,11 @@ async function update(hidden) {
     new Notification({title: 'DayTrack update failed', body: `Couldn't download the update (${e.message}). Try again from the tray menu.`}).show();
     throw e;
   }
-  const q = s => `'${s.replace(/'/g, "''")}'`, log = q(path.join(app.getPath('userData'), 'update.log'));
-  // PowerShell waits (up to 20 s) for this app to fully close, installs over it silently, then starts the new one. It waits for the
-  // installer process only (Start-Process -Wait also waits for anything the installer leaves running, which could
-  // hang it forever), starts DayTrack only if the installer didn't, and logs each step to update.log.
-  const ps = [
-    `"$(Get-Date) update started" | Out-File ${log}`,
-    `$i = 0; while ((Get-Process DayTrack -ErrorAction SilentlyContinue) -and $i -lt 40) { Start-Sleep -Milliseconds 500; $i++ }`,  // until this app has fully closed
-    `$p = Start-Process -FilePath ${q(setup)} -ArgumentList '/S' -PassThru; $p.WaitForExit(); "$(Get-Date) installer exit $($p.ExitCode)" | Out-File ${log} -Append`,
-    `Start-Sleep 2`,
-    `$exe = ${q(process.execPath)}; if (-not (Test-Path $exe)) { $exe = "$env:LOCALAPPDATA\\Programs\\DayTrack\\DayTrack.exe" }`,
-    `if (-not (Get-Process DayTrack -ErrorAction SilentlyContinue)) { Start-Process -FilePath $exe${hidden ? " -ArgumentList '--hidden'" : ''}; "$(Get-Date) started $exe" | Out-File ${log} -Append }`,
-  ].join('\n');
-  // -EncodedCommand (UTF-16 base64) so the quotes in the script survive the trip through the command line
-  spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')],
-    {detached: true, windowsHide: true, stdio: 'ignore'}).unref();
+  // The installer closes this app, installs over it quietly and starts DayTrack again (--force-run), the way
+  // electron-updater does it. (The PowerShell helper this replaces never ran on the PC, so DayTrack stayed closed.)
+  // It can't pass --hidden on, so a flag file says to start in the tray (update from the phone, maybe during a game).
+  if (hidden) fs.writeFileSync(HIDDEN_FLAG, '');
+  spawn(setup, ['/S', '--updated', '--force-run'], {detached: true, stdio: 'ignore'}).unref();
   quitting = true;
   app.quit();
 }
@@ -141,7 +132,10 @@ app.whenReady().then(async () => {
   tray.on('click', show);
   if (!globalShortcut.register('Control+Alt+D', togglePanel)) console.warn('Ctrl+Alt+D is taken by another app');
   if (app.isPackaged) { setTimeout(checkUpdate, 30e3); setInterval(checkUpdate, 6 * 3600e3); }
-  if (!process.argv.includes('--hidden')) show();
+  // The flag only counts right after an update, so a later start by hand always opens the window
+  const hidden = process.argv.includes('--hidden') || (() => { try { return Date.now() - fs.statSync(HIDDEN_FLAG).mtimeMs < 300e3; } catch (_) { return false; } })();
+  fs.rmSync(HIDDEN_FLAG, {force: true});
+  if (!hidden) show();
 });
 
 app.on('window-all-closed', e => e.preventDefault());
