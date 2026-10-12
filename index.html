@@ -1702,8 +1702,8 @@ function gwenContext(){
     sleepLog[tod]?`He slept ${sleepHours(sleepLog[tod]).toFixed(1)} hours last night (${sleepLog[tod].bed} to ${sleepLog[tod].wake}).`:'',
     `If he wants music, or a song would fit his mood, put this on its own line (the app shows a play button and hides the line):\nMUSIC: <song and artist, or a search like "lofi study music">\nWhen you share a song, hum a little (*hums*).`,
     g3.vrm?'If he asks for a selfie or a picture of you, put SELFIE on its own line (the app snaps you in 3D and hides the line).':'',
-    window.lifeContext?lifeContext():'',
     `If he asks you to add a task or remind him about something, put this on its own line (the app adds it and hides the line):\nADD_TASK: <short task name> | <YYYY-MM-DD, or empty for today> | <HH:MM 24-hour reminder time, or empty>\nOnly do this when he asks. For a plan at a set time (like "gym at 6"), use that time; you'll get to ask him how it went afterwards.`,
+    window.lifeContext?lifeContext():'', // last: the cloud brain keeps only the first 8000 characters
   ].filter(Boolean).join('\n\n');
 }
 function gwenMoodLine(){

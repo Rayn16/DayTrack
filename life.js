@@ -306,7 +306,7 @@ async function unshareList(id){
 }
 // Send what changed here, take what changed there
 async function pushShare(l,create){
-  const seen=shareSeen[l.share]||{},now=Date.now(),changes=[],sent=new Set(l.items.map(i=>i.id));
+  const seen=shareSeen[l.share]||{},now=Date.now(),changes=[],st=i=>i.text+'\n'+!!i.done,snap=new Map(l.items.map(i=>[i.id,st(i)]));
   for(const i of l.items){const s=seen[i.id];if(!s||s.text!==i.text||!!s.done!==!!i.done)changes.push({id:i.id,text:i.text,done:!!i.done,at:now});}
   for(const id of Object.keys(seen))if(!l.items.some(i=>i.id===id))changes.push({id,del:true,at:now});
   try{
@@ -317,21 +317,23 @@ async function pushShare(l,create){
     if(!r.ok)return false;
     // Ids go into onclick="…('id')": anything that could break out of that is left out (anyone with the link can write)
     const d=await r.json(),live=d.items.filter(i=>!i.del&&/^[^'"\\<>&\x00-\x1f]{1,40}$/.test(i.id)),before=JSON.stringify(l.items);
-    // The Project Map's list keeps when Claude wrote each item (life.js, Projects); added here meanwhile = kept for the next push
-    l.items=[...live.map(i=>({id:i.id,text:i.text,done:!!i.done,...(l.projects?{at:i.at}:{})})),...l.items.filter(i=>!sent.has(i.id)&&!live.some(x=>x.id===i.id))];
+    // The Project Map's list keeps when Claude wrote each item (life.js, Projects). Added, changed or deleted here while
+    // the request was out: kept as it is here, so the next push sends it
+    l.items=[...live.flatMap(i=>{const x=l.items.find(y=>y.id===i.id);return snap.has(i.id)&&(!x||st(x)!==snap.get(i.id))?x?[x]:[]:[{id:i.id,text:i.text,done:!!i.done,...(l.projects?{at:i.at}:{})}];}),...l.items.filter(i=>!snap.has(i.id)&&!live.some(x=>x.id===i.id))];
     shareSeen[l.share]=Object.fromEntries(live.map(i=>[i.id,{text:i.text,done:!!i.done}]));
     try{localStorage.setItem('dt_share_seen',JSON.stringify(shareSeen));if(l.projects)localStorage.setItem('dt_proj_at',Date.now());}catch(e){}
     return JSON.stringify(l.items)!==before?'changed':true;
   }catch(e){return false;}
 }
-let sharing=false;
+let sharing=false,shareAgain=false;
 async function syncShares(){
-  if(sharing||!gwenCfg.key)return;sharing=true;
+  if(!gwenCfg.key)return;if(sharing){shareAgain=true;return;}sharing=true;
   let changed=false;
   for(const l of lists.filter(x=>x.share))if(await pushShare(l)==='changed')changed=true;
   sharing=false;
   if(changed){writeLocal();queueSync();renderLists();const ov=document.getElementById('dt-ov-body'),open=lists.find(l=>ov&&ov.querySelector(`[onclick*="addListItem('${l.id}')"]`));if(open&&document.getElementById('dt-ov').classList.contains('on'))openList(open.id);}
   projSynced(changed);
+  if(shareAgain){shareAgain=false;syncShares();} // asked for while this one was out
 }
 let shareTimer;
 const queueShare=()=>{if(!lists.some(l=>l.share))return;clearTimeout(shareTimer);shareTimer=setTimeout(syncShares,1200);};
@@ -1198,7 +1200,7 @@ const projL=make=>{let l=lists.find(x=>x.projects);if(!l&&make){l={id:uid(),name
 const projItems=()=>(projL()||{items:[]}).items;
 const projFind=id=>projItems().find(i=>i.id===id);
 const projKind=i=>i.id.split('~')[0];
-const projName=s=>{s=String(s||'').trim().toLowerCase();const x=PROJ.find(([n])=>n.toLowerCase()===s)||PROJ.find(([n])=>s.startsWith(n.split(' ')[0].toLowerCase()));return x?x[0]:null;};
+const projName=s=>{s=String(s||'').trim().toLowerCase();const x=PROJ.find(([n])=>n.toLowerCase()===s||dtT(n)===s)||PROJ.find(([n])=>s.startsWith(n.split(' ')[0].toLowerCase()));return x?x[0]:null;};
 const projC=p=>(PROJ.find(x=>x[0]===p)||[0,'var(--pri)'])[1];
 function projOf(i){const m=i.text.match(/^([^:]{1,20}):\s*/),p=m&&projName(m[1]);return{p:p||'',c:projC(p),t:p?i.text.slice(m[0].length):i.text};}
 const projOpen=(i,tod)=>!i.done&&(projKind(i)!=='today'||i.id.split('~')[1]===tod);
@@ -1240,7 +1242,7 @@ function openProjects(){
     ${linked?'':`<div style="font-size:13px;color:var(--sub);text-align:center;line-height:1.5;margin-bottom:10px;">Link DayTrack with your Project Map once: DayTrack makes a shared Projects list on your PC, and Claude reads and writes it every hour. Notes you write before that wait here.</div><button onclick="projLink()" style="width:100%;margin-bottom:8px;background:var(--pri);color:white;${btnS}">🔗 Link with the map</button>`}
     <div style="display:flex;gap:8px;"><a href="${PROJECT_MAP}" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none;background:var(--pril);color:var(--pri);${btnS}">🗺️ Open the map</a><button onclick="projNote()" style="flex:1;background:var(--pri);color:white;${btnS}">📝 Project note</button></div>
     ${secs||(linked?'<div style="font-size:13px;color:var(--sub);text-align:center;padding:12px;">Nothing here yet. Claude fills it in at its next sync.</div>':'')}
-    ${linked?'<button class="mi" onclick="projLinkSheet()">🔗 The map link</button>':''}${closeBtn}`);
+    ${projMapUrl()?'<button class="mi" onclick="projLinkSheet()">🔗 The map link</button>':''}${closeBtn}`);
   document.getElementById('dt-ov-body').scrollTop=y;
 }
 function projRefresh(){renderLife();if(document.getElementById('proj-sheet')&&document.getElementById('dt-ov').classList.contains('on'))openProjects();}
@@ -1259,17 +1261,18 @@ async function projAnswer(id){
   i.done=true;projAdd('note',x.p||i.text.split(':')[0],`Answer ${id.slice(4)}: ${a}`);
 }
 
-// "Link with the map": make and share the list (the PC must be on), then hand the map its address in the link's #
-const projMapUrl=()=>{const l=projL(),h=gwenCfg.pc.trim().replace(/^https?:\/\//,'').replace(/[:/].*$/,'');return l&&l.share&&/^[A-Za-z0-9.-]+$/.test(h)?`${PROJECT_MAP}#dt~${h}~${l.share}`:'';};
+// "Link with the map": make and share the list (the PC must be on), then hand the map its address in the link's #.
+// Only a https://…ts.net address: never the PC app's own http://127.0.0.1, which Claude can't reach
+const projMapUrl=()=>{const l=projL(),h=shareLink('x').slice(8).replace(/[:/].*$/,'');return l&&l.share&&/^[A-Za-z0-9.-]+$/.test(h)?`${PROJECT_MAP}#dt~${h}~${l.share}`:'';};
 async function projLink(){
-  if(!gwenCfg.key||!shareLink('x'))return showToast('Add your PC address (https://…ts.net) and Gwen key in Settings first');
+  if(!gwenCfg.key||!shareLink('x'))return showToast(/Electron/.test(navigator.userAgent)?'Link the map from DayTrack on your phone':'Add your PC address (https://…ts.net) and Gwen key in Settings first');
   const l=projL(true);
   if(!l.share){
     showToast('🔗 Linking…');l.share=lifeHex();
     if(!await pushShare(l,true)){l.share=null;save();return showToast('❌ Your PC needs to be on to link the map');}
   }
   save();renderLife();
-  const a=document.createElement('a');a.href=projMapUrl();a.target='_blank';a.rel='noopener';a.click();
+  const u=projMapUrl();if(u){const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.click();}
   projLinkSheet();
 }
 function projLinkSheet(){
@@ -1293,7 +1296,7 @@ function projSynced(changed){
   if(seen.size!==had.length){life.projDays=[...seen].slice(-200);lifeSave();}
   else if(changed)syncReminders(); // an item for tomorrow can change tonight's nudge
   if(n){renderTaskList();showToast(`🗺️ ${n} from your Project Map added to today`);}
-  if(changed||n)projRefresh();
+  if(changed||n||projLight().ok!==!!document.querySelector('#proj-card .pdot.on'))projRefresh(); // or the light turned green/grey
   projTell();
 }
 
@@ -1330,8 +1333,10 @@ function projDue(i){ // "… by 10 Jan" in a goal~ item
 }
 function projNudges(){ // fired by the server with her goodnight (bedtime − 30 min), like the other nudges
   if(!gwenCfg.bed||/Electron/.test(navigator.userAgent))return[];
-  const tod=tod0(),tm=addDays(tod,1),its=projItems().filter(i=>!i.done&&(i.id.startsWith(`today~${tm}~`)||projKind(i)==='goal'&&projDue(i)===tm));
-  return its.length?[{id:'projnight',date:tod,at:minHm((hmMin(gwenCfg.bed)+1411)%1440),title:'💜 Gwen',text:`For your projects tomorrow: ${its.map(i=>i.text).join('; ')} 💜`.slice(0,240)}]:[];
+  // Bedtime after midnight: the nudge falls on the day he wakes up into, so tonight's and tomorrow night's both go
+  const tod=tod0(),at=(hmMin(gwenCfg.bed)+1411)%1440,late=at<hmMin(gwenCfg.wake||'06:00');
+  return(late?[tod,addDays(tod,1)]:[tod]).map(ds=>{const tm=late?ds:addDays(ds,1),its=projItems().filter(i=>!i.done&&(i.id.startsWith(`today~${tm}~`)||projKind(i)==='goal'&&projDue(i)===tm));
+    return its.length&&{id:'projnight',date:ds,at:minHm(at),title:'💜 Gwen',text:`For your projects tomorrow: ${its.map(i=>i.text).join('; ')} 💜`.slice(0,240)};}).filter(Boolean);
 }
 
 // Idea 113: a restaurant signed. Coins, a trophy parcel for her house (with the other trophies, lifeReminders) and a signed~ item
@@ -1394,13 +1399,13 @@ window.lifeProjLine=()=>{
 // "ask Claude …" become a note~ item once he says yes
 function projContext(){
   const l=projL();if(!l)return'';const tod=tod0(),m=l.items.find(i=>i.id==='meta');
-  const say={ask:'Claude asks him',need:'waiting on him',today:'today\'s top 3',next:'next step',goal:'goal',done:'Claude finished',day:'on his day',note:'his note, waiting for Claude',log:'his focus log, waiting for Claude',cost:'his cost, waiting for Claude',signed:'his signing, waiting for Claude'},ks=Object.keys(say);
-  const its=l.items.filter(i=>ks.includes(projKind(i))&&(projKind(i)==='done'||projOpen(i,tod))).sort((a,b)=>ks.indexOf(projKind(a))-ks.indexOf(projKind(b))).slice(0,18);
-  return[`His projects, from his Project Map in Claude (Claude works on them every hour; DayTrack and the map share this list${l.share?'':', not linked yet'}):`,m?`Status: ${m.text}`:'',
-    ...its.map(i=>`- ${say[projKind(i)]}${projKind(i)==='ask'?` (id ${i.id.slice(4)})`:''}: ${i.text}`),
-    'If he asks what is waiting on him for a project, or how one is going, answer from this list, in the language he wrote in.',
-    `If he wants to tell a project something or ask Claude something (in any language: "tell Food apps to …", "ask Claude …"), read it back in one short line and ask if you should send it. Only once he says yes, put this on its own line (the app sends it and hides the line):\nPROJECT_NOTE: <${PROJ.map(x=>x[0]).join('|')}> | <the note, short; end it with ? when it's a question for Claude>`,
-    'To answer one of Claude\'s questions for him, send "Answer <id>: <his answer>" the same way. If he asks about a project and nothing here answers it, say so and offer to ask Claude for him.'].filter(Boolean).join('\n');
+  const say={ask:'Claude asks him',need:'waiting on him',today:'today',next:'next step',goal:'goal',done:'Claude finished',day:'on his day',note:'his note (for Claude)',log:'his log (for Claude)',cost:'his cost (for Claude)',signed:'his signing (for Claude)'},ks=Object.keys(say);
+  // ponytail: 10 items of 80 characters (~1.5 KB), so the rest of her context stays under the cloud brain's 8000 cut
+  const its=l.items.filter(i=>ks.includes(projKind(i))&&(projKind(i)==='done'||projOpen(i,tod))).sort((a,b)=>ks.indexOf(projKind(a))-ks.indexOf(projKind(b))).slice(0,10);
+  return[`His projects (a list shared with his Project Map in Claude, which works on them hourly${l.share?'':'; not linked yet'}):`,m?`Status: ${m.text.slice(0,80)}`:'',
+    ...its.map(i=>`- ${say[projKind(i)]}${projKind(i)==='ask'?` (id ${i.id.slice(4)})`:''}: ${i.text.slice(0,80)}`),
+    'Answer project questions from this, in his language; if it doesn\'t say, offer to ask Claude.',
+    `To tell a project something or ask Claude (any language), read it back and ask; only after his yes, put on its own line (the app sends it, hides the line):\nPROJECT_NOTE: <${PROJ.map(x=>x[0]).join('|')}, in English> | <short note; end with ? to ask Claude; "Answer <id>: …" answers Claude>`].filter(Boolean).join('\n');
 }
 // Entry points (agreed with the phone app): #projects and #projectnote, or dtTile('projects' | 'projectnote')
 function projGo(h){
@@ -1487,9 +1492,9 @@ window.lifeContext=()=>{
   ].filter(Boolean).join('\n\n');
 };
 // Her action lines this file adds: SPEND, PROJECT_NOTE
-window.lifeActions=text=>text.replace(/^[ \t*-]*PROJECT_NOTE:\s*(.+)$/gim,(_,spec)=>{const[p,...n]=spec.split('|');const x=projName(p);if(x)projAdd('note',x,n.join('|').trim().replace(/^["“]|["”]$/g,''));return'';}).replace(/^[ \t*-]*SPEND:\s*(.+)$/gim,(_,spec)=>{const[what,amt]=spec.split('|').map(x=>(x||'').trim());const e=addSpend(`${what} ${amt}`,true);if(e)showToast(`💰 Logged ${e.label} · ${e.amt} SAR`);return'';});
+window.lifeActions=text=>text.replace(/^[ \t*-]*PROJECT_NOTE:\s*(.+)$/gim,(line,spec)=>{const[p,...n]=spec.split('|');const x=projName(p);if(!x){showToast('🗺️ Couldn\'t tell which project, nothing was sent');return line;}projAdd('note',x,n.join('|').trim().replace(/^["“]|["”]$/g,''));return'';}).replace(/^[ \t*-]*SPEND:\s*(.+)$/gim,(_,spec)=>{const[what,amt]=spec.split('|').map(x=>(x||'').trim());const e=addSpend(`${what} ${amt}`,true);if(e)showToast(`💰 Logged ${e.label} · ${e.amt} SAR`);return'';});
 // What the server needs for reminders and Gwen's texts
-window.lifeReminders=()=>({nudges:[...projNudges(),...bdayNudges(),...lifeNudges()].slice(0,20),hero:heroForHouse(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`})),...((life.projTrophies||[]).length&&typeof heroTrophies==='function'?{trophies:[...heroTrophies(),...life.projTrophies]}:{})});
+window.lifeReminders=()=>({nudges:[...projNudges(),...bdayNudges(),...lifeNudges()].slice(0,20),hero:heroForHouse(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`})),...((life.projTrophies||[]).length&&typeof heroTrophies==='function'?{trophies:[...life.projTrophies,...heroTrophies()]}:{})});
 window.lifeSaved=()=>{projTie();syncPlaces();queueShare();syncNowNext();houseRewards();setTimeout(sendAppState,1500);};
 
 (function lifeBoot(){

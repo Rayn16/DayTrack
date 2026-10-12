@@ -799,6 +799,7 @@
     'Link DayTrack with your Project Map once: DayTrack makes a shared Projects list on your PC, and Claude reads and writes it every hour. Notes you write before that wait here.': 'اربط DayTrack بخريطة مشاريعك مرة واحدة: ينشئ DayTrack قائمة مشاريع مشتركة على الكمبيوتر، ويقرؤها Claude ويكتب فيها كل ساعة. الملاحظات التي تكتبها قبل ذلك تنتظر هنا.',
     "If the map didn't open, open this link once in Claude. It tells the map where your Projects list is.": 'إن لم تُفتح الخريطة، افتح هذا الرابط مرة واحدة في Claude. فهو يخبر الخريطة بمكان قائمة مشاريعك.',
     'Your PC needs to be on to link the map': 'يجب أن يكون الكمبيوتر يعمل لربط الخريطة', '‹ Back to Projects': '› العودة إلى المشاريع',
+    'Link the map from DayTrack on your phone': 'اربط الخريطة من DayTrack على جوالك', "Couldn't tell which project, nothing was sent": 'لم أعرف أي مشروع، فلم يُرسل شيء',
     'Project note': 'ملاحظة مشروع', 'add Sanbouk to the demo page': 'أضف سنبوك إلى صفحة العرض', 'Say it': 'قلها', 'Write the note first': 'اكتب الملاحظة أولًا',
     'End with ? to ask Claude a question.': 'اختمها بـ ? لتسأل Claude سؤالًا.',
     'Nothing here yet. Claude fills it in at its next sync.': 'لا شيء هنا بعد. سيملؤه Claude في المزامنة القادمة.',
