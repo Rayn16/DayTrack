@@ -790,6 +790,24 @@
     'Lightbringer': 'حامل النور', 'Reach 100 light karma': 'اجمع 100 من كارما النور', 'Shadow walker': 'سائر الظلال', 'Shadow Walker': 'سائر الظلال', 'Gather 30 dark karma': 'اجمع 30 من كارما الظلام',
     'Rival slayer': 'قاهر الغريم', 'Rival Slayer': 'قاهر الغريم', 'Beat your rival over a month': 'تغلّب على غريمك خلال شهر', 'Weaponsmith': 'صانع السلاح', 'Forge a legendary weapon': 'اصنع سلاحًا أسطوريًا',
     'Unlocks with': 'يُفتح مع', 'Dragon rider': 'فارس التنين', 'Dragon Rider': 'فارس التنين', 'Unlock the dragon mount': 'افتح مطيّة التنين',
+    // Project Map wave (life.js): his projects in DayTrack. Item text from Claude stays as written (translate="no")
+    'Food apps': 'تطبيقات الطعام', 'repos': 'المستودعات', 'Dashboard': 'لوحة المتابعة', 'Project Map': 'خريطة المشاريع',
+    'Open the map': 'افتح الخريطة', 'Needs you': 'يحتاجك', 'Next step': 'الخطوة التالية', 'On your day': 'في يومك', 'Waiting for Claude': 'بانتظار Claude',
+    '+ My day': '+ ليومي', 'Add to my day': 'أضف إلى يومي', 'Answer': 'أجب', 'Your answer': 'إجابتك', 'Nothing waiting on you 💜': 'لا شيء ينتظرك 💜',
+    'Synced with the map': 'متزامن مع الخريطة', 'Not linked with the map yet': 'لم يُربط بالخريطة بعد', 'PC off, notes will wait': 'الكمبيوتر مطفأ، والملاحظات تنتظر',
+    'Link with the map': 'اربط بالخريطة', 'Linking…': 'جارٍ الربط…', 'Linked with the map': 'تم الربط بالخريطة', 'The map link': 'رابط الخريطة',
+    'Link DayTrack with your Project Map once: DayTrack makes a shared Projects list on your PC, and Claude reads and writes it every hour. Notes you write before that wait here.': 'اربط DayTrack بخريطة مشاريعك مرة واحدة: ينشئ DayTrack قائمة مشاريع مشتركة على الكمبيوتر، ويقرؤها Claude ويكتب فيها كل ساعة. الملاحظات التي تكتبها قبل ذلك تنتظر هنا.',
+    "If the map didn't open, open this link once in Claude. It tells the map where your Projects list is.": 'إن لم تُفتح الخريطة، افتح هذا الرابط مرة واحدة في Claude. فهو يخبر الخريطة بمكان قائمة مشاريعك.',
+    'Your PC needs to be on to link the map': 'يجب أن يكون الكمبيوتر يعمل لربط الخريطة', '‹ Back to Projects': '› العودة إلى المشاريع',
+    'Project note': 'ملاحظة مشروع', 'add Sanbouk to the demo page': 'أضف سنبوك إلى صفحة العرض', 'Say it': 'قلها', 'Write the note first': 'اكتب الملاحظة أولًا',
+    'End with ? to ask Claude a question.': 'اختمها بـ ? لتسأل Claude سؤالًا.',
+    'Nothing here yet. Claude fills it in at its next sync.': 'لا شيء هنا بعد. سيملؤه Claude في المزامنة القادمة.',
+    'Restaurant signed': 'تم توقيع مطعم', 'Which restaurant signed? 🎉': 'أي مطعم وقّع؟ 🎉', 'e.g. Sanbouk Cafe': 'مثلًا: مقهى سنبوك',
+    'Which project was this for?': 'لأي مشروع كان هذا؟', 'Tag with a project': 'اربطه بمشروع',
+    'Shared with DayTrack': 'تمت المشاركة مع DayTrack', 'Send to a project': 'أرسل إلى مشروع', 'Make it a task': 'اجعلها مهمة',
+    'e.g. tested the Android login': 'مثلًا: جرّبت تسجيل الدخول في أندرويد', 'From your Project Map': 'من خريطة مشاريعك', 'Added to today': 'أُضيفت إلى اليوم',
+    'Gwen tells me when Claude finishes': 'غوين تخبرني عندما ينهي Claude شيئًا',
+    'A short message when Claude finishes something or asks you something (and a notification on the phone). It waits out quiet hours, prayers and games.': 'رسالة قصيرة عندما ينهي Claude شيئًا أو يسألك عن شيء (وإشعار على الجوال). تنتظر حتى تنتهي ساعات الهدوء والصلوات والألعاب.',
   };
 
   // ── Patterns (numbers, names, dates) ───────────────────────────────────────
@@ -1153,6 +1171,17 @@
     [/^Battle damage on ([\s\S]+)$/, (_, x) => LV(x, a => `ضرر المعركة على ${a}`)],
     [/^([\s\S]+) has fallen!$/, (_, x) => LV(x, a => `سقط ${a}!`)],
     [/^([\d,]+) of ([\d,]+) HP left$/, 'باقي $1 من $2 صحة'],
+    // Project Map wave (life.js)
+    [/^PC off since (.+), notes will wait$/, (_, t) => `الكمبيوتر مطفأ منذ ${T(t)}، والملاحظات تنتظر`],
+    [/^Claude finished (\d+) today$/, 'أنجز Claude $1 اليوم'], [/^Projects: (\d+) need you, (\d+) done$/, 'المشاريع: $1 تحتاجك، $2 منجزة'],
+    [/^📤 Sent to (.+)$/, (_, p) => '📤 أُرسلت إلى ' + T(p)], [/^📤 Send to (.+)$/, (_, p) => '📤 أرسل إلى ' + T(p)],
+    [/^📝 Saved for (.+)\. Link the map to send it$/, (_, p) => `📝 حُفظت لـ${T(p)}. اربط الخريطة لإرسالها`],
+    [/^📤 Saved for (.+), it goes out when your PC is on$/, (_, p) => `📤 حُفظت لـ${T(p)}، وتُرسل عندما يعمل الكمبيوتر`],
+    [/^What got done on (.+)\? 💜$/, (_, p) => `ماذا أنجزت في ${T(p)}؟ 💜`], [/^(\d+) from your Project Map added to today$/, 'أُضيف $1 من خريطة مشاريعك إلى اليوم'],
+    [/^News from your projects 💜\n([\s\S]+)$/, 'أخبار من مشاريعك 💜\n$1'], [/^([\s\S]+) Tell me your answer and I'll pass it on 💜$/, '$1 قل لي إجابتك وسأوصلها 💜'],
+    [/^(?:First on your projects today: ([\s\S]+?)\.)? ?(?:Claude finished (\d+) overnight\.)? 💜$/, (_, t, n) => t || n ? [t ? `أول ما في مشاريعك اليوم: ${t}.` : '', n ? `أنجز Claude ${n} خلال الليل.` : ''].filter(Boolean).join(' ') + ' 💜' : null],
+    [/^([\s\S]+) signed! 🎉 So proud of you\. \+200 coins, and a trophy is on its way to the house 🏆💜$/, '$1 وقّع! 🎉 فخورة بك جدًا. +200 عملة، وكأس في طريقه إلى البيت 🏆💜'],
+    [/^([\s\S]+) signed! \+200 coins$/, '$1 وقّع! +200 عملة'],
   ];
 
   // The "How DayTrack Works" sheet: whole paragraphs, keyed by their heading

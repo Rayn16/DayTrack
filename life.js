@@ -210,7 +210,7 @@ function renderSpend(){
     <div style="display:flex;gap:8px;margin-bottom:10px;"><input class="inp" id="sp-in" placeholder="coffee 18" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();spendAdd();}"><button onclick="spendAdd()" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:18px;cursor:pointer;">+</button></div>
     <div style="display:flex;align-items:baseline;gap:8px;"><span style="font-size:24px;font-weight:700;">${s.now.total.toLocaleString('en-US')}</span><span style="font-size:12px;color:var(--sub);">this month${s.lastSoFar.total?` · ${diff>0?'▲':'▼'} ${Math.abs(diff).toLocaleString('en-US')} vs last month so far`:''}</span></div>
     ${Object.entries(s.now.cats).map(([c,v])=>`<div style="display:flex;align-items:center;gap:8px;margin-top:7px;font-size:12px;"><span style="width:96px;flex-shrink:0;">${c}</span><div class="bar" style="flex:1;"><i style="width:${v/max*100}%;"></i></div><span style="width:46px;text-align:right;color:var(--sub);">${v}</span></div>`).join('')}
-    ${recent.length?`<div style="margin-top:10px;border-top:1px solid var(--brd);">${recent.map(e=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;font-size:13px;border-bottom:1px solid var(--brd);"><span>${e.cat.split(' ')[0]}</span><span style="flex:1;">${esc(e.label)}</span><span style="color:var(--sub);font-size:11px;">${fmtDay(e.d).replace(/^\w+, /,'')}</span><b>${e.amt}</b><button onclick="spendDel('${e.id}')" aria-label="Delete" style="background:none;border:none;color:var(--sub);cursor:pointer;">✕</button></div>`).join('')}</div>`
+    ${recent.length?`<div style="margin-top:10px;border-top:1px solid var(--brd);">${recent.map(e=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;font-size:13px;border-bottom:1px solid var(--brd);"><span>${e.cat.split(' ')[0]}</span><span style="flex:1;">${esc(e.label)}</span><span style="color:var(--sub);font-size:11px;">${fmtDay(e.d).replace(/^\w+, /,'')}</span><b>${e.amt}</b>${projL()?e.proj?`<span class="pdot on" style="background:${projC(e.proj)};" title="${esc(e.proj)}"></span>`:`<button onclick="projCost('${e.id}')" aria-label="Tag with a project" style="background:none;border:none;cursor:pointer;padding:0;opacity:.6;">🗺️</button>`:''}<button onclick="spendDel('${e.id}')" aria-label="Delete" style="background:none;border:none;color:var(--sub);cursor:pointer;">✕</button></div>`).join('')}</div>`
       :'<div style="font-size:12px;color:var(--sub);margin-top:8px;">Type what you spent, like "coffee 18" or "fuel 90". No bank link, just what you type. Gwen notices trends.</div>'}`;
 }
 function spendAdd(){const i=document.getElementById('sp-in');if(addSpend(i.value)){i.value='';i.focus();}}
@@ -306,17 +306,21 @@ async function unshareList(id){
 }
 // Send what changed here, take what changed there
 async function pushShare(l,create){
-  const seen=shareSeen[l.share]||{},now=Date.now(),changes=[];
+  const seen=shareSeen[l.share]||{},now=Date.now(),changes=[],sent=new Set(l.items.map(i=>i.id));
   for(const i of l.items){const s=seen[i.id];if(!s||s.text!==i.text||!!s.done!==!!i.done)changes.push({id:i.id,text:i.text,done:!!i.done,at:now});}
   for(const id of Object.keys(seen))if(!l.items.some(i=>i.id===id))changes.push({id,del:true,at:now});
   try{
-    const r=await lifeApi('share?code='+l.share,changes.length||create?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...(create?{name:l.name}:{}),items:changes})}:{},8000);
+    const opts=changes.length||create?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...(create?{name:l.name}:{}),items:changes})}:{};
+    // Tailscale off on the phone (or the tailnet path down): the list's public Funnel door takes items too
+    let r;try{r=await lifeApi('share?code='+l.share,opts,8000);}catch(e){if(create||!shareLink(l.share))throw e;r=await fetchT(shareLink(l.share)+'/data',opts,8000);}
     if(r.status===404&&!create){l.share=null;save();return false;} // unshared somewhere else
     if(!r.ok)return false;
-    const d=await r.json(),live=d.items.filter(i=>!i.del),before=JSON.stringify(l.items);
-    l.items=live.map(i=>({id:i.id,text:i.text,done:!!i.done}));
+    // Ids go into onclick="…('id')": anything that could break out of that is left out (anyone with the link can write)
+    const d=await r.json(),live=d.items.filter(i=>!i.del&&/^[^'"\\<>&\x00-\x1f]{1,40}$/.test(i.id)),before=JSON.stringify(l.items);
+    // The Project Map's list keeps when Claude wrote each item (life.js, Projects); added here meanwhile = kept for the next push
+    l.items=[...live.map(i=>({id:i.id,text:i.text,done:!!i.done,...(l.projects?{at:i.at}:{})})),...l.items.filter(i=>!sent.has(i.id)&&!live.some(x=>x.id===i.id))];
     shareSeen[l.share]=Object.fromEntries(live.map(i=>[i.id,{text:i.text,done:!!i.done}]));
-    try{localStorage.setItem('dt_share_seen',JSON.stringify(shareSeen));}catch(e){}
+    try{localStorage.setItem('dt_share_seen',JSON.stringify(shareSeen));if(l.projects)localStorage.setItem('dt_proj_at',Date.now());}catch(e){}
     return JSON.stringify(l.items)!==before?'changed':true;
   }catch(e){return false;}
 }
@@ -327,6 +331,7 @@ async function syncShares(){
   for(const l of lists.filter(x=>x.share))if(await pushShare(l)==='changed')changed=true;
   sharing=false;
   if(changed){writeLocal();queueSync();renderLists();const ov=document.getElementById('dt-ov-body'),open=lists.find(l=>ov&&ov.querySelector(`[onclick*="addListItem('${l.id}')"]`));if(open&&document.getElementById('dt-ov').classList.contains('on'))openList(open.id);}
+  projSynced(changed);
 }
 let shareTimer;
 const queueShare=()=>{if(!lists.some(l=>l.share))return;clearTimeout(shareTimer);shareTimer=setTimeout(syncShares,1200);};
@@ -417,7 +422,7 @@ async function toggleScreen(){
 function setScreenTime(v){if(!v)return;lifeDev.screen=v;lifeDevStore();try{N().setScreenCheckin(v,gwenCfg.key);}catch(e){}}
 
 // ── Idea 40: quick tiles in the swipe-down panel ─────────────────────────────
-window.dtTile=a=>{if(a==='add'){switchTab('tasks');openAddTask();}else if(a==='gwen')switchTab('gwen');};
+window.dtTile=a=>{if(a==='add'){switchTab('tasks');openAddTask();}else if(a==='gwen')switchTab('gwen');else projGo(a);};
 
 // ── Idea 41: Arabic ───────────────────────────────────────────────────────────
 function setLang(l){try{if(l==='ar')localStorage.setItem('dt_lang','ar');else localStorage.removeItem('dt_lang');}catch(e){}location.reload();}
@@ -509,9 +514,11 @@ async function planWeek(){
   if(!gwenCfg.key)return showToast('Add your Gwen key in Settings first');
   const tod=toDateStr(new Date()),days=[...Array(7)].map((_,i)=>addDays(tod,i));
   let nights={};try{const r=await fetchT('/.netlify/functions/pc?games=1&key='+encodeURIComponent(gwenCfg.key),{},4000);if(r.ok)nights=(await r.json()).nights||{};}catch(e){}
+  const pg=((projL()||{}).items||[]).filter(i=>/^(goal|next)~/.test(i.id)&&!i.done).map(i=>i.text); // Project Map wave idea 109
   planCtx=['He asked you to plan the coming week together. Lay it out day by day in a short, friendly way: one line per day starting with the day name (like "Mon: …"), spreading his tasks sensibly, around prayer times, calendar events and his usual game nights. Suggest moving things if a day is overloaded. Add tasks with ADD_TASK only if he agrees to something new.',
+    pg.length?`His projects' goals and next steps (from his Project Map): ${pg.join('; ')}. Suggest a few project time slots this week for those next steps (like "Tue 21:00-22:30: Food apps: <next step>"), never at a prayer time or on one of his usual game nights.`:'',
     ...days.map(ds=>{const dow=new Date(ds+'T12:00:00').getDay(),p=todayPrayers(ds),ev=evOn(ds),t=weekTasks(ds,tod).filter(t=>!t.done.includes(ds));
-      return`${fmtDay(ds)}: tasks: ${t.map(x=>x.name+(taskTime(x)?' at '+taskTime(x):'')).join(', ')||'none'}${ev.length?`; calendar: ${ev.map(e=>e.title+' '+evTime(e)).join(', ')}`:''}${p?`; prayers ${Object.entries(p).map(([k,v])=>k+' '+v).join(', ')}`:''}${nights[['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]]?`; he usually games ${nights[['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]].from}:00-${nights[['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]].to}:00`:''}`;})].join('\n');
+      return`${fmtDay(ds)}: tasks: ${t.map(x=>x.name+(taskTime(x)?' at '+taskTime(x):'')).join(', ')||'none'}${ev.length?`; calendar: ${ev.map(e=>e.title+' '+evTime(e)).join(', ')}`:''}${p?`; prayers ${Object.entries(p).map(([k,v])=>k+' '+v).join(', ')}`:''}${nights[['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]]?`; he usually games ${nights[['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]].from}:00-${nights[['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]].to}:00`:''}`;})].filter(Boolean).join('\n');
   try{localStorage.setItem('dt_week_planned',tod);}catch(e){}
   switchTab('gwen');gwenSheet(true);
   const out=await sendGwen({said:'Let\'s plan my week together 💜'});
@@ -1180,10 +1187,232 @@ function linkedLines(){
     today.length?`Your routine today: ${today.map(x=>`${x.what} at ${x.time}${(life.joins||[]).some(j=>j.id===x.id&&j.date===tod)?' (he said he\'ll join you!)':''}`).join(', ')}.`:''].filter(Boolean).join(' ');
 }
 
+// ── Project Map wave (2026-10-12): his projects in DayTrack ───────────────────
+// One shared list (l.projects) is the bridge to his Project Map in Claude: Claude syncs it every hour over the PC's
+// Funnel door (/s/<code>/data), DayTrack shows it and adds to it. Text is "<Project>: <text>"; the id says what it is:
+// meta, need~, ask~, done~, today~<date>~n, day~, goal~, next~ come from Claude (read-only here, except ticking);
+// note~, log~, cost~, signed~<ms> come from DayTrack (Claude deletes them once it has them).
+const PROJ=[['Food apps','#c4581c'],['Life','#2e6fc2'],['Money','#2a8a55'],['repos','#6b4fbb'],['Dashboard','#0d6a70']];
+const PROJ_MINE=['note','log','cost','signed'],PROJ_TOP=['ask','need','today','next'];
+const projL=make=>{let l=lists.find(x=>x.projects);if(!l&&make){l={id:uid(),name:'Projects',items:[],projects:true};lists.push(l);}return l;};
+const projItems=()=>(projL()||{items:[]}).items;
+const projFind=id=>projItems().find(i=>i.id===id);
+const projKind=i=>i.id.split('~')[0];
+const projName=s=>{s=String(s||'').trim().toLowerCase();const x=PROJ.find(([n])=>n.toLowerCase()===s)||PROJ.find(([n])=>s.startsWith(n.split(' ')[0].toLowerCase()));return x?x[0]:null;};
+const projC=p=>(PROJ.find(x=>x[0]===p)||[0,'var(--pri)'])[1];
+function projOf(i){const m=i.text.match(/^([^:]{1,20}):\s*/),p=m&&projName(m[1]);return{p:p||'',c:projC(p),t:p?i.text.slice(m[0].length):i.text};}
+const projOpen=(i,tod)=>!i.done&&(projKind(i)!=='today'||i.id.split('~')[1]===tod);
+// What Claude asks and what needs him first, then today's top 3, then next steps
+function projTop(n,p){const r=i=>Math.max(0,PROJ_TOP.indexOf(projKind(i))-1),tod=tod0();return projItems().filter(i=>PROJ_TOP.includes(projKind(i))&&projOpen(i,tod)&&(!p||projOf(i).p===p)).sort((a,b)=>r(a)-r(b)).slice(0,n);}
+const dayStart=()=>new Date(tod0()+'T00:00:00').getTime();
+const projDone=since=>projItems().filter(i=>projKind(i)==='done'&&(i.at||0)>=since).length;
+
+// Idea 152: the link light. Green = the list synced in the last 10 minutes (pushShare keeps the time)
+function projLight(){
+  const l=projL();let at=0;try{at=+localStorage.getItem('dt_proj_at')||0;}catch(e){}
+  const d=new Date(at),ok=!!(l&&l.share)&&Date.now()-at<10*60e3;
+  return{ok,text:!l||!l.share?'Not linked with the map yet':ok?'Synced with the map':at?`PC off since ${toDateStr(d)===tod0()?'':fmtDay(toDateStr(d))+' '}${fmt12(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}, notes will wait`:'PC off, notes will wait'};
+}
+function projDot(){const x=projLight();return`<span class="pdot${x.ok?' on':''}" title="${esc(x.text)}"></span>`;}
+
+// Idea 100: the Projects card on Today (also in the PC's Ctrl+Alt+D panel), and the Projects screen (#projects)
+function projRow(i){
+  const x=projOf(i),k=projKind(i),mine=PROJ_MINE.includes(k),tag={need:'Needs you',today:'Today',next:'Next step',day:'On your day'}[k]||(mine?'Waiting for Claude':'');
+  const chk=['need','today','next','day'].includes(k)?`<div class="chk${i.done?' on':''}" onclick="projTick('${i.id}')">${i.done?'✓':''}</div>`:'';
+  const btn=k==='need'&&!i.done&&!tasks.some(t=>t.id===i.id)?`<button class="minibtn" onclick="projToDay('${i.id}')" aria-label="Add to my day">+ My day</button>`
+    :k==='ask'&&!i.done?`<button class="minibtn" onclick="projAnswer('${i.id}')">Answer</button>`
+    :mine?`<button onclick="projDel('${i.id}')" aria-label="Delete" style="background:none;border:none;color:var(--sub);cursor:pointer;">✕</button>`:'';
+  return`<div class="prow" style="border-color:${x.c};">${chk}<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:700;color:${x.c};">${x.p||'Projects'}${tag?' · '+tag:''}</div><div style="font-size:14px;${i.done?'text-decoration:line-through;color:var(--sub);':''}" dir="auto" translate="no">${esc(x.t)}</div></div>${btn}</div>`;
+}
+function projCard(){
+  if(!projL())return'';const n=projDone(dayStart());
+  return`<div class="card" id="proj-card">${cardHead(`<span onclick="openProjects()" style="cursor:pointer;">🗺️ Projects</span> ${projDot()}`,`<a class="minibtn" href="${PROJECT_MAP}" target="_blank" rel="noopener" style="text-decoration:none;">Open the map</a>`)}
+    ${projTop(3).map(projRow).join('')||'<div style="font-size:12px;color:var(--sub);">Nothing waiting on you 💜</div>'}
+    <div onclick="openProjects()" style="font-size:11px;color:var(--sub);margin-top:6px;cursor:pointer;">${n?`Claude finished ${n} today · `:''}${projLight().text} ›</div></div>`;
+}
+function openProjects(){
+  const l=projL(),tod=tod0(),linked=!!(l&&l.share),m=l&&l.items.find(i=>i.id==='meta'),y=document.getElementById('proj-sheet')?document.getElementById('dt-ov-body').scrollTop:0;
+  const secs=l?PROJ.map(([p,c])=>{
+    const its=l.items.filter(i=>projOf(i).p===p),g=its.find(i=>projKind(i)==='goal'),rest=its.filter(i=>i!==g&&(projKind(i)!=='today'||i.id.split('~')[1]===tod)).sort((a,b)=>!!a.done-!!b.done);
+    return g||rest.length?`<div class="sl" style="color:${c};">${p}</div>${g?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="flex:1;font-size:13px;font-weight:600;" dir="auto" translate="no">🎯 ${esc(projOf(g).t)}</span>${p==='Food apps'?'<button class="minibtn" onclick="projSigned()">🏆 Restaurant signed</button>':''}</div>`:''}${rest.map(projRow).join('')}`:'';
+  }).join(''):'';
+  sheet(head(`🗺️ Projects ${projDot()}`)+`<div id="proj-sheet" style="font-size:12px;color:var(--sub);text-align:center;margin:-4px 0 10px;line-height:1.5;">${m?`<span dir="auto" translate="no">${esc(m.text)}</span><br>`:''}${projLight().text}</div>
+    ${linked?'':`<div style="font-size:13px;color:var(--sub);text-align:center;line-height:1.5;margin-bottom:10px;">Link DayTrack with your Project Map once: DayTrack makes a shared Projects list on your PC, and Claude reads and writes it every hour. Notes you write before that wait here.</div><button onclick="projLink()" style="width:100%;margin-bottom:8px;background:var(--pri);color:white;${btnS}">🔗 Link with the map</button>`}
+    <div style="display:flex;gap:8px;"><a href="${PROJECT_MAP}" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none;background:var(--pril);color:var(--pri);${btnS}">🗺️ Open the map</a><button onclick="projNote()" style="flex:1;background:var(--pri);color:white;${btnS}">📝 Project note</button></div>
+    ${secs||(linked?'<div style="font-size:13px;color:var(--sub);text-align:center;padding:12px;">Nothing here yet. Claude fills it in at its next sync.</div>':'')}
+    ${linked?'<button class="mi" onclick="projLinkSheet()">🔗 The map link</button>':''}${closeBtn}`);
+  document.getElementById('dt-ov-body').scrollTop=y;
+}
+function projRefresh(){renderLife();if(document.getElementById('proj-sheet')&&document.getElementById('dt-ov').classList.contains('on'))openProjects();}
+function projTick(id){const i=projFind(id);if(!i)return;i.done=!i.done;save();projRefresh();}
+function projDel(id){const l=projL();if(!l)return;l.items=l.items.filter(i=>i.id!==id);save();projRefresh();}
+// DayTrack's own items (note~, log~, cost~, signed~<ms>): Claude takes them at its next sync
+function projAdd(k,p,text){
+  text=String(text||'').trim();if(!p||!text)return null;
+  const l=projL(true);let ms=Date.now();while(l.items.some(i=>i.id===`${k}~${ms}`))ms++;
+  const i={id:`${k}~${ms}`,text:`${p}: ${text}`.slice(0,120),done:false,at:ms};l.items.push(i);save();projRefresh();
+  showToast(!l.share?`📝 Saved for ${p}. Link the map to send it`:projLight().ok?`📤 Sent to ${p}`:`📤 Saved for ${p}, it goes out when your PC is on`);
+  return i;
+}
+async function projAnswer(id){
+  const i=projFind(id);if(!i)return;const x=projOf(i),a=((await ask(x.t,'Your answer'))||'').trim();if(!a)return;
+  i.done=true;projAdd('note',x.p||i.text.split(':')[0],`Answer ${id.slice(4)}: ${a}`);
+}
+
+// "Link with the map": make and share the list (the PC must be on), then hand the map its address in the link's #
+const projMapUrl=()=>{const l=projL(),h=gwenCfg.pc.trim().replace(/^https?:\/\//,'').replace(/[:/].*$/,'');return l&&l.share&&/^[A-Za-z0-9.-]+$/.test(h)?`${PROJECT_MAP}#dt~${h}~${l.share}`:'';};
+async function projLink(){
+  if(!gwenCfg.key||!shareLink('x'))return showToast('Add your PC address (https://…ts.net) and Gwen key in Settings first');
+  const l=projL(true);
+  if(!l.share){
+    showToast('🔗 Linking…');l.share=lifeHex();
+    if(!await pushShare(l,true)){l.share=null;save();return showToast('❌ Your PC needs to be on to link the map');}
+  }
+  save();renderLife();
+  const a=document.createElement('a');a.href=projMapUrl();a.target='_blank';a.rel='noopener';a.click();
+  projLinkSheet();
+}
+function projLinkSheet(){
+  const u=projMapUrl();if(!u)return;
+  sheet(head('🔗 Linked with the map')+`<div style="font-size:13px;color:var(--sub);text-align:center;margin-bottom:10px;line-height:1.5;">If the map didn't open, open this link once in Claude. It tells the map where your Projects list is.</div>
+    <div style="font-family:ui-monospace,monospace;font-size:12px;background:var(--inp);border-radius:10px;padding:10px;word-break:break-all;user-select:all;margin-bottom:10px;" translate="no">${esc(u)}</div>
+    <div style="display:flex;gap:8px;"><a href="${u}" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none;background:var(--pri);color:white;${btnS}">🗺️ Open the map</a><button onclick="navigator.clipboard.writeText('${u}').then(()=>showToast('📋 Copied'))" style="flex:1;background:var(--pril);color:var(--pri);${btnS}">📋 Copy</button></div>
+    <button onclick="openProjects()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--sub);font-size:13px;cursor:pointer;font-family:inherit;padding:8px;">‹ Back to Projects</button>`);
+}
+
+// Idea 107: "Add to my day". A day~ item (from the map, once) or a need~ item becomes today's task, with its XP like any task;
+// the task keeps the item's id, so phone and PC never add it twice, and ticking it ticks the item
+function projTask(i){const x=projOf(i);return{id:i.id,name:x.t.slice(0,80),notes:`🗺️ ${x.p||'Projects'} · From your Project Map`,icon:'🗺️',iconType:'emoji',recurring:false,days:[],done:[],date:null,priority:'none',notifStyle:'default',showInCal:true,createdAt:tod0(),subtasks:[],reminder:null,reminderLastFired:null,reminded:[]};}
+function projToDay(id){const i=projFind(id);if(!i||tasks.some(t=>t.id===id))return;tasks.push(projTask(i));save();renderTaskList();projRefresh();showToast('📅 Added to today');}
+function projTie(){let n=0;for(const i of projItems())if(!i.done){const t=tasks.find(x=>x.id===i.id);if(t&&t.done.length){i.done=true;n++;}}if(n)writeLocal();}
+// After each sync of the shared lists: the map's day~ items, then what Gwen should tell him
+function projSynced(changed){
+  if(!projL())return;
+  const had=life.projDays||[],seen=new Set(had);let n=0;
+  for(const i of projItems())if(projKind(i)==='day'&&!i.done&&!seen.has(i.id)){seen.add(i.id);if(!tasks.some(t=>t.id===i.id)){tasks.push(projTask(i));n++;}}
+  if(seen.size!==had.length){life.projDays=[...seen].slice(-200);lifeSave();}
+  else if(changed)syncReminders(); // an item for tomorrow can change tonight's nudge
+  if(n){renderTaskList();showToast(`🗺️ ${n} from your Project Map added to today`);}
+  if(changed||n)projRefresh();
+  projTell();
+}
+
+// Ideas 102, 114: each new done~ / ask~ item becomes a short Gwen message (and a notification on the phone), once per device.
+// Like her other texts they wait out quiet hours, prayer times and his PC games, then come together.
+let projTold=null;try{projTold=JSON.parse(localStorage.getItem('dt_proj_told')||'null');}catch(e){}
+const projHold=()=>inQuiet(nowMin())||!!prayerClash(minHm(nowMin()))||!!(house&&house.away&&house.away.where==='gaming'&&Date.now()-house.at<15*60e3);
+function projTell(){
+  const l=projL();if(!l||!l.share)return;
+  const fresh=l.items.filter(i=>/^(done|ask)~/.test(i.id)&&!(projTold&&projTold[i.id])),quietly=!projTold||lifeDev.projTell===false; // first look on this device, or switched off
+  if(fresh.length&&!quietly&&projHold())return;
+  if(!projTold||fresh.length){
+    projTold=Object.fromEntries([...Object.keys(projTold||{}).filter(id=>l.items.some(i=>i.id===id)),...fresh.map(i=>i.id)].map(id=>[id,1]));
+    try{localStorage.setItem('dt_proj_told',JSON.stringify(projTold));}catch(e){}
+  }
+  if(fresh.length&&!quietly)projSay(fresh.length>1?`News from your projects 💜\n${fresh.map(i=>'• '+i.text).join('\n')}`:`${fresh[0].text} ${projKind(fresh[0])==='ask'?'Tell me your answer and I\'ll pass it on 💜':'💜'}`);
+  projMorning();
+}
+function projSay(text){
+  if(gwenCfg.key)gwenLine(text,'happy');else showToast(text);
+  if(isPhone()&&window.Notification&&Notification.permission==='granted')try{new Notification('💜 Gwen',{body:dtT(text)});}catch(e){}
+}
+// Idea 108: one projects line after her morning hello (the first look after he wakes up), tomorrow's items with the bedtime one
+function projMorning(){
+  const tod=tod0(),x=nowMin();
+  if(!gwenCfg.key||lifeDev.projHi===tod||x<hmMin(gwenCfg.wake||'06:00')||x>=720||projHold())return;
+  const its=projItems(),top=its.find(i=>!i.done&&i.id.startsWith(`today~${tod}~`))||its.find(i=>!i.done&&projKind(i)==='need'),n=projDone(dayStart()-4*3600e3); // ponytail: "overnight" = since 8 PM
+  if(!top&&!n)return;lifeDev.projHi=tod;lifeDevStore();
+  gwenLine(`${top?`First on your projects today: ${top.text}.`:''}${n?` Claude finished ${n} overnight.`:''} 💜`.trim(),'wave');
+}
+function projDue(i){ // "… by 10 Jan" in a goal~ item
+  const m=i.text.match(/\bby (\d{1,2}) (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i),tod=tod0();if(!m)return null;
+  const d=`${tod.slice(0,4)}-${pad(MONS.indexOf(m[2].toLowerCase())+1)}-${pad(+m[1])}`;return d<tod?(+d.slice(0,4)+1)+d.slice(4):d;
+}
+function projNudges(){ // fired by the server with her goodnight (bedtime − 30 min), like the other nudges
+  if(!gwenCfg.bed||/Electron/.test(navigator.userAgent))return[];
+  const tod=tod0(),tm=addDays(tod,1),its=projItems().filter(i=>!i.done&&(i.id.startsWith(`today~${tm}~`)||projKind(i)==='goal'&&projDue(i)===tm));
+  return its.length?[{id:'projnight',date:tod,at:minHm((hmMin(gwenCfg.bed)+1411)%1440),title:'💜 Gwen',text:`For your projects tomorrow: ${its.map(i=>i.text).join('; ')} 💜`.slice(0,240)}]:[];
+}
+
+// Idea 113: a restaurant signed. Coins, a trophy parcel for her house (with the other trophies, lifeReminders) and a signed~ item
+async function projSigned(){
+  const name=((await ask('Which restaurant signed? 🎉','e.g. Sanbouk Cafe'))||'').trim().slice(0,60);if(!name)return;
+  const i=projAdd('signed','Food apps',`signed ${name}`),tod=tod0();if(!i)return;
+  heroP.hcoins={...(heroP.hcoins||{}),[i.id]:200};
+  life.projTrophies=[...(life.projTrophies||[]).filter(t=>t.date>=addDays(tod,-14)&&t.id!=='s-'+tod),{id:'s-'+tod,date:tod,reason:`Rayan signed ${name} for Food apps`.slice(0,80)}];
+  lifeSave();confetti();
+  if(gwenCfg.key)gwenLine(`${name} signed! 🎉 So proud of you. +200 coins, and a trophy is on its way to the house 🏆💜`,'happy');else showToast(`🏆 ${name} signed! +200 coins`);
+}
+
+// Idea 135: tag a spending entry with a project (a cost~ item)
+const projBtns=fn=>`<div class="pbtns">${PROJ.map(([p,c])=>`<button style="background:${c};" onclick="${fn(p)}">${p}</button>`).join('')}</div>`;
+function projCost(id){const e=life.spend.find(x=>x.id===id);if(e)sheet(head('🗺️ Which project was this for?')+`<div style="font-size:13px;color:var(--sub);text-align:center;margin-bottom:10px;" translate="no">${esc(e.label)} · ${e.amt} SAR</div>`+projBtns(p=>`projCostTo('${id}','${p}')`)+closeBtn);}
+function projCostTo(id,p){const e=life.spend.find(x=>x.id===id);if(!e)return;e.proj=p;lifeStore();closeOv('dt-ov');projAdd('cost',p,`cost ${e.amt} SAR: ${e.label}`);renderSpend();}
+
+// Idea 105: a quick project note (#projectnote: the phone's tile and shortcut), typed or said
+let projNoteP=null;
+function projNote(p,text){
+  try{projNoteP=p||projNoteP||localStorage.getItem('dt_proj_last')||PROJ[0][0];}catch(e){projNoteP=p||PROJ[0][0];}
+  sheet(head('📝 Project note')+`<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">${PROJ.map(([n,c])=>`<button class="rb${n===projNoteP?' on':''}" style="${n===projNoteP?`border-color:${c};color:${c};`:''}" onclick="projNote('${n}',document.getElementById('pn-in').value)">${n}</button>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;"><textarea class="inp" id="pn-in" dir="auto" maxlength="100" placeholder="add Sanbouk to the demo page" style="flex:1;min-height:70px;">${esc(text||'')}</textarea>${gwenSR()?'<button id="pn-mic" onclick="projMic()" aria-label="Say it" style="background:var(--pril);color:var(--pri);border:none;border-radius:12px;padding:0 14px;font-size:18px;cursor:pointer;">🎤</button>':''}</div>
+    <div style="font-size:11px;color:var(--sub);margin-top:4px;">End with ? to ask Claude a question.</div>
+    <button onclick="projNoteSend()" style="width:100%;margin-top:10px;background:${projC(projNoteP)};color:white;${btnS}">📤 Send to ${projNoteP}</button>${closeBtn}`);
+  setTimeout(()=>document.getElementById('pn-in')?.focus(),50);
+}
+function projNoteSend(){const v=document.getElementById('pn-in').value.trim();if(!v)return showToast('Write the note first');try{localStorage.setItem('dt_proj_last',projNoteP);}catch(e){}closeOv('dt-ov');projAdd('note',projNoteP,v);}
+function projMic(){
+  const SR=gwenSR(),b=document.getElementById('pn-mic'),inp=document.getElementById('pn-in');if(!SR||!inp)return;
+  const rec=new SR(),base=inp.value.trim();rec.interimResults=false;rec.lang=lang()==='ar'?'ar-SA':'';
+  rec.onresult=e=>{inp.value=(base+' '+[...e.results].map(x=>x[0].transcript).join(' ')).trim();};
+  rec.onend=()=>{b.style.background='';};b.style.background='#FCA5A5';
+  try{rec.start();}catch(e){rec.onend();}
+}
+// Idea 103: something shared into DayTrack can go to a project instead of becoming a task
+window.lifeShareIn=d=>{
+  const text=[d.subject,d.text].map(s=>String(s||'').trim()).filter(Boolean).join(' ');if(!projL()||!text)return false;
+  const url=(text.match(/https?:\/\/\S+/)||[''])[0];
+  window._shareIn=d;window._shareNote=url&&url.length<100?`${text.replace(url,'').replace(/\s+/g,' ').trim().slice(0,105-url.length)} ${url}`.trim():text; // the link survives the 120 characters
+  sheet(head('📥 Shared with DayTrack')+`<div style="font-size:13px;color:var(--sub);margin-bottom:10px;word-break:break-all;max-height:90px;overflow:hidden;" dir="auto" translate="no">${esc(text.slice(0,300))}</div>
+    <div class="sl" style="margin-top:0;">Send to a project</div>${projBtns(p=>`closeOv('dt-ov');projAdd('note','${p}',_shareNote)`)}
+    <button onclick="closeOv('dt-ov');shareTask(_shareIn)" style="width:100%;margin-top:12px;background:var(--pril);color:var(--pri);${btnS}">📝 Make it a task</button>${closeBtn}`);
+  return true;
+};
+// Idea 80: Study with Gwen for a project (prefilled with its top item); "what got done?" at the end becomes a log~ item
+window.lifeProjPick=()=>{window._studyProj=null;return projL()?`<div id="study-proj" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:10px;">${PROJ.map(([p])=>`<button class="rb" onclick="projStudy(this,'${p}')">${p}</button>`).join('')}</div>`:'';};
+function projStudy(b,p){
+  const on=!b.classList.contains('on'),inp=document.getElementById('gwen-study-in'),t=on&&projTop(1,p)[0];
+  document.querySelectorAll('#study-proj .rb').forEach(x=>x.classList.toggle('on',x===b&&on));window._studyProj=on?p:null;
+  if(t&&(!inp.value||inp.value===inp.dataset.auto))inp.value=inp.dataset.auto=projOf(t).t.slice(0,60);
+}
+window.lifeProjLog=async(p,mins)=>{const a=((await ask(`What got done on ${p}? 💜`,'e.g. tested the Android login'))||'').trim();if(a)projAdd('log',p,`${mins} min: ${a}`);};
+// Idea 101: one line for the home-screen widget
+window.lifeProjLine=()=>{
+  if(!projL())return undefined;const top=projTop(1)[0],need=projItems().filter(i=>!i.done&&/^(need|ask)~/.test(i.id)).length;
+  return dtT(`Projects: ${need} need you, ${projDone(dayStart())} done`+(top?` · ${projOf(top).t}`:''));
+};
+// Idea 99: Gwen knows the list (both brains get it with the rest of her context), and ideas 104, 106: "tell Food apps to …",
+// "ask Claude …" become a note~ item once he says yes
+function projContext(){
+  const l=projL();if(!l)return'';const tod=tod0(),m=l.items.find(i=>i.id==='meta');
+  const say={ask:'Claude asks him',need:'waiting on him',today:'today\'s top 3',next:'next step',goal:'goal',done:'Claude finished',day:'on his day',note:'his note, waiting for Claude',log:'his focus log, waiting for Claude',cost:'his cost, waiting for Claude',signed:'his signing, waiting for Claude'},ks=Object.keys(say);
+  const its=l.items.filter(i=>ks.includes(projKind(i))&&(projKind(i)==='done'||projOpen(i,tod))).sort((a,b)=>ks.indexOf(projKind(a))-ks.indexOf(projKind(b))).slice(0,18);
+  return[`His projects, from his Project Map in Claude (Claude works on them every hour; DayTrack and the map share this list${l.share?'':', not linked yet'}):`,m?`Status: ${m.text}`:'',
+    ...its.map(i=>`- ${say[projKind(i)]}${projKind(i)==='ask'?` (id ${i.id.slice(4)})`:''}: ${i.text}`),
+    'If he asks what is waiting on him for a project, or how one is going, answer from this list, in the language he wrote in.',
+    `If he wants to tell a project something or ask Claude something (in any language: "tell Food apps to …", "ask Claude …"), read it back in one short line and ask if you should send it. Only once he says yes, put this on its own line (the app sends it and hides the line):\nPROJECT_NOTE: <${PROJ.map(x=>x[0]).join('|')}> | <the note, short; end it with ? when it's a question for Claude>`,
+    'To answer one of Claude\'s questions for him, send "Answer <id>: <his answer>" the same way. If he asks about a project and nothing here answers it, say so and offer to ask Claude for him.'].filter(Boolean).join('\n');
+}
+// Entry points (agreed with the phone app): #projects and #projectnote, or dtTile('projects' | 'projectnote')
+function projGo(h){
+  h=String(h||'').replace(/^#/,'');if(h!=='projects'&&h!=='projectnote')return;
+  if(h==='projects')openProjects();else projNote();
+  if(location.hash)try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+}
+
 // ── Cards, settings, Gwen's context ───────────────────────────────────────────
 function renderLife(){
   const top=document.getElementById('life-top'),bot=document.getElementById('life-bottom');if(!top)return;
-  top.innerHTML=focusCard()+letterCard()+storyCard()+bdayCard()+top3Card()+waterCard()+ramadanCard()+adhkarCard()+sundayCard()+spreadCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
+  top.innerHTML=projCard()+focusCard()+letterCard()+storyCard()+bdayCard()+top3Card()+waterCard()+ramadanCard()+adhkarCard()+sundayCard()+spreadCard()+quranCard(); // Gwen's quest shows with the daily quests (levels.js)
   renderHeroMini();
   bot.innerHTML=gwenWeekCard()+chainsCard()+billsCard()+pcTimeCard()+photosCard()+routinesCard();
   renderSpend();chainHighlight();renderFriends();
@@ -1216,6 +1445,10 @@ function renderLifeSettings(){
       ${row('🩺 Status','Is AIRI, her voice, the house, DayTrack and Tailscale running? Start what\'s down (never during a game)','<button class="minibtn" onclick="openStatus()">Check</button>')}
       ${row('📖 Our story','Letters, house photos, firsts and milestones on one timeline','<button class="minibtn" onclick="openOurStory()">Open</button>')}
     </div>`:''}
+    <div class="card"><div class="cl">Projects</div>
+      ${row('🗺️ Project Map',projLight().text,'<button class="minibtn" onclick="openProjects()">Open</button>')}
+      ${row('💜 Gwen tells me when Claude finishes','A short message when Claude finishes something or asks you something (and a notification on the phone). It waits out quiet hours, prayers and games.',tog(lifeDev.projTell!==false,'lifeDev.projTell=lifeDev.projTell===false;lifeDevStore();renderLifeSettings();'))}
+    </div>
     ${placesSection()}
     ${N()&&N().hasPerm?`<div class="card"><div class="cl">From your phone</div>
       ${has('calendar')?row('📆 Phone calendar','Your events in the Week view; Gwen plans around them',tog(lifeDev.cal,'toggleCal()')):''}
@@ -1236,6 +1469,7 @@ window.lifeContext=()=>{
   return[
     now?`Right now in your house (on his PC) you are ${now.activity}${now.room?` in the ${now.room}`:''}${now.with_rayan?' with him':''}. It's your real day, so you can mention it naturally.`:'',
     q?`Today's little quest you gave him: "${q.text}" (${q.done?'he did it!':'not done yet'}).`:'',
+    projContext(), // early: the cloud brain keeps only the first 8000 characters
     r.on?`It's Ramadan, day ${r.day}. He is fasting${life.fasts.includes(tod)?' today':''}: don't suggest eating or drinking before Maghrib.`:r.in<=14?`Ramadan starts in ${r.in} days.`:'',
     life.quran?`His Quran plan: on page ${life.quran.page} of 604, read ${(life.quran.log||{})[tod]||0} of ${quranTarget()} pages today.`:'',
     life.adhkar.on?`Adhkar today: morning ${adhkarDone('m')?'done':'not yet'}, evening ${adhkarDone('e')?'done':'not yet'}.`:'',
@@ -1252,11 +1486,11 @@ window.lifeContext=()=>{
     linkedLines(),
   ].filter(Boolean).join('\n\n');
 };
-// Her action lines this file adds: SPEND
-window.lifeActions=text=>text.replace(/^[ \t*-]*SPEND:\s*(.+)$/gim,(_,spec)=>{const[what,amt]=spec.split('|').map(x=>(x||'').trim());const e=addSpend(`${what} ${amt}`,true);if(e)showToast(`💰 Logged ${e.label} · ${e.amt} SAR`);return'';});
+// Her action lines this file adds: SPEND, PROJECT_NOTE
+window.lifeActions=text=>text.replace(/^[ \t*-]*PROJECT_NOTE:\s*(.+)$/gim,(_,spec)=>{const[p,...n]=spec.split('|');const x=projName(p);if(x)projAdd('note',x,n.join('|').trim().replace(/^["“]|["”]$/g,''));return'';}).replace(/^[ \t*-]*SPEND:\s*(.+)$/gim,(_,spec)=>{const[what,amt]=spec.split('|').map(x=>(x||'').trim());const e=addSpend(`${what} ${amt}`,true);if(e)showToast(`💰 Logged ${e.label} · ${e.amt} SAR`);return'';});
 // What the server needs for reminders and Gwen's texts
-window.lifeReminders=()=>({nudges:[...bdayNudges(),...lifeNudges()].slice(0,20),hero:heroForHouse(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`}))});
-window.lifeSaved=()=>{syncPlaces();queueShare();syncNowNext();houseRewards();setTimeout(sendAppState,1500);};
+window.lifeReminders=()=>({nudges:[...projNudges(),...bdayNudges(),...lifeNudges()].slice(0,20),hero:heroForHouse(),adhkar:!!life.adhkar.on,spend:spendWeek(),events:evOn(toDateStr(new Date())).map(e=>({title:e.title,at:e.allDay?null:`${pad(new Date(e.start).getHours())}:${pad(new Date(e.start).getMinutes())}`})),...((life.projTrophies||[]).length&&typeof heroTrophies==='function'?{trophies:[...heroTrophies(),...life.projTrophies]}:{})});
+window.lifeSaved=()=>{projTie();syncPlaces();queueShare();syncNowNext();houseRewards();setTimeout(sendAppState,1500);};
 
 (function lifeBoot(){
   document.head.insertAdjacentHTML('beforeend',`<style>
@@ -1285,6 +1519,9 @@ window.lifeSaved=()=>{syncPlaces();queueShare();syncNowNext();houseRewards();set
     .qibla-dial i{position:absolute;inset:0;display:flex;justify-content:center;font-style:normal;font-size:30px;padding-top:28px;}
     .letter{white-space:pre-wrap;font-size:15px;line-height:1.7;background:var(--pril);border-radius:14px;padding:16px;font-family:Georgia,serif;}
     .pcmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;}.pcmp img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block;margin-bottom:6px;}
+    .pdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--sub);vertical-align:middle;flex-shrink:0;}.pdot.on{background:var(--grn);}
+    .prow{display:flex;align-items:center;gap:8px;padding:6px 0;padding-inline-start:8px;border-inline-start:3px solid;margin:4px 0;}
+    .pbtns{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;}.pbtns button{border:none;border-radius:14px;padding:9px 14px;color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
   </style>`);
   renderLife();renderLifeSettings();
   {const c=document.querySelector('#tab-gwen .hscroll');if(c)c.insertAdjacentHTML('afterbegin','<button class="gchip" onclick="openOurStory()">📖 Our story</button>');}
@@ -1293,10 +1530,11 @@ window.lifeSaved=()=>{syncPlaces();queueShare();syncNowNext();houseRewards();set
     if(!life.yearShown)setTimeout(openYear,2500);
   }
   pullHouse().then(monthLetter);syncShares();readSteps();syncPlaces();syncNowNext();setTimeout(pullPcApps,3000);
+  projGo(location.hash);addEventListener('hashchange',()=>projGo(location.hash)); // #projects, #projectnote
   setInterval(()=>{focusCheck();focusShare();},2000);document.addEventListener('click',()=>setTimeout(focusCheck,0),true);
   setInterval(()=>{if(!document.hidden&&window.__dtResume)__dtResume();},30e3); // ticks from the home-screen widget
-  setInterval(()=>{syncNowNext();sendAppState();if(document.hidden)return;renderLife();},60e3);
-  setInterval(()=>{if(document.hidden)return;pullHouse().then(monthLetter);readSteps();friendsPush();pullPcApps();},5*60e3);
+  setInterval(()=>{syncNowNext();sendAppState();projTell();if(document.hidden)return;renderLife();},60e3);
+  setInterval(()=>{if(document.hidden)return;pullHouse().then(monthLetter);readSteps();friendsPush();pullPcApps();syncShares();},5*60e3);
   setInterval(()=>{if(!document.hidden&&document.getElementById('dt-ov').classList.contains('on'))syncShares();},20e3);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;pullPcApps();pullHouse();syncShares();readSteps();renderLifeSettings();focusBack();});
 })();
