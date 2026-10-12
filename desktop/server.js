@@ -76,8 +76,12 @@ async function start({dataDir, keysFile, fnDir, hooks}) {
     try {
       if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
       const url = new URL(req.url.replace(/^\/dt(?=\/)/, ''), 'http://localhost');
+      // What comes through the public Funnel doors (/sync, /s) is small: cap it so nobody outside can fill the PC's memory
+      const cap = /^\/(?:sync|s)(?:\/|$)/.test(url.pathname) ? 5e6 : Infinity;
       const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await new Promise((ok, fail) => {
-        const parts = []; req.on('data', c => parts.push(c)); req.on('end', () => ok(Buffer.concat(parts))); req.on('error', fail);
+        const parts = []; let size = 0;
+        req.on('data', c => { if ((size += c.length) > cap) { req.destroy(); fail(new Error('Body too big')); } else parts.push(c); });
+        req.on('end', () => ok(Buffer.concat(parts))); req.on('error', fail);
       });
       let r;
       const fn = url.pathname.match(/^\/(?:\.netlify\/functions|api)\/([a-z-]+)$/);

@@ -216,6 +216,9 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
   assert.equal((await fetch(url + '/sync?code=' + 'd'.repeat(32))).status, 404);
   assert.equal((await fetch(url + '/sync', {method: 'POST', body: JSON.stringify({code: 'd'.repeat(32), data: {updatedAt: 1}})})).status, 404);
   assert.equal((await fetch(url + '/sync?code=x')).status, 404);
+  const big = await fetch(url + '/sync', {method: 'POST', body: JSON.stringify({code, data: {updatedAt: 1, junk: 'x'.repeat(6e6)}})}).catch(() => null);
+  assert.ok(!big || big.status >= 400, 'oversized body through the public door is refused');
+  assert.equal((await call('/sync?code=' + code)).updatedAt, 999, 'server still fine after it');
   assert.equal(r.data.player.avImg, 'data:img');
   // Same base as what's stored: a plain save, deletions included
   r = await push(r.data.updatedAt, {tasks: [{id: 'a', name: 'Water 2L', done: []}], player: {}, updatedAt: 400});

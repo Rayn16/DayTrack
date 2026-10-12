@@ -132,7 +132,8 @@ app.whenReady().then(async () => {
   tray.on('click', show);
   if (!globalShortcut.register('Control+Alt+D', togglePanel)) console.warn('Ctrl+Alt+D is taken by another app');
   if (app.isPackaged) { setTimeout(checkUpdate, 30e3); setInterval(checkUpdate, 6 * 3600e3); }
-  const hidden = process.argv.includes('--hidden') || fs.existsSync(HIDDEN_FLAG);
+  // The flag only counts right after an update, so a later start by hand always opens the window
+  const hidden = process.argv.includes('--hidden') || (() => { try { return Date.now() - fs.statSync(HIDDEN_FLAG).mtimeMs < 300e3; } catch (_) { return false; } })();
   fs.rmSync(HIDDEN_FLAG, {force: true});
   if (!hidden) show();
 });
