@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+# Same group as the pull request's android.yml runs: waits for a running build instead of deleting before it publishes
+concurrency:
+  group: test-pr-${{ github.event.pull_request.number }}
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest

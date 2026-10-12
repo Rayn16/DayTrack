@@ -13,6 +13,12 @@ on:
 permissions:
   contents: write
 
+# One pull request's runs share a group with android-test-cleanup.yml: a newer push cancels the older run, and the cleanup
+# waits for a running build, so a closed pull request's test app can't be published again. main keeps one group per run.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('test-pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -68,5 +74,5 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk DayTrack-test.apk
           gh release delete "$TAG" --yes --cleanup-tag || true
           gh release create "$TAG" DayTrack-test.apk --prerelease --target "${{ github.event.pull_request.head.sha }}" --title "DayTrack test (pull request #${{ github.event.pull_request.number }})" \
-            --notes "Install DayTrack-test.apk to try this pull request. It installs next to DayTrack as \"DayTrack test\" (its own data). Build ${{ github.run_number }}."
+            --notes "Install DayTrack-test.apk to try this pull request. It installs next to DayTrack as \"DayTrack test\" (its own data). If it won't install over another test build, uninstall DayTrack test first. Build ${{ github.run_number }}."
           echo "Test app: https://github.com/${{ github.repository }}/releases/download/$TAG/DayTrack-test.apk" >> "$GITHUB_STEP_SUMMARY"
