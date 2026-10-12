@@ -36,6 +36,7 @@ function togglePanel() {
     const {workArea: a} = screen.getPrimaryDisplay();
     panel = new BrowserWindow({width: 380, height: 540, x: a.x + a.width - 396, y: a.y + 16, frame: false, resizable: false, alwaysOnTop: true,
       skipTaskbar: true, show: false, title: 'DayTrack today', icon: path.join(WEB, 'icon.png')});
+    panel.webContents.setWindowOpenHandler(({url}) => { shell.openExternal(url); return {action: 'deny'}; });
     panel.on('blur', () => panel.hide());
     panel.on('closed', () => { panel = null; });
     panel.loadURL('app://daytrack/?panel=1');

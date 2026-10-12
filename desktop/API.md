@@ -26,6 +26,7 @@ What the house should know right now. Poll it when the house starts and every fe
   (he beat the weekly boss). The house should put a trophy on a shelf; `reason` says which boss.
   Added 2026-10-08 (RPG round 6): `kind: "furniture"`, `size: "big"`, id `tf-<piece>-<date>`, `item` (e.g. "Bookshelf", "Fireplace"):
   he built that piece for his hero's home with coins. The house can place a matching piece of furniture; `reason` says what.
+  Added 2026-10-12 (projects): `kind: "trophy"`, id `ts-<date>`: a restaurant signed up for his Food apps business; `reason` names it.
   `kind` is a suggestion (`decoration`, `plant` or `book`); the house picks the actual item. `status` is `waiting`
   until the house says it's at the door (`delivered`); opened parcels drop off the list. Kept 30 days.
 - Added 2026-10-08 (ideas 1-6 of the second round; every field is optional to read, unknown ones can be ignored):
