@@ -216,8 +216,8 @@
     .pray{display:flex;justify-content:space-between;gap:4px;}.pray div{flex:1;text-align:center;font-size:11px;color:var(--sub);border-radius:9px;padding:4px 0;}.pray b{display:block;font-size:13px;color:var(--txt);}.pray .next{background:var(--pril);}.pray .next b{color:var(--pri);}
     .pc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0 12px;}.pc-grid div{background:var(--inp);border-radius:12px;padding:9px 2px;text-align:center;font-size:11px;color:var(--sub);}.pc-grid b{display:block;font-size:18px;margin-bottom:2px;}
     .pcards{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}.pcards img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;cursor:pointer;display:block;}
-    /* The PC's Today panel (Ctrl+Alt+D): just today's tasks */
-    html.panel #hdr,html.panel #nav,html.panel #fab,html.panel #notif-banner,html.panel #tab-tasks .card:not(#tasks-card){display:none!important;}
+    /* The PC's Today panel (Ctrl+Alt+D): just today's tasks and the Projects card */
+    html.panel #hdr,html.panel #nav,html.panel #fab,html.panel #notif-banner,html.panel #tab-tasks .card:not(#tasks-card):not(#proj-card){display:none!important;}
     html.panel #tab-tasks{padding:10px 10px 16px;}
   </style>
   <link rel="stylesheet" href="levels.css">
@@ -1698,12 +1698,12 @@ function gwenContext(){
     `Your bond level with him is ${gwenLevel(gwenBondPts())} (it grows when you two talk, play games and study together, and when he gives you gifts).`,
     prayerCfg.on&&prayerCfg.loc?`Today's prayer times where he is: ${Object.entries(prayerTimes(tod,prayerCfg.loc.lat,prayerCfg.loc.lon)).filter(([k])=>k!=='Sunrise').map(([k,v])=>`${k} ${v}`).join(', ')}. Never put a task in the ${PRAY_GAP} minutes after a prayer time; pick a time after it.`:'',
     goals.length?`His goals: ${goals.map(g=>`${g.name} (${g.steps.filter(x=>x.done).length}/${g.steps.length} steps done${g.steps.find(x=>!x.done)?', next: '+g.steps.find(x=>!x.done).name:''})`).join('; ')}. Now and then, check in on one.`:'',
-    lists.length?`His lists: ${lists.map(l=>`${l.name}: ${l.items.filter(i=>!i.done).map(i=>i.text).slice(0,15).join(', ')||'empty'}`).join(' | ')}.\nIf he asks you to put something on a list (groceries, movies, ideas…), put this on its own line (the app adds it and hides the line):\nADD_ITEM: <list name> | <item>`:'If he asks you to put something on a list (groceries, movies, ideas…), put this on its own line (the app makes the list, adds it and hides the line):\nADD_ITEM: <list name> | <item>',
+    lists.some(l=>!l.projects)?`His lists: ${lists.filter(l=>!l.projects).map(l=>`${l.name}: ${l.items.filter(i=>!i.done).map(i=>i.text).slice(0,15).join(', ')||'empty'}`).join(' | ')}.\nIf he asks you to put something on a list (groceries, movies, ideas…), put this on its own line (the app adds it and hides the line):\nADD_ITEM: <list name> | <item>`:'If he asks you to put something on a list (groceries, movies, ideas…), put this on its own line (the app makes the list, adds it and hides the line):\nADD_ITEM: <list name> | <item>',
     sleepLog[tod]?`He slept ${sleepHours(sleepLog[tod]).toFixed(1)} hours last night (${sleepLog[tod].bed} to ${sleepLog[tod].wake}).`:'',
     `If he wants music, or a song would fit his mood, put this on its own line (the app shows a play button and hides the line):\nMUSIC: <song and artist, or a search like "lofi study music">\nWhen you share a song, hum a little (*hums*).`,
     g3.vrm?'If he asks for a selfie or a picture of you, put SELFIE on its own line (the app snaps you in 3D and hides the line).':'',
-    window.lifeContext?lifeContext():'',
     `If he asks you to add a task or remind him about something, put this on its own line (the app adds it and hides the line):\nADD_TASK: <short task name> | <YYYY-MM-DD, or empty for today> | <HH:MM 24-hour reminder time, or empty>\nOnly do this when he asks. For a plan at a set time (like "gym at 6"), use that time; you'll get to ask him how it went afterwards.`,
+    window.lifeContext?lifeContext():'', // last: the cloud brain keeps only the first 8000 characters
   ].filter(Boolean).join('\n\n');
 }
 function gwenMoodLine(){
@@ -2375,14 +2375,14 @@ function gwenStudyPick(){
   body.innerHTML=`<div style="width:36px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 14px;"></div>
     <div style="font-size:17px;font-weight:700;margin-bottom:6px;text-align:center;color:var(--txt);">📚 Study with Gwen</div>
     <div style="font-size:13px;color:var(--sub);text-align:center;margin-bottom:12px;">She keeps you company and tells you when it's break time.</div>
-    <input class="inp" id="gwen-study-in" placeholder="What are you studying?" maxlength="60" style="margin-bottom:10px;">
+    ${window.lifeProjPick?lifeProjPick():''}<input class="inp" id="gwen-study-in" placeholder="What are you studying?" maxlength="60" style="margin-bottom:10px;">
     <div style="display:flex;gap:8px;margin-bottom:8px;">${[25,45,60].map(m=>`<button onclick="gwenStudyStart(${m})" style="${btn}">${m} min</button>`).join('')}</div>
     <button onclick="closeOv('gwen-ov')" style="width:100%;background:var(--pril);color:var(--pri);border:none;border-radius:11px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>`;
   document.getElementById('gwen-ov').classList.add('on');
 }
 function gwenStudyStart(mins){
   const what=document.getElementById('gwen-study-in').value.trim().slice(0,60)||'studying',now=Date.now();
-  gwenCfg.study={what,mins,start:now,end:now+mins*60e3};gwenStoreCfg();syncReminders();closeOv('gwen-ov');
+  gwenCfg.study={what,mins,start:now,end:now+mins*60e3,...(window._studyProj?{proj:_studyProj}:{})};gwenStoreCfg();syncReminders();closeOv('gwen-ov');
   gwenLine(`Okay, ${mins} minutes of ${what}. Phone down, I'm watching 👀`,'nod');
   gwenStudyRun();
 }
@@ -2405,6 +2405,7 @@ function gwenStudyStop(early){
   if(early&&mins<5)return gwenLine('Giving up already? 😏 Okay, we can try again later.','pout');
   gwenLine(early?`${mins} minutes of ${s.what}, not bad 💜 Take a little break.`:`🎉 ${s.mins} minutes of ${s.what} done! Take a 5 minute break, you earned it 💜`,'happy');
   gwenBond(3);
+  if(s.proj&&window.lifeProjLog)setTimeout(()=>lifeProjLog(s.proj,mins),1500); // "what got done?" goes to the project
 }
 // Coming back to the app mid-session
 document.addEventListener('visibilitychange',()=>{
@@ -2637,9 +2638,10 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2600);}
 
 // ── Swipe navigation ──────────────────────────────────────────────────────────
-// Rayan's Project Map in Claude: opens outside the app so its chat and outbox keep working
+// Rayan's Project Map in Claude: opens outside the app so its chat and outbox keep working. Projects here opens
+// DayTrack's side of it (life.js), with the link light and Open the map.
 const PROJECT_MAP='https://claude.ai/artifact/Lswr2KxmEzxBeNMjVWFdzB';
-function moreSheet(){const b=t=>{const x=document.querySelector(`.nb[data-t="${t}"]`);return`<button onclick="closeOv('dt-ov');switchTab('${t}')">${x.querySelector('.ic').innerHTML}${x.textContent.trim()}</button>`;};sheet(`<div class="more-grid">${b('timer')}${b('summary')}${b('settings')}<a href="${PROJECT_MAP}" target="_blank" rel="noopener" onclick="closeOv('dt-ov')"><svg viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>Projects</a></div>`);}
+function moreSheet(){const b=t=>{const x=document.querySelector(`.nb[data-t="${t}"]`);return`<button onclick="closeOv('dt-ov');switchTab('${t}')">${x.querySelector('.ic').innerHTML}${x.textContent.trim()}</button>`;};sheet(`<div class="more-grid">${b('timer')}${b('summary')}${b('settings')}<button onclick="openProjects()"><svg viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg><span>Projects ${projDot()}</span></button></div>`);}
 const TABS=['tasks','hero','gwen','cal','timer','summary','settings'];
 (function initSwipe(){
   const main=document.getElementById('main');
@@ -2917,6 +2919,7 @@ function createList(name){
 }
 function openList(id){
   const l=lists.find(x=>x.id===id);if(!l)return closeOv('dt-ov');
+  if(l.projects)return openProjects(); // the Project Map's list has its own screen (life.js)
   const items=[...l.items.filter(i=>!i.done),...l.items.filter(i=>i.done)];
   sheet(`<div style="font-size:17px;font-weight:700;text-align:center;margin-bottom:10px;color:var(--txt);">${listIcon(l.name)} ${esc(l.name)}</div>
     <div style="display:flex;gap:8px;margin-bottom:8px;"><input class="inp" id="li-in" placeholder="Add… (Enter)" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addListItem('${l.id}');}"><button onclick="addListItem('${l.id}')" style="background:var(--pri);color:white;border:none;border-radius:12px;padding:0 16px;font-size:18px;cursor:pointer;">+</button></div>
@@ -2926,7 +2929,8 @@ function openList(id){
 function listAdd(name,text){
   name=String(name).trim().slice(0,40);text=String(text).trim().slice(0,120);if(!name||!text)return;
   const k=name.toLowerCase();
-  let l=lists.find(x=>x.name.toLowerCase()===k)||lists.find(x=>x.name.toLowerCase().startsWith(k)||k.startsWith(x.name.toLowerCase()));
+  const ls=lists.filter(x=>!x.projects); // the Project Map's list only takes PROJECT_NOTE (life.js)
+  let l=ls.find(x=>x.name.toLowerCase()===k)||ls.find(x=>x.name.toLowerCase().startsWith(k)||k.startsWith(x.name.toLowerCase()));
   if(!l){l={id:uid(),name:name[0].toUpperCase()+name.slice(1),items:[]};lists.push(l);}
   l.items.push({id:uid(),text,done:false});
 }
@@ -3127,10 +3131,14 @@ function doUpdate(){
 }
 window.__dtUpdate=(st,msg)=>showToast(st==='downloading'?'⬇️ Downloading the update…':st==='installing'?'📦 Installing…':st==='allow'?'⚙️ Allow DayTrack to install updates, then tap Update again':'❌ '+(msg||'Update failed'));
 
-// ── Share into DayTrack from another app: a link, a message or a photo becomes a task ──
+// ── Share into DayTrack from another app: a link, a message or a photo becomes a task (or a project note) ──
 function takeShare(){
   const N=window.DayTrackNative;if(!N||!N.takeShare)return;
   let d;try{d=JSON.parse(N.takeShare()||'null');}catch(e){}if(!d)return;
+  if(!d.image&&window.lifeShareIn&&lifeShareIn(d))return; // with the Projects list: "Send to a project" or a task
+  shareTask(d);
+}
+function shareTask(d){
   const text=String(d.text||'').trim(),url=(text.match(/https?:\/\/\S+/)||[])[0];
   let name=String(d.subject||'').trim()||text.replace(/https?:\/\/\S+/g,'').trim().split('\n')[0].trim();
   if(!name&&url)try{name='Check '+new URL(url).hostname.replace(/^www\./,'');}catch(e){}
@@ -3219,7 +3227,7 @@ function nativeWidget(){
   widgetTimer=setTimeout(()=>{
     const y=toDateStr(new Date(Date.now()-864e5));
     try{N.widget(JSON.stringify({tasks:tasks.map(t=>({id:t.id,name:t.name,icon:t.iconType==='image'?'':t.icon,recurring:!!t.recurring,days:t.days||[],date:t.date||null,
-      done:t.recurring?t.done.filter(d=>d>=y):t.done.slice(-1)})),hero:typeof heroWidget==='function'?heroWidget():null}));}catch(e){}
+      done:t.recurring?t.done.filter(d=>d>=y):t.done.slice(-1)})),hero:typeof heroWidget==='function'?heroWidget():null,projects:window.lifeProjLine?lifeProjLine():undefined}));}catch(e){}
     const face=([...gwenChat].reverse().find(m=>m.role==='assistant'&&m.thumb)||{}).thumb||'';
     if(face!==widgetFace&&N.widgetFace){widgetFace=face;try{N.widgetFace(face);}catch(e){}}
   },600);
