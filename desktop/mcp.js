@@ -29,7 +29,7 @@ const TOOLS = [
       time: {type: 'string', description: 'HH:MM reminder time (24 h)'}}, required: ['name']},
     run: a => pc(null, {action: 'task', name: a.name, date: a.date, time: a.time})},
   {name: 'daytrack_add_project_note', description: 'Add a note for one project to the Projects list; the next Claude run on the Project Map reads it and does it. End it with "?" to ask Claude a question.',
-    inputSchema: {type: 'object', properties: {project: {type: 'string', enum: ['Food apps', 'Life', 'Money', 'repos', 'Dashboard']}, text: {type: 'string', description: 'The note, up to about 100 characters'}},
+    inputSchema: {type: 'object', properties: {project: {type: 'string', enum: ['Food apps', 'Life', 'Money', 'repos', 'Dashboard']}, text: {type: 'string', description: 'The note. "<project>: <note>" has to fit in 120 characters'}},
       required: ['project', 'text']},
     run: a => pc(null, {action: 'note', project: a.project, text: a.text})},
 ];

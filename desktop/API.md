@@ -195,13 +195,14 @@ Project Map. Item text is `<Project>: <text>` (Food apps, Life, Money, repos, Da
 | `GET /api/pc?key=K&projects=1` | `{"projects": {"name", "share", "at", "items": [{id, text, done, at}]}}`, or `{"projects": null}` when he has no Projects list. Items come from the shared copy (deleted ones left out); `share` is `null` until it is linked with the map. |
 | `GET /api/pc?key=K&today=1` | `{"date", "tasks": [{"name", "time", "done"}]}`: today's tasks, timed ones first (`time` "HH:MM" or `null`). |
 | `POST /api/pc {"key", "action": "task", "name", "date"?, "time"?}` | Adds a task through the inbox Gwen's tasks already use (`date` YYYY-MM-DD, default today; `time` HH:MM). `409` before DayTrack has synced to this PC. |
-| `POST /api/pc {"key", "action": "note", "project", "text"}` | Adds `"<Project>: <text>"` as a `note~<ms>` item to the Projects list (any case of the project name). Replies `{"ok": true, "id"}`; `400` for another project, `409` while the list isn't linked with the map. |
+| `POST /api/pc {"key", "action": "note", "project", "text"}` | Adds `"<Project>: <text>"` as a `note~<ms>` item to the Projects list (any case of the project name). Replies `{"ok": true, "id"}`; `400` for another project or when `"<Project>: <text>"` is over 120 characters, `409` while the list isn't linked with the map. |
 
 ### Finished files from Claude (idea 112)
 Every minute DayTrack.exe looks in `Documents\Projects\<project>\from Claude\` (only folders that exist; it creates nothing). Each file
-that shows up there after DayTrack first looked goes to the phone once, the same way as `action: "send"`, with Gwen's line
+that shows up there after DayTrack first looked goes to the phone once (saved again under the same name, it goes again), the same way as `action: "send"`, with Gwen's line
 "Claude made <name> for <project>" (over 20 MB: just the line, the file stays on the PC). A file waits until it has been unchanged
-for 10 s. What was sent is kept as `fromClaude` `{since, sent}` in the `daytrack-house` store.
+for 10 s. What was sent is kept as `fromClaude` `{since, sent: {"<project>/<name>" (lower case): mtime}}` in the `daytrack-house` store; a folder
+that can't be read for a moment keeps its entries, so nothing goes twice.
 
 ### The PC's Today panel (idea 100)
 The Ctrl+Alt+D panel is the web app itself (`app://daytrack/?panel=1`), so it shows the same Projects card as Today.
@@ -226,3 +227,5 @@ The Ctrl+Alt+D panel is the web app itself (`app://daytrack/?panel=1`), so it sh
 ```
 `ELECTRON_RUN_AS_NODE` makes DayTrack.exe run the script as plain Node (no window, no second DayTrack). With Node installed,
 `"command": "node"` works as well.
+A DayTrack update closes everything running from its folder, this connector too: restart Claude desktop after an update to
+get DayTrack's tools back.

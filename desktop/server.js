@@ -52,28 +52,30 @@ async function dailyBackup(dump) {
 // Wave idea 112: files Claude finished for a project (Documents\Projects\<project>\from Claude\) go to his phone once each,
 // through "send to my phone" with a line from Gwen. Only folders that already exist are read; nothing is created.
 // Files from before DayTrack first looked stay put; one written in the last 10 s waits for the next look. Office lock files
-// (~$...), hidden files and half-downloaded ones are skipped.
+// (~$...), hidden files and half-downloaded ones are skipped. A file saved again under the same name (a v2) goes again.
 async function fromClaude(dir, pc) {
-  const store = globalThis.dtStore('daytrack-house'), saved = await store.get('fromClaude'), was = JSON.stringify(saved), st = saved || {since: Date.now(), sent: []}, found = [];
+  const store = globalThis.dtStore('daytrack-house'), saved = await store.get('fromClaude'), was = JSON.stringify(saved), st = saved || {since: Date.now(), sent: {}}, found = [], read = [];
   let projects = [];
   try { projects = fs.readdirSync(dir, {withFileTypes: true}).filter(d => d.isDirectory()).map(d => d.name); } catch (_) {}
   for (const p of projects) {
     let files = [];
     try { files = fs.readdirSync(path.join(dir, p, 'from Claude'), {withFileTypes: true}).filter(f => f.isFile() && !/^(~\$|\.)|^desktop\.ini$|\.(tmp|part|crdownload)$/i.test(f.name)); } catch (_) { continue; }
+    read.push(p.toLowerCase());
     for (const {name} of files) {
-      const file = path.join(dir, p, 'from Claude', name), id = p + '/' + name;
+      const file = path.join(dir, p, 'from Claude', name), id = (p + '/' + name).toLowerCase(); // Windows names ignore case
       found.push(id);
       try { // one locked or vanished file must not stop the rest (or send the others twice)
         const s = fs.statSync(file);
-        if (st.sent.includes(id) || Math.max(s.mtimeMs, s.birthtimeMs) <= st.since || Date.now() - s.mtimeMs < 10e3) continue;
+        if (st.sent[id] === s.mtimeMs || Math.max(s.mtimeMs, s.birthtimeMs) <= st.since || Date.now() - s.mtimeMs < 10e3) continue;
         const big = s.size > 20e6, text = `Claude made ${name} for ${p}` + (big ? ' (too big to send, it\'s on your PC)' : '');
         const r = await pc(new Request('http://localhost/', {method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({key: process.env.GWEN_KEY, action: 'send', text, ...(big ? {} : {name, file: 'data:application/octet-stream;base64,' + fs.readFileSync(file).toString('base64')})})}));
-        if (r.ok) st.sent.push(id);
+        if (r.ok) st.sent[id] = s.mtimeMs;
       } catch (e) { console.error('From Claude:', id, e.message); }
     }
   }
-  st.sent = st.sent.filter(id => found.includes(id));
+  // only forget files gone from a folder read this time: one that can't be read for a moment (renamed, OneDrive busy) must not send everything again
+  for (const id in st.sent) if (!found.includes(id) && read.includes(id.slice(0, id.indexOf('/')))) delete st.sent[id];
   if (JSON.stringify(st) !== was) await store.setJSON('fromClaude', st);
 }
 

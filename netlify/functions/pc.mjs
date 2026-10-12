@@ -196,6 +196,7 @@ const handler = async (event) => {
       // Wave idea 160: a note for a project on the map; the next Claude run reads it, does it and deletes it
       const project = PROJECTS.find(p => p.toLowerCase() === String(body.project || '').trim().toLowerCase()), text = String(body.text || '').trim();
       if (!project || !text) return json(400, { error: `project (${PROJECTS.join(', ')}) and text needed` });
+      if (`${project}: ${text}`.length > 120) return json(400, { error: 'Note too long (120 characters with the project name)' }); // the shared list cuts longer items
       const l = await projectsList(), at = Date.now(), id = 'note~' + at;
       if (!l || !l.share) return json(409, { error: 'The Projects list is not linked with the map yet (DayTrack: Projects, Link with the map)' });
       const r = await shareFn(new Request('http://localhost/?code=' + l.share, { method: 'POST', body: JSON.stringify({ items: [{ id, text: `${project}: ${text}`, done: false, at }] }) }));

@@ -360,6 +360,7 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
   assert.equal((await call('/api/pc?key=k&projects=1')).projects.share, share);
   await call('/api/share?code=' + share, {name: 'Projects', items: [{id: 'need~1', text: 'Food apps: Fill the Sales Kit blanks', at: 5}]});
   assert.equal((await call('/api/pc', {key: 'k', action: 'note', project: 'Bakery', text: 'x'})).status, 400);
+  assert.equal((await call('/api/pc', {key: 'k', action: 'note', project: 'Food apps', text: 'z'.repeat(110)})).status, 400, 'over 120 with the project name');
   const n = await call('/api/pc', {key: 'k', action: 'note', project: 'food apps', text: 'add Sanbouk to the demo page'});
   assert.ok(n.ok && /^note~\d+$/.test(n.id));
   const pl = (await call('/api/pc?key=k&projects=1')).projects;
@@ -390,6 +391,16 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
   fs.utimesSync(path.join(out, 'half.txt'), ago(20), ago(20));
   await server.fromClaude(proj, fns.pc);
   assert.deepEqual((await call('/api/gwen', {key: 'k', inbox: 'abc12345'})).messages.map(m => m.text), ['Claude made half.txt for Food apps']);
+  // a folder that can't be read for one look (renamed, OneDrive busy) sends nothing again after; a v2 under the same name goes again
+  fs.renameSync(proj, proj + '-away'); await server.fromClaude(proj, fns.pc); fs.renameSync(proj + '-away', proj);
+  fs.renameSync(out, out + '-away'); await server.fromClaude(proj, fns.pc); fs.renameSync(out + '-away', out);
+  await server.fromClaude(proj, fns.pc);
+  assert.deepEqual((await call('/api/gwen', {key: 'k', inbox: 'abc12345'})).messages, []);
+  fs.writeFileSync(path.join(out, 'price sheet.txt'), 'SAR 349'); fs.utimesSync(path.join(out, 'price sheet.txt'), ago(15), ago(15));
+  await server.fromClaude(proj, fns.pc);
+  const v2 = (await call('/api/gwen', {key: 'k', inbox: 'abc12345'})).messages;
+  assert.deepEqual(v2.map(m => m.text), ['Claude made price sheet.txt for Food apps']);
+  assert.equal(await (await fetch(url + '/api/pc?file=' + v2[0].file.id)).text(), 'SAR 349');
 
   // 160: the Claude connector over stdio, Gwen's key from the keys file
   const {spawn} = await import('node:child_process');
