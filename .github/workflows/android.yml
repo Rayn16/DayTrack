@@ -26,13 +26,15 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      # Pull requests only check that the app builds, signed with a throwaway key
-      - name: Throwaway signing key
+      # Pull requests build "DayTrack test", which installs next to the real app (DT_TEST, see app/build.gradle). It's signed
+      # with the test key kept in the repo (android/test.p12, password daytrack-test), never the real key, so each test
+      # build installs over the last one.
+      - name: Test signing key
         if: github.event_name == 'pull_request'
         run: |
-          PW=$(openssl rand -hex 16)
-          keytool -genkeypair -keystore android/release.keystore -storetype PKCS12 -alias daytrack -keyalg RSA -keysize 2048 -validity 1 -storepass "$PW" -keypass "$PW" -dname "CN=Test"
-          echo "KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          cp android/test.p12 android/release.keystore
+          echo "KEYSTORE_PASSWORD=daytrack-test" >> "$GITHUB_ENV"
+          echo "DT_TEST=1" >> "$GITHUB_ENV"
 
       # main gets the real key: the keystore is in android/ encrypted with this one password
       - name: Signing key
@@ -54,3 +56,17 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk DayTrack.apk
           gh release delete app --yes --cleanup-tag || true
           gh release create app DayTrack.apk --title "DayTrack app" --notes "Install DayTrack.apk on your phone. Build ${{ github.run_number }}."
+
+      # The test app as the prerelease test-pr-<number>, for the phone to download (android-test-cleanup.yml deletes it
+      # when the pull request closes). Not for pull requests from forks, which can't write releases.
+      - name: Publish the test app
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: test-pr-${{ github.event.pull_request.number }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk DayTrack-test.apk
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" DayTrack-test.apk --prerelease --target "${{ github.event.pull_request.head.sha }}" --title "DayTrack test (pull request #${{ github.event.pull_request.number }})" \
+            --notes "Install DayTrack-test.apk to try this pull request. It installs next to DayTrack as \"DayTrack test\" (its own data). Build ${{ github.run_number }}."
+          echo "Test app: https://github.com/${{ github.repository }}/releases/download/$TAG/DayTrack-test.apk" >> "$GITHUB_STEP_SUMMARY"

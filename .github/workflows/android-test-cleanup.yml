@@ -1,0 +1,19 @@
+# Deletes a pull request's "DayTrack test" app (the prerelease test-pr-<number> that android.yml publishes) once it closes
+name: Android test app cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the test app
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release delete "test-pr-${{ github.event.pull_request.number }}" --yes --cleanup-tag || true
