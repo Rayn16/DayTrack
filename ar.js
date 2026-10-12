@@ -210,7 +210,7 @@
     "I didn't hear a task, try again": 'لم أسمع مهمة، حاول مرة أخرى',
     'Say your task, like "dentist Tuesday at 3"': 'قل مهمتك بالإنجليزية، مثل "dentist Tuesday at 3"',
     // Nav and FAB
-    'Calendar': 'التقويم', 'Summary': 'الملخص', 'Settings': 'الإعدادات',
+    'Calendar': 'التقويم', 'Summary': 'الملخص', 'Settings': 'الإعدادات', 'Projects': 'المشاريع',
     'New task (hold to say it)': 'مهمة جديدة (اضغط مطولًا لتقولها بصوتك)',
     // Add / edit task sheet
     'New Task': 'مهمة جديدة', 'Edit Task': 'تعديل المهمة', 'Task Name': 'اسم المهمة', 'e.g. Morning Run': 'مثل: جري الصباح',
