@@ -182,3 +182,47 @@ DayTrack shows both on one page (`GET /api/settings`) and writes a changed `valu
 
 ### Status page (idea 38)
 `GET /api/status` → `{"parts": [{id, name, ok, detail}], "game"}` for AIRI, her voice server (5050), her bridge (5052), the house (polled in the last minute), DayTrack and Tailscale. `POST /api/status {"key", "start": "<id>"}` starts a part that's down (never kills anything, refuses while a game is open).
+
+## Projects wave (2026-10-12): the Project Map's DayTrack side
+
+His Projects list is a normal DayTrack list with `projects: true`, shared like any list; a Claude run keeps it in step with the
+Project Map. Item text is `<Project>: <text>` (Food apps, Life, Money, repos, Dashboard); the id prefix says what it is: `meta`,
+`need~`, `ask~`, `done~`, `today~`, `day~`, `goal~`, `next~` (written by Claude) and `note~`, `log~`, `cost~`, `signed~` (written by DayTrack).
+
+### For desktop Gwen and the Claude connector (Gwen's key)
+| call | what it does |
+|---|---|
+| `GET /api/pc?key=K&projects=1` | `{"projects": {"name", "share", "at", "items": [{id, text, done, at}]}}`, or `{"projects": null}` when he has no Projects list. Items come from the shared copy (deleted ones left out); `share` is `null` until it is linked with the map. |
+| `GET /api/pc?key=K&today=1` | `{"date", "tasks": [{"name", "time", "done"}]}`: today's tasks, timed ones first (`time` "HH:MM" or `null`). |
+| `POST /api/pc {"key", "action": "task", "name", "date"?, "time"?}` | Adds a task through the inbox Gwen's tasks already use (`date` YYYY-MM-DD, default today; `time` HH:MM). `409` before DayTrack has synced to this PC. |
+| `POST /api/pc {"key", "action": "note", "project", "text"}` | Adds `"<Project>: <text>"` as a `note~<ms>` item to the Projects list (any case of the project name). Replies `{"ok": true, "id"}`; `400` for another project, `409` while the list isn't linked with the map. |
+
+### Finished files from Claude (idea 112)
+Every minute DayTrack.exe looks in `Documents\Projects\<project>\from Claude\` (only folders that exist; it creates nothing). Each file
+that shows up there after DayTrack first looked goes to the phone once, the same way as `action: "send"`, with Gwen's line
+"Claude made <name> for <project>" (over 20 MB: just the line, the file stays on the PC). A file waits until it has been unchanged
+for 10 s. What was sent is kept as `fromClaude` `{since, sent}` in the `daytrack-house` store.
+
+### The PC's Today panel (idea 100)
+The Ctrl+Alt+D panel is the web app itself (`app://daytrack/?panel=1`), so it shows the same Projects card as Today.
+
+### DayTrack as a Claude connector (idea 160)
+`desktop/mcp.js` is a small MCP server (stdio, no extra packages) for the Claude desktop app. It only talks to DayTrack.exe on
+`http://127.0.0.1:5053`, with Gwen's key from `daytrack.json`. Tools: `daytrack_today`, `daytrack_projects`, `daytrack_add_task`,
+`daytrack_add_project_note`. Nothing changes until Rayan adds it to Claude desktop (DayTrack.exe has to be running):
+1. DayTrack's tray icon → **Copy Claude connector setup** (copies the entry below with this PC's real paths).
+2. Claude desktop → Settings → Developer → Edit Config. Paste it into `claude_desktop_config.json` (inside an existing
+   `mcpServers` if there is one), save, restart Claude.
+```json
+{
+  "mcpServers": {
+    "daytrack": {
+      "command": "<DayTrack folder>\\DayTrack.exe",
+      "args": ["<DayTrack folder>\\resources\\app.asar.unpacked\\mcp.js", "C:\\Users\\<you>\\Documents\\Gwen\\daytrack.json"],
+      "env": {"ELECTRON_RUN_AS_NODE": "1"}
+    }
+  }
+}
+```
+`ELECTRON_RUN_AS_NODE` makes DayTrack.exe run the script as plain Node (no window, no second DayTrack). With Node installed,
+`"command": "node"` works as well.
