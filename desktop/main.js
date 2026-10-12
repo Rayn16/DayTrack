@@ -1,6 +1,6 @@
 // DayTrack for Windows: the same app as the phone, with its files inside the exe. It is also the
 // DayTrack server (server.js), so it starts with Windows and keeps running in the tray when closed.
-const {app, BrowserWindow, Tray, Menu, protocol, session, shell, globalShortcut, nativeImage, Notification, screen} = require('electron');
+const {app, BrowserWindow, Tray, Menu, protocol, session, shell, globalShortcut, nativeImage, Notification, screen, clipboard} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const {spawn} = require('child_process');
@@ -36,6 +36,7 @@ function togglePanel() {
     const {workArea: a} = screen.getPrimaryDisplay();
     panel = new BrowserWindow({width: 380, height: 540, x: a.x + a.width - 396, y: a.y + 16, frame: false, resizable: false, alwaysOnTop: true,
       skipTaskbar: true, show: false, title: 'DayTrack today', icon: path.join(WEB, 'icon.png')});
+    panel.webContents.setWindowOpenHandler(({url}) => { shell.openExternal(url); return {action: 'deny'}; });
     panel.on('blur', () => panel.hide());
     panel.on('closed', () => { panel = null; });
     panel.loadURL('app://daytrack/?panel=1');
@@ -80,9 +81,16 @@ async function update(hidden) {
   quitting = true;
   app.quit();
 }
+// Wave idea 160: the claude_desktop_config.json entry for DayTrack's Claude connector (mcp.js, run by DayTrack.exe as plain Node)
+function copyConnector() {
+  clipboard.writeText(JSON.stringify({mcpServers: {daytrack: {command: process.execPath, args: [path.join(__dirname, 'mcp.js').replace('app.asar', 'app.asar.unpacked'),
+    path.join(app.getPath('documents'), 'Gwen', 'daytrack.json')], env: {ELECTRON_RUN_AS_NODE: '1'}}}}, null, 2));
+  new Notification({title: 'Claude connector copied', body: 'In Claude desktop: Settings, Developer, Edit Config. Paste it in, save, restart Claude.'}).show();
+}
 function trayMenu() {
   return Menu.buildFromTemplate([{label: 'Open DayTrack', click: show}, {label: 'Today (Ctrl+Alt+D)', click: togglePanel},
-    ...(newBuild ? [{label: 'Install update', click: () => update(false).catch(e => console.error(e.message))}] : []), {label: 'Quit', click: () => app.quit()}]);
+    ...(newBuild ? [{label: 'Install update', click: () => update(false).catch(e => console.error(e.message))}] : []),
+    {label: 'Copy Claude connector setup', click: copyConnector}, {label: 'Quit', click: () => app.quit()}]);
 }
 
 app.on('second-instance', show);
@@ -122,6 +130,7 @@ app.whenReady().then(async () => {
       keysFile: path.join(app.getPath('documents'), 'Gwen', 'daytrack.json'),
       fnDir: path.join(__dirname, 'server', 'functions'),
       hooks: {version: app.getVersion(), update: hidden => update(hidden).catch(e => console.error('Update:', e.message)), panel: togglePanel},
+      projectsDir: path.join(app.getPath('documents'), 'Projects'),
     }));
   } catch (e) { console.error('DayTrack server did not start:', e.message); }
 

@@ -1,6 +1,8 @@
 import { lambda } from '../lib/fn.mjs';
 import { keyOk, localNow, questDone, phonePrayers, ramadan, gwenText, shrink, dayAdd, live, whereNow, sharedState, sharedEvent } from '../lib/house.mjs';
 import { blobStore } from '../lib/fn.mjs';
+import syncFn from './sync.mjs';
+import shareFn from './share.mjs';
 import { spawn, execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -64,15 +66,39 @@ async function logApp(app) {
 
 // 10-09 idea 22: the next day's tasks for desktop Gwen's bedtime nudge. Before 5 AM the day that already started counts as tomorrow.
 const timeOf = t => { const r = t.reminder, at = typeof r === 'string' ? r : r && r.type === 'time' ? r.time : null; return /^\d{1,2}:\d{2}$/.test(at || '') ? at.padStart(5, '0') : null; };
-async function tomorrow() {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone, now = localNow(tz), date = now.min < 5 * 60 ? now.date : dayAdd(now.date, 1);
+// Wave idea 160: any day's tasks with what's done (today's for the Claude connector)
+async function dayTasks(date) {
   const dow = new Date(date + 'T12:00:00Z').getUTCDay(), store = blobStore('daytrack'), { blobs } = await store.list();
   let tasks = [];
   for (const { key } of blobs) { const d = await store.get(key, { type: 'json' }); if (d && Array.isArray(d.tasks) && d.tasks.length > tasks.length) tasks = d.tasks; }
-  const list = tasks.filter(t => t.recurring ? !t.days || !t.days.length || t.days.includes(dow) : !(t.done || []).length && (!t.date || t.date <= date))
-    .filter(t => !(t.done || []).includes(date)).map(t => ({ name: String(t.name || '').slice(0, 80), time: timeOf(t) }));
-  list.sort((a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || (a.time || '').localeCompare(b.time || ''));
-  return { date, tomorrow: list.slice(0, 20) };
+  const list = tasks.filter(t => t.recurring ? !t.days || !t.days.length || t.days.includes(dow) : (t.done || []).includes(date) || !(t.done || []).length && (!t.date || t.date <= date))
+    .map(t => ({ name: String(t.name || '').slice(0, 80), time: timeOf(t), done: (t.done || []).includes(date) }));
+  return list.sort((a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || (a.time || '').localeCompare(b.time || ''));
+}
+async function tomorrow() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone, now = localNow(tz), date = now.min < 5 * 60 ? now.date : dayAdd(now.date, 1);
+  return { date, tomorrow: (await dayTasks(date)).filter(t => !t.done).slice(0, 20).map(({ name, time }) => ({ name, time })) };
+}
+
+// Wave: his Projects list, a shared DayTrack list with `projects: true` that a Claude run keeps in step with the Project Map
+const PROJECTS = ['Food apps', 'Life', 'Money', 'repos', 'Dashboard'];
+// The newest DayTrack data synced to this PC: {code, data}
+async function synced() {
+  const store = blobStore('daytrack-sync'), { blobs } = await store.list();
+  let best = null;
+  for (const { key } of blobs) {
+    if (!/^[a-f0-9]{32}$/.test(key)) continue;
+    const data = await store.get(key, { type: 'json' });
+    if (data && (!best || (data.updatedAt || 0) > (best.data.updatedAt || 0))) best = { code: key, data };
+  }
+  return best;
+}
+// {name, share, at, items} (deleted items left out), or null when he has no Projects list yet
+async function projectsList() {
+  const s = await synced(), l = s && (s.data.lists || []).find(x => x && x.projects);
+  if (!l) return null;
+  const shared = l.share && await blobStore('daytrack-share').get(l.share, { type: 'json' });
+  return { name: l.name, share: l.share || null, at: (shared && shared.at) || null, items: shared ? shared.items.filter(i => !i.del) : l.items || [] };
 }
 
 export async function status() {
@@ -115,6 +141,8 @@ const handler = async (event) => {
   if (event.httpMethod === 'GET') {
     if (q.apps) return json(200, { days: (await blobStore('daytrack-house').get('apps', { type: 'json' })) || {} });
     if (q.tomorrow) return json(200, await tomorrow());
+    if (q.today) return json(200, { date: today(), tasks: await dayTasks(today()) });
+    if (q.projects) return json(200, { projects: await projectsList() });
     if (q.inbox) {
       // 10-09 idea 36: texts and reminders held for the desktop (taken once; kept while he games)
       live.inboxAt = Date.now();
@@ -156,6 +184,23 @@ const handler = async (event) => {
       }
       const sent = await gwenText(text || (file ? `📎 ${file.name}` : '📷 From your PC'), image, file ? { file } : undefined);
       return json(200, { ok: sent > 0, id });
+    }
+    case 'task': {
+      // Wave idea 160: a task from the Claude connector, through the inbox DayTrack already takes Gwen's tasks from
+      const s = await synced();
+      if (!s) return json(409, { error: 'DayTrack has not synced to this PC yet' });
+      const r = await syncFn(new Request('http://localhost/', { method: 'POST', body: JSON.stringify({ code: s.code, inbox: { name: body.name, date: body.date, time: body.time } }) }));
+      return r.ok ? json(200, { ok: true }) : json(400, { error: await r.text() });
+    }
+    case 'note': {
+      // Wave idea 160: a note for a project on the map; the next Claude run reads it, does it and deletes it
+      const project = PROJECTS.find(p => p.toLowerCase() === String(body.project || '').trim().toLowerCase()), text = String(body.text || '').trim();
+      if (!project || !text) return json(400, { error: `project (${PROJECTS.join(', ')}) and text needed` });
+      if (`${project}: ${text}`.length > 120) return json(400, { error: 'Note too long (120 characters with the project name)' }); // the shared list cuts longer items
+      const l = await projectsList(), at = Date.now(), id = 'note~' + at;
+      if (!l || !l.share) return json(409, { error: 'The Projects list is not linked with the map yet (DayTrack: Projects, Link with the map)' });
+      const r = await shareFn(new Request('http://localhost/?code=' + l.share, { method: 'POST', body: JSON.stringify({ items: [{ id, text: `${project}: ${text}`, done: false, at }] }) }));
+      return r.ok ? json(200, { ok: true, id }) : json(409, { error: 'The Projects list is not shared anymore' });
     }
     case 'lock':
       if (process.platform !== 'win32') return json(501, { error: 'Windows only' });
