@@ -7,3 +7,7 @@ android/local.properties
 desktop/web/
 desktop/dist/
 desktop/server/
+
+# Graphify
+graphify-out/cache/
+graphify-out/cost.json
