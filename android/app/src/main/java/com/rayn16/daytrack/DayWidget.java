@@ -70,10 +70,18 @@ public class DayWidget extends AppWidgetProvider {
 
         level(c, v, open);
 
+        // The Projects list in one line, when the page sends one; a tap opens the app on its Projects screen (#projects)
+        JSONObject w = new JSONObject(Poller.prefs(c).getString("widget", "{}"));
+        String projects = w.isNull("projects") ? "" : w.optString("projects").trim();
+        v.setViewVisibility(R.id.projects, projects.isEmpty() ? View.GONE : View.VISIBLE);
+        v.setTextViewText(R.id.projects, projects);
+        v.setOnClickPendingIntent(R.id.projects, PendingIntent.getActivity(c, 2, new Intent(c, MainActivity.class).putExtra("hash", "projects")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+
         // Today's tasks, undone first
         String today = Poller.day(0);
         int dow = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1; // 0 = Sunday, like the page
-        JSONArray all = new JSONObject(Poller.prefs(c).getString("widget", "{}")).optJSONArray("tasks");
+        JSONArray all = w.optJSONArray("tasks");
         List<JSONObject> undone = new ArrayList<>(), done = new ArrayList<>();
         for (int i = 0; all != null && i < all.length(); i++) {
             JSONObject t = all.optJSONObject(i);
