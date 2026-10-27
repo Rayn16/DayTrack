@@ -9,7 +9,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dt-')), keys = path.join(dir,
 fs.mkdirSync(path.dirname(keys));
 fs.writeFileSync(keys, JSON.stringify({key: 'k', gwenBorn: '2026-09-30'}));
 const server = createRequire(import.meta.url)('./server.js');
-const {server: http} = await server.start({dataDir: path.join(dir, 'data'), keysFile: keys, fnDir: path.resolve('server/functions')});
+const {server: http, fns} = await server.start({dataDir: path.join(dir, 'data'), keysFile: keys, fnDir: path.resolve('server/functions')});
 const url = 'http://127.0.0.1:5053';
 const call = (p, body) => fetch(url + p, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {}).then(async r => ({status: r.status, ...(await r.json())}));
 const d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -348,6 +348,83 @@ assert.ok((await fetch(url + '/.netlify/functions/outbox?auth=abc12345').then(r 
   assert.equal((await call('/api/settings', {key: 'k', app: 'desktop', item: 'voice', value: 'velvet'})).ok, true);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'Gwen', 'shared-settings', 'desktop.json'), 'utf8')).items[0].value, 'velvet');
   console.log('10-09 second round checks passed');
+}
+
+// Projects wave (ideas 112, 160): today's tasks, the Projects list, a task and a note from Claude, finished files to the phone
+{
+  assert.deepEqual((await call('/api/pc?key=k&today=1')).tasks, [{name: 'Wash the dishes', time: null, done: true}]);
+  assert.equal((await call('/api/pc?key=k&projects=1')).projects, null, 'no Projects list yet');
+  assert.equal((await call('/api/pc', {key: 'k', action: 'note', project: 'Food apps', text: 'hi'})).status, 409);
+  const code = 'e'.repeat(32), share = 'f'.repeat(32);
+  await call('/api/sync', {code, data: {tasks: [], lists: [{id: 'g', name: 'Groceries', items: []}, {id: 'p', name: 'Projects', projects: true, share, items: []}], updatedAt: Date.now()}});
+  assert.equal((await call('/api/pc?key=k&projects=1')).projects.share, share);
+  await call('/api/share?code=' + share, {name: 'Projects', items: [{id: 'need~1', text: 'Food apps: Fill the Sales Kit blanks', at: 5}]});
+  assert.equal((await call('/api/pc', {key: 'k', action: 'note', project: 'Bakery', text: 'x'})).status, 400);
+  assert.equal((await call('/api/pc', {key: 'k', action: 'note', project: 'Food apps', text: 'z'.repeat(110)})).status, 400, 'over 120 with the project name');
+  const n = await call('/api/pc', {key: 'k', action: 'note', project: 'food apps', text: 'add Sanbouk to the demo page'});
+  assert.ok(n.ok && /^note~\d+$/.test(n.id));
+  const pl = (await call('/api/pc?key=k&projects=1')).projects;
+  assert.deepEqual(pl.items.map(i => [i.id.split('~')[0], i.text]), [['need', 'Food apps: Fill the Sales Kit blanks'], ['note', 'Food apps: add Sanbouk to the demo page']]);
+  assert.equal((await call('/api/pc', {key: 'k', action: 'task', name: ' '})).status, 400);
+  assert.equal((await call('/api/pc', {key: 'k', action: 'task', name: 'Call Sanbouk', time: '16:00'})).ok, true);
+  assert.deepEqual((await (await fetch(url + '/api/sync?inbox=1&code=' + code)).json()).map(t => [t.name, t.date, t.time]), [['Call Sanbouk', null, '16:00']]);
+  assert.equal((await call('/api/pc?key=wrong&projects=1')).status, 401);
+
+  // 112: only files written after DayTrack first looked, once each, not while still being written; nothing is created
+  const proj = path.join(dir, 'Projects'), out = path.join(proj, 'Food apps', 'from Claude');
+  await server.fromClaude(proj, fns.pc);
+  assert.ok(!fs.existsSync(proj), 'creates nothing');
+  fs.mkdirSync(out, {recursive: true});
+  const ago = s => new Date(Date.now() - s * 1000), tick = () => new Promise(ok => setTimeout(ok, 30));
+  fs.writeFileSync(path.join(out, 'old.txt'), 'old'); fs.utimesSync(path.join(out, 'old.txt'), ago(9e3), ago(9e3));
+  await tick(); await globalThis.dtStore('daytrack-house').delete('fromClaude'); await server.fromClaude(proj, fns.pc); await tick(); // DayTrack's first look
+  fs.writeFileSync(path.join(out, 'price sheet.txt'), 'SAR 299'); fs.utimesSync(path.join(out, 'price sheet.txt'), ago(20), ago(20));
+  fs.writeFileSync(path.join(out, 'half.txt'), 'still writing');
+  fs.writeFileSync(path.join(out, '~$ice sheet.docx'), 'lock'); fs.utimesSync(path.join(out, '~$ice sheet.docx'), ago(20), ago(20));
+  await call('/api/pc', {key: 'k', action: 'report', app: null, game: null});
+  await call('/api/gwen', {key: 'k', inbox: 'abc12345'});
+  await server.fromClaude(proj, fns.pc);
+  await server.fromClaude(proj, fns.pc);
+  const got = (await call('/api/gwen', {key: 'k', inbox: 'abc12345'})).messages;
+  assert.deepEqual(got.map(m => [m.text, m.file && m.file.name]), [['Claude made price sheet.txt for Food apps', 'price sheet.txt']]);
+  assert.equal(await (await fetch(url + '/api/pc?file=' + got[0].file.id)).text(), 'SAR 299');
+  fs.utimesSync(path.join(out, 'half.txt'), ago(20), ago(20));
+  await server.fromClaude(proj, fns.pc);
+  assert.deepEqual((await call('/api/gwen', {key: 'k', inbox: 'abc12345'})).messages.map(m => m.text), ['Claude made half.txt for Food apps']);
+  // a folder that can't be read for one look (renamed, OneDrive busy) sends nothing again after; a v2 under the same name goes again
+  fs.renameSync(proj, proj + '-away'); await server.fromClaude(proj, fns.pc); fs.renameSync(proj + '-away', proj);
+  fs.renameSync(out, out + '-away'); await server.fromClaude(proj, fns.pc); fs.renameSync(out + '-away', out);
+  await server.fromClaude(proj, fns.pc);
+  assert.deepEqual((await call('/api/gwen', {key: 'k', inbox: 'abc12345'})).messages, []);
+  fs.writeFileSync(path.join(out, 'price sheet.txt'), 'SAR 349'); fs.utimesSync(path.join(out, 'price sheet.txt'), ago(15), ago(15));
+  await server.fromClaude(proj, fns.pc);
+  const v2 = (await call('/api/gwen', {key: 'k', inbox: 'abc12345'})).messages;
+  assert.deepEqual(v2.map(m => m.text), ['Claude made price sheet.txt for Food apps']);
+  assert.equal(await (await fetch(url + '/api/pc?file=' + v2[0].file.id)).text(), 'SAR 349');
+
+  // 160: the Claude connector over stdio, Gwen's key from the keys file
+  const {spawn} = await import('node:child_process');
+  const mcp = spawn(process.execPath, ['mcp.js', keys]), lines = [];
+  let buf = '';
+  mcp.stdout.on('data', c => { buf += c; let i; while ((i = buf.indexOf('\n')) >= 0) { lines.push(JSON.parse(buf.slice(0, i))); buf = buf.slice(i + 1); } });
+  const rpc = async (id, method, params) => {
+    mcp.stdin.write(JSON.stringify({jsonrpc: '2.0', id, method, params}) + '\n');
+    for (let t = 0; t < 100 && !lines.some(l => l.id === id); t++) await new Promise(ok => setTimeout(ok, 50));
+    return lines.find(l => l.id === id);
+  };
+  assert.equal((await rpc(1, 'initialize', {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'test', version: '1'}})).result.serverInfo.name, 'daytrack');
+  mcp.stdin.write(JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized'}) + '\n');
+  assert.deepEqual((await rpc(2, 'tools/list')).result.tools.map(t => t.name), ['daytrack_today', 'daytrack_projects', 'daytrack_add_task', 'daytrack_add_project_note']);
+  const tool = async (id, name, args) => (await rpc(id, 'tools/call', {name, arguments: args})).result;
+  assert.equal(JSON.parse((await tool(3, 'daytrack_today', {})).content[0].text).tasks[0].name, 'Wash the dishes');
+  assert.equal(JSON.parse((await tool(4, 'daytrack_projects', {})).content[0].text).projects.items.length, 2);
+  assert.equal((await tool(5, 'daytrack_add_project_note', {project: 'Money', text: 'Ask: how much is left this month?'})).isError, undefined);
+  assert.equal((await tool(6, 'daytrack_add_project_note', {project: 'Nope', text: 'x'})).isError, true);
+  assert.equal(JSON.parse((await tool(7, 'daytrack_add_task', {name: 'Send the price sheet'})).content[0].text).ok, true);
+  assert.equal((await rpc(8, 'nope')).error.code, -32601);
+  mcp.kill();
+  assert.ok((await call('/api/pc?key=k&projects=1')).projects.items.some(i => i.text === 'Money: Ask: how much is left this month?'));
+  console.log('Projects wave checks passed');
 }
 
 http.close();

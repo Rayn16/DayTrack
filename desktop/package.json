@@ -15,8 +15,12 @@
     "files": [
       "main.js",
       "server.js",
+      "mcp.js",
       "web/**",
       "server/**"
+    ],
+    "asarUnpack": [
+      "mcp.js"
     ],
     "win": {
       "icon": "icon.png"
